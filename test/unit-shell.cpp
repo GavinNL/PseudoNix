@@ -50,6 +50,22 @@ struct SimpleScheduler
 
 
 
+/**
+ * @brief shell
+ * @param exev
+ * @param S
+ * @param L
+ * @return
+ *
+ * The shell() command acts like the Linux's sh command. It reads commands
+ * from the input stream and executes commands.
+ *
+ * Each command that get excectued is itself a coroutine. These coroutine tasks
+ * will need to be placed on a scheduler. That's what the SchedulerFunction does.
+ *
+ * The SchedulerFunction is a functional object with opertor() overriden
+ * It takes a
+ */
 template<typename SchedulerFunction>
 MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux & L)
 {
@@ -57,12 +73,19 @@ MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux 
 
     std::vector<MiniLinux::Exec> E;
 
+    char last_char = 0;
     auto next_arg  = [&](){if(E.back().args.back().size() != 0) E.back().args.emplace_back();};
     auto next_exec = [&](){E.emplace_back(); E.back().args.emplace_back();};
     auto last_arg = [&]() -> std::string& {return E.back().args.back();};
     auto push_arg_char = [&](char c) {
         last_arg().push_back(c);
+        last_char = c;
     };
+    auto pop_char = [&]()
+    {
+        last_arg().pop_back();
+    };
+    (void)pop_char;
 
     (void)last_arg;
     next_exec();
@@ -71,6 +94,26 @@ MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux 
     while(!exev.in->eof() )
     {
         auto c = exev.in->get();
+
+        if(quoted)
+        {
+            push_arg_char(c);
+        }
+        else
+        {
+            if(c == ' ')
+            {
+                if(last_char != ' ')
+                {
+                    next_arg();
+                }
+            }
+            else
+            {
+                push_arg_char(c);
+            }
+        }
+
         switch(c)
         {
             case '\\':
@@ -81,7 +124,9 @@ MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux 
                 if(quoted)
                     push_arg_char(c);
                 else
+                {
                     next_arg();
+                }
                 break;
             case '"':
                 quoted = !quoted;
@@ -117,15 +162,27 @@ MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux 
                         }
                     }
 
+                    size_t count=0;
                     while(true)
                     {
-                        auto count = std::count_if(_returnValues.begin(), _returnValues.end(), [](auto & f) { return f.wait_for(std::chrono::seconds(0))==std::future_status::ready;});
+                        // check each of the futures for their completion
+                        for(size_t i=0;i<_returnValues.size();i++)
+                        {
+                            auto & f = _returnValues[i];
+                            if(f.valid())
+                            {
+                                if(f.wait_for(std::chrono::seconds(0))==std::future_status::ready)
+                                {
+                                    ++count;
+                                    f.get();
+                                    if(E[i].out)
+                                        E[i].out->close();
+                                }
+                            }
+                        }
+
                         if(static_cast<size_t>(count) == _returnValues.size())
                         {
-                            for(auto & f : _returnValues)
-                            {
-                                f.get();
-                            }
                             break;
                         }
                         else
@@ -186,7 +243,7 @@ SCENARIO("test shell")
     E.in  = MiniLinux::make_stream(R"foo(
 echo hello world
 sleep 2
-echo goodbye world
+echo goodbye world | rev
 sleep 1
 echo hello again
 )foo");
@@ -200,7 +257,11 @@ echo hello again
     auto shell_task = M.runRawCommand(E);
 
     S.emplace(std::move(shell_task));
+
+    // Run the scheduler so that it will
+    // continuiously execute the coroutines
     S.run();
+
     //E.out->toStream(std::cout);
     exit(0);
 }
