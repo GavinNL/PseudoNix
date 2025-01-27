@@ -1,0 +1,141 @@
+#ifndef GUL_COROUTINE_TASK_H
+#define GUL_COROUTINE_TASK_H
+
+#include <coroutine>
+#include <exception>
+#include <iostream>
+#include <utility>
+
+namespace gul
+{
+
+template<typename T>
+struct promise_value
+{
+    T result;
+
+    void return_value(T && r )
+    {
+        result = std::move(r);
+    }
+};
+
+struct promise_void
+{
+    void return_void()
+    {
+
+    }
+};
+
+
+template<typename T>
+struct Task_t
+{
+    struct promise_type : public std::conditional_t< std::is_same_v<void,T>, promise_void, promise_value<T> >
+    {
+        bool _done = false;
+        // must have a default consturctor
+        promise_type() = default;
+
+        // this is the first method to get
+        // executed when a coroutine is
+        // called for the first time
+        // Its job is to construct the return
+        // object
+        Task_t<T> get_return_object()
+        {
+            //std::cout << "get_return_object()\n";
+            return Task_t<T>{std::coroutine_handle<promise_type>::from_promise(*this)};
+        }
+
+        // returns an awaiter. can return
+        // std::suspend_never/always
+        // This is called just before the corotuine
+        // starts execution. It specifies in what
+        // state the coroutine should start in.
+        // in this case we are not-suspending when
+        // we first start the coroutine
+        std::suspend_never initial_suspend() {
+            _done = false;
+            //std::cout << "initial suspend\n";
+            return {};
+        }
+
+        // executes when the coroutine finishes
+        // executing.
+        std::suspend_always final_suspend() noexcept {
+            _done = true;
+            //std::cout << "final suspend\n";
+            return {};
+        }
+
+        // if there are any exceptions thrown
+        // that are not handled, this function
+        // will be called
+        void unhandled_exception()
+        {
+            std::cout <<  "Unhandled Exception" << std::endl;
+            exit(1);
+        }
+    };
+
+
+    // a copy constructor that passes in a coroutine handle
+    // so that we can control the exceution
+    Task_t(std::coroutine_handle<promise_type> handle_) : handle(handle_)
+    {
+    }
+
+    ~Task_t()
+    {
+        if(handle)
+            handle.destroy();
+    }
+    Task_t(Task_t<T> &&V) : handle(std::exchange(V.handle, nullptr))
+    {
+    }
+    Task_t & operator=(Task_t<T> && V)
+    {
+        if(&V != this)
+        {
+            handle = std::exchange(V.handle, nullptr);
+        }
+        return *this;
+    }
+    Task_t(Task_t<T> const &handle_) = delete;
+    Task_t & operator=(Task_t<T> const & V) = delete;
+
+    void resume()
+    {
+        try
+        {
+            handle.resume();
+        }
+        catch (std::exception & e)
+        {
+            std::cout << "Exception Thrown: " << e.what() << std::endl;
+            throw e;
+        }
+
+    }
+
+    T operator()()
+    {
+        //handle.resume();
+        return std::move(handle.promise().result);
+    }
+
+    bool done() const
+    {
+        return handle.done();
+    }
+
+    std::coroutine_handle<promise_type> handle;
+};
+
+template<typename T>
+using Task = Task_t<T>;
+
+}
+#endif
