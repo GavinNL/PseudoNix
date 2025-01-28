@@ -22,4 +22,16 @@ SCENARIO("MiniLinux: sh - pipe")
         printAST(top, "");
     }
 
+    {
+        auto top = bl::generateTree("ls -l & grep hello");
+
+        printAST(top, "");
+    }
+
+    {
+        auto top = bl::generateTree("");
+
+        printAST(top, "");
+    }
+
 }

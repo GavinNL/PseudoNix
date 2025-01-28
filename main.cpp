@@ -55,6 +55,7 @@ gul::Task_t<int> read_from_cin(std::shared_ptr<bl::MiniLinux::stream_type> _out)
             std::getline(std::cin, input);
             //std::cout << "Read input: " << input << '\n';
             *_out << input;
+            *_out << '\n';
         } else {
             //std::cout << "No input yet, waiting...\n";
             co_await std::suspend_always{};
@@ -74,51 +75,37 @@ int main()
         SimpleScheduler * sch;
         std::future<int> operator()(MiniLinux::task_type && _task)
         {
-            return sch->emplace(std::move(_task));
+            auto f = sch->emplace(std::move(_task));
+            std::cout << "Total Tasks: " << sch->_tasks.size() << std::endl;
+            return f;
         }
     };
 
     DD d{&S};
-    M.funcs["sh"] = std::bind(shell<DD>, std::placeholders::_1, d, M);
-    //std::cout << "Type something and press Enter...\n";
-
-    auto _stdin = MiniLinux::make_stream();
+    M.funcs["sh"] = std::bind(shell<DD>, std::placeholders::_1, d, std::ref(M));
 
     MiniLinux::Exec E;
     E.args = {"sh"};
-    //E.out = MiniLinux::make_stream();
 
     // Here we're going to put our shell script code into the input
     // stream of the process function, similar to how linux works
-    E.in  = _stdin;
+    E.in  = MiniLinux::make_stream();
+    E.out = {}; // blank means it will go to std::cout
 
     // finally get the coroutine task and place it
     // into our scheduler
     auto shell_task = M.runRawCommand(E);
 
     S.emplace(std::move(shell_task));
-    S.emplace(read_from_cin(_stdin));
+    S.emplace(read_from_cin(E.in));
     // Run the scheduler so that it will
     // continuiously execute the coroutines
-    S.run();
-    return 0;
-
-    while(true)
+    while(S.run_once())
     {
-        while (true) {
-            int bytes = bytes_available_in_stdin();
-            if (bytes > 0) {
-                //std::cout << "Bytes available in stdin: " << bytes << '\n';
-                std::string input;
-                std::getline(std::cin, input);
-                //std::cout << "Read input: " << input << '\n';
-                break;
-            } else {
-                //std::cout << "No input yet, waiting...\n";
-                sleep(1);
-            }
-        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+
+
     return 0;
 }
 

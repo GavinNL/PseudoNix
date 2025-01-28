@@ -68,6 +68,15 @@ public:
         return j;
     }
 
+    ReaderWriterStream& operator << (ReaderWriterStream &ss)
+    {
+        while(ss.has_data())
+        {
+            data.enqueue(ss.get());
+        }
+        return *this;
+    }
+
     ReaderWriterStream& operator << (std::string const &ss)
     {
         for(auto i : ss)

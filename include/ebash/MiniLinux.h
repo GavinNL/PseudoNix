@@ -44,6 +44,12 @@ struct MiniLinux
         }
         Exec& operator << (char d)
         {
+            if(!out)
+            {
+                std::cout << d;
+                std::flush(std::cout);
+                return *this;
+            }
             out->put(d);
             return *this;
         }
@@ -144,6 +150,7 @@ struct MiniLinux
 
         auto T = it->second(exec);
 
+        //std::cout << "Running: " << args[0] << std::endl;
         while (!T.done()) {
             co_await std::suspend_always{};
             T.resume();
@@ -151,8 +158,11 @@ struct MiniLinux
 
         //MINILINUX_PROCESS_TASK(T)
         if(exec.out)
+        {
             exec.out->close();
+        }
 
+        //std::cout << "Finished: " << args[0] << std::endl;
         // Return the final value
         co_return T();
     }
@@ -273,7 +283,7 @@ protected:
                     {
                         output.pop_back();
                         std::reverse(output.begin(), output.end());
-                        args << output;
+                        args << output << '\n';
                         output.clear();
                     }
                 }
@@ -286,7 +296,7 @@ protected:
             if(!output.empty())
             {
                 std::reverse(output.begin(), output.end());
-                args << output;
+                args << output << '\n';
             }
             co_return 0;
         };
@@ -390,6 +400,7 @@ protected:
     // workflow
     static auto sh(Exec args, MiniLinux* mininix) -> task_type
     {
+        std::cout << "OLD SH" << std::endl;
         //  // Note that the sh command
         //  // actually reads data from the  input stream
         //  auto stdin = std::make_shared<stream_type>();

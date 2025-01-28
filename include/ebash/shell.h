@@ -210,14 +210,56 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in
 
     auto E = parse_command_line(node->value, _in, _out);
 
+
+
+#if 1
+    std::vector<MiniLinux::task_type> taskList;
+    for(auto & e : E)
+    {
+        //std::cout << "Exec: " << fmt::format("{}", fmt::join(e.args, ", ")) << std::endl;
+        //std::cout << "  in: " << e.in << std::endl;
+        //std::cout << " out: " << e.out << std::endl;
+        taskList.emplace_back(L.runRawCommand(e));
+    }
+
+    int retcode = 0;
+    while(true)
+    {
+        uint32_t count = 0;
+        for(size_t i=0;i<E.size();i++)
+        {
+            auto & T = taskList[i];
+
+            if(T.done())
+            {
+                retcode = T();
+                count++;
+                // we need to close the output stream
+                // so that the input for the next stage
+                // will return a proper eof()
+            }
+            else
+            {
+                T.resume();
+                co_await std::suspend_always{};
+            }
+        }
+        if(count == taskList.size())
+            break;
+        co_await std::suspend_always{};
+    }
+    co_return retcode;
+#else
     std::vector<std::future<int>> _returnValues;
 
     for(auto & e : E)
     {
+        std::cout << "Finding: " << e.args[0] << std::endl;
         auto it = L.funcs.find(e.args[0]);
 
         if(it != L.funcs.end())
         {
+            std::cout << "Found: " << e.args[0] << std::endl;
             _returnValues.emplace_back(S(it->second(e)));
         }
         else
@@ -258,6 +300,7 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in
         }
     }
     co_return _retval;
+#endif
 };
 
 /**
@@ -279,88 +322,23 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in
 template<typename SchedulerFunction>
 MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux & L)
 {
-    //;bool quoted = false;
-
-    //std::vector<MiniLinux::Exec> E;
-
-    //char last_char = 0;
-    //auto next_arg  = [&](){if(E.back().args.back().size() != 0) E.back().args.emplace_back();};
-    //auto next_exec = [&](){E.emplace_back(); E.back().args.emplace_back();};
-    //auto last_arg = [&]() -> std::string& {return E.back().args.back();};
-    //auto push_arg_char = [&](char c) {
-    //    last_arg().push_back(c);
-    //    last_char = c;
-    //};
-    //auto pop_char = [&]()
-    //{
-    //    last_arg().pop_back();
-    //};
-    //(void)pop_char;
-
-    //(void)last_arg;
-    //next_exec();
-    //next_arg();
-
-
-
-    auto _execute = [&L, &S](std::string const & cmdline, auto _in, auto _out) -> gul::Task_t<int>
-    {
-        auto E = parse_command_line(cmdline, _in, _out);
-
-        std::vector<std::future<int>> _returnValues;
-
-        for(auto & e : E)
-        {
-            auto it = L.funcs.find(e.args[0]);
-            //std::cout << "Executing: " << e.args[0] << std::endl;
-            if(it != L.funcs.end())
-            {
-                _returnValues.emplace_back(S(it->second(e)));
-            }
-        }
-
-        size_t count = 0;
-        while(true)
-        {
-            // check each of the futures for their completion
-            for(size_t i=0;i<_returnValues.size();i++)
-            {
-                auto & f = _returnValues[i];
-
-                if(f.valid())
-                {
-                    if(f.wait_for(std::chrono::seconds(0))==std::future_status::ready)
-                    {
-                        ++count;
-                        f.get();
-                        if(E[i].out && i!=_returnValues.size()-1)
-                            E[i].out->close();
-                    }
-                }
-            }
-
-            if(static_cast<size_t>(count) == _returnValues.size())
-            {
-                //std::cout << "Finished Executing: "<<std::endl;
-                break;
-            }
-            else
-            {
-                //std::cout << "Suspending "<<std::endl;
-                co_await std::suspend_always{};
-            }
-        }
-        //std::cout << "Finished Executing: "<<std::endl;
-        co_return 0;
-    };
-    (void)_execute;
-
     std::string _current;
+    static int count = 0;
+    count++;
+
+    int shell_number = count;
+
+
+
+    exev << "-------------------------\n";
+    exev << fmt::format("Welcome to shell: {}\n",shell_number);
+    exev << "-------------------------\n";
+    exev << fmt::format("{} >", shell_number);
+
     while(!exev.in->eof() )
     {
         while(!exev.in->has_data())
         {
-            //std::cout << "waiting on input" << std::endl;
             co_await std::suspend_always{};
         }
         auto c = exev.in->get();
@@ -371,146 +349,36 @@ MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux 
         }
         _current.pop_back();
 
-        std::cout << "Read: "<< _current << std::endl;
-        //auto vv = parse_command_line(_current);
-        //std::cout << fmt::format("{}", fmt::join(vv,",")) << std::endl;
-        auto top = generateTree(_current);
+        if(_current.empty())
+            continue;
 
-        auto _task = ast_execute(top, L, S, exev.in, exev.out);
-        while(!_task.done())
+        auto top = generateTree(_current);
+        if(top->value == "exit")
         {
-            _task.resume();
-            //std::cout << "Bash suspending" << std::endl;
-            co_await std::suspend_always{};
+            break;
+        }
+        if(top->value == "count")
+        {
+            std::cout << shell_number << std::endl;
         }
 
+        {
+            auto _task = ast_execute(top, L, S, exev.in, exev.out);
+
+            while(!_task.done())
+            {
+                _task.resume();
+                co_await std::suspend_always{};
+            }
+            exev << fmt::format("{} >", shell_number);
+        }
+
+        //std::cout << "\n" << shell_number << "> " << std::flush;
         _current.clear();
     }
-    std::cout << "Exited" << std::endl;
+    exev << fmt::format("Exiting Shell {}\n", shell_number);
+    //std::cout << "Exited" << std::endl;
     co_return 0;
-#if 0
-    while(!exev.in->eof() )
-    {
-        while(!exev.in->has_data())
-        {
-            //std::cout << "waiting on input" << std::endl;
-            co_await std::suspend_always{};
-        }
-        auto c = exev.in->get();
-
-        if(quoted)
-        {
-            push_arg_char(c);
-        }
-        else
-        {
-            if(c == ' ')
-            {
-                if(last_char != ' ')
-                {
-                    next_arg();
-                }
-            }
-            else
-            {
-                push_arg_char(c);
-            }
-        }
-
-        switch(c)
-        {
-        case '\\':
-            c = exev.in->get();
-            push_arg_char(c);
-            break;
-        case ' ':
-            if(quoted)
-                push_arg_char(c);
-            else
-            {
-                next_arg();
-            }
-            break;
-        case '"':
-            quoted = !quoted;
-            break;
-        case '|':
-            if(!quoted)
-            {
-                next_exec();
-            }
-            break;
-        case ';':
-        case '\n':
-        {
-            std::cout << "End of line: " << E[0].args.size() << std::endl;
-            E[0].in = exev.in;
-            E.back().out = exev.out;
-
-            // make sure each executable's output
-            // is passed to the next's input
-            for(size_t j=0;j<E.size()-1;j++)
-            {
-                E[j].out = MiniLinux::make_stream();
-                E[j+1].in = E[j].out;
-            }
-
-            std::vector<std::future<int>> _returnValues;
-            for(size_t j=0;j<E.size();j++)
-            {
-                auto it = L.funcs.find(E[j].args[0]);
-                std::cout << "Executing: " << E[j].args[0] << std::endl;
-                if(it != L.funcs.end())
-                {
-
-                    auto new_task = it->second(E[j]);
-                    _returnValues.emplace_back(S(std::move(new_task)));
-                }
-            }
-
-            size_t count=0;
-            while(true)
-            {
-                // check each of the futures for their completion
-                for(size_t i=0;i<_returnValues.size();i++)
-                {
-                    auto & f = _returnValues[i];
-                    if(f.valid())
-                    {
-                        if(f.wait_for(std::chrono::seconds(0))==std::future_status::ready)
-                        {
-                            ++count;
-                            f.get();
-                            if(E[i].out)
-                                E[i].out->close();
-                        }
-                    }
-                }
-
-                if(static_cast<size_t>(count) == _returnValues.size())
-                {
-                    break;
-                }
-                else
-                {
-                    co_await std::suspend_always{};
-                }
-            }
-            E.clear();
-            next_exec();
-            next_arg();
-        }
-
-        // execute E
-        break;
-        default:
-            push_arg_char(c);
-            break;
-        }
-    }
-#endif
-    std::cout << "Exit" << std::endl;
-    co_return 1;
 }
 
 
