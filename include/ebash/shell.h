@@ -18,6 +18,15 @@ struct AstNode
     AstNode(std::string const &s) : value(s){}
 };
 
+void printAST(std::shared_ptr<AstNode> d, std::string indent)
+{
+    std::cout << indent << d->value << std::endl;;
+    if(d->left)
+        printAST(d->left, indent + "  ");
+    if(d->right)
+        printAST(d->right, indent + "  ");
+}
+
 struct Tokenizer
 {
     std::string_view input;
@@ -161,6 +170,96 @@ auto parse_command_line(std::string_view command, std::shared_ptr<MiniLinux::str
     return E;
 }
 
+
+auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in, auto _out) -> gul::Task_t<int>
+{
+    if(node->value == "&&" || node->value == "||")
+    {
+        auto & left = node->left;
+        auto & right = node->right;
+
+        auto left_task = ast_execute(left, L, S, _in, _out);
+        while(!left_task.done())
+        {
+            left_task.resume();
+            co_await std::suspend_always{};
+        }
+
+        auto ret = left_task();
+
+        if(node->value == "||" && ret == 0)
+        {
+            co_return ret;
+        }
+        else if(node->value == "&&" && ret != 0)
+        {
+            co_return ret;
+        }
+
+
+        auto right_task = ast_execute(right, L, S, _in, _out);
+        while(!right_task.done())
+        {
+            right_task.resume();
+            co_await std::suspend_always{};
+        }
+
+        co_return right_task();
+    }
+
+
+    auto E = parse_command_line(node->value, _in, _out);
+
+    std::vector<std::future<int>> _returnValues;
+
+    for(auto & e : E)
+    {
+        auto it = L.funcs.find(e.args[0]);
+
+        if(it != L.funcs.end())
+        {
+            _returnValues.emplace_back(S(it->second(e)));
+        }
+        else
+        {
+            co_return 127;
+        }
+    }
+
+    size_t count = 0;
+    int _retval = 0;
+
+    while(true)
+    {
+        // check each of the futures for their completion
+        for(size_t i=0;i<_returnValues.size();i++)
+        {
+            auto & f = _returnValues[i];
+
+            if(f.valid())
+            {
+                if(f.wait_for(std::chrono::seconds(0))==std::future_status::ready)
+                {
+                    ++count;
+                    _retval = f.get();
+                    if(E[i].out && i!=_returnValues.size()-1)
+                        E[i].out->close();
+                }
+            }
+        }
+
+        if(static_cast<size_t>(count) == _returnValues.size())
+        {
+            break;
+        }
+        else
+        {
+            co_await std::suspend_always{};
+        }
+    }
+    co_return _retval;
+};
+
 /**
  * @brief shell
  * @param exev
@@ -254,6 +353,7 @@ MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux 
         //std::cout << "Finished Executing: "<<std::endl;
         co_return 0;
     };
+    (void)_execute;
 
     std::string _current;
     while(!exev.in->eof() )
@@ -276,27 +376,12 @@ MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux 
         //std::cout << fmt::format("{}", fmt::join(vv,",")) << std::endl;
         auto top = generateTree(_current);
 
-        auto t = top;
+        auto _task = ast_execute(top, L, S, exev.in, exev.out);
+        while(!_task.done())
         {
-            if(t->value == "&&")
-            {
-
-            }
-            else if(t->value == "||")
-            {
-
-            }
-            else
-            {
-                auto _task = _execute(t->value, exev.in, exev.out);
-                while(!_task.done())
-                {
-                    _task.resume();
-                    //std::cout << "Bash suspending" << std::endl;
-                    co_await std::suspend_always{};
-                }
-
-            }
+            _task.resume();
+            //std::cout << "Bash suspending" << std::endl;
+            co_await std::suspend_always{};
         }
 
         _current.clear();

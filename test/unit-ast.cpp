@@ -8,17 +8,6 @@ using namespace bl;
 
 
 
-
-
-void printAST(std::shared_ptr<AstNode> d, std::string indent)
-{
-    std::cout << indent << d->value << std::endl;;
-    if(d->left)
-        printAST(d->left, indent + "  ");
-    if(d->right)
-        printAST(d->right, indent + "  ");
-}
-
 SCENARIO("MiniLinux: sh - pipe")
 {
     {
