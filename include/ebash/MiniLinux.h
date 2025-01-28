@@ -237,7 +237,7 @@ protected:
             (void)args;
             for(size_t i=1;i<args.args.size();i++)
             {
-                args << args.args[i] << (i==args.args.size()-1 ? "" : " ");
+                args << args.args[i] << (i==args.args.size()-1 ? "\n" : " ");
             }
             co_return 0;
         };

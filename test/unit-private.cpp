@@ -2,61 +2,11 @@
 #include <catch2/benchmark/catch_benchmark_all.hpp>
 #include <fmt/format.h>
 #include <ebash/MiniLinux.h>
+#include <ebash/SimpleScheduler.h>
 #include <future>
+#include <ebash/shell.h>
 
 using namespace bl;
-
-struct SimpleScheduler
-{
-    std::map< size_t, std::pair<std::promise<int>, MiniLinux::task_type > > _tasks;
-    size_t _proc=1;
-    std::future<int> emplace(MiniLinux::task_type && t)
-    {
-        std::pair<std::promise<int>, MiniLinux::task_type > _t = { std::promise<int>(), std::move(t)};
-        _tasks.emplace(_proc++, std::move(_t));
-        return _tasks.at(_proc-1).first.get_future();
-    }
-    size_t run_once()
-    {
-        for(auto it = _tasks.begin(); it != _tasks.end(); )
-        {
-            if(!it->second.second.done())
-            {
-                it->second.second.resume();
-            }
-            auto _done = it->second.second.done();
-            if(_done)
-            {
-                it->second.first.set_value(it->second.second());
-                it = _tasks.erase(it);
-            }
-            else
-            {
-                ++it;
-            }
-        }
-        return _tasks.size();
-    }
-
-    void run()
-    {
-        while(run_once())
-        {
-        }
-    }
-
-    static MiniLinux::task_type test_task()
-    {
-        for(size_t i=0;i<10;i++)
-        {
-            std::cout << i << std::endl;
-            co_await std::suspend_always{};
-        }
-        std::cout << "Done" << std::endl;
-        co_return 0;
-    }
-};
-
 
 
 SCENARIO("SimpleScheduler")
@@ -71,204 +21,32 @@ SCENARIO("SimpleScheduler")
     std::cout << t3.get() << std::endl;
 }
 
-MiniLinux::task_type shell(MiniLinux::Exec exev, SimpleScheduler & S, MiniLinux & L)
-{
-    bool quoted = false;
-
-    std::vector<MiniLinux::Exec> E;
-
-    char last_char =' ';
-    auto next_arg  = [&](){if(E.back().args.back().size() != 0) E.back().args.emplace_back();};
-    auto next_exec = [&](){E.emplace_back(); E.back().args.emplace_back();};
-    auto last_arg = [&]() -> std::string& {return E.back().args.back();};
-    auto push_arg_char = [&](char c) {
-        last_arg().push_back(c);
-        last_char = last_arg().back();
-    };
-
-
-    (void)last_arg;
-    next_exec();
-    next_arg();
-
-
-    while(!exev.in->eof() )
-    {
-        auto c = exev.in->get();
-        switch(c)
-        {
-            case '\\':
-                c = exev.in->get();
-                push_arg_char(c);
-                break;
-            case ' ':
-                if(quoted)
-                    push_arg_char(c);
-                else
-                    next_arg();
-                break;
-            case '"':
-                quoted = !quoted;
-                break;
-            case '|':
-                if(!quoted)
-                {
-                    next_exec();
-                }
-                break;
-            case ';':
-            case '\n':
-                {
-                    E[0].in = exev.in;
-                    E.back().out = exev.out;
-
-                    // make sure each executable's output
-                    // is passed to the next's input
-                    for(size_t j=0;j<E.size()-1;j++)
-                    {
-                        E[j].out = MiniLinux::make_stream();
-                        E[j+1].in = E[j].out;
-                    }
-
-                    std::vector<std::future<int>> _returnValues;
-                    for(size_t j=0;j<E.size();j++)
-                    {
-                        auto it = L.funcs.find(E[j].args[0]);
-                        if(it != L.funcs.end())
-                        {
-                            //std::cout << "Executing: " << fmt::format("{}", fmt::join(E[j].args, ",")) << std::endl;
-                            auto new_task = it->second(E[j]);
-                            _returnValues.emplace_back(S.emplace(std::move(new_task)));
-                        }
-                    }
-
-
-                    while(true)
-                    {
-                        auto count = std::count_if(_returnValues.begin(), _returnValues.end(), [](auto & f) { return f.wait_for(std::chrono::seconds(0))==std::future_status::ready;});
-                        if(static_cast<size_t>(count) == _returnValues.size())
-                        {
-                            for(auto & f : _returnValues)
-                            {
-                                f.get();
-                            }
-                            break;
-                        }
-                        else
-                        {
-                            co_await std::suspend_always{};
-                        }
-                    }
-                    E.clear();
-                    next_exec();
-                    next_arg();
-                }
-
-                // execute E
-                break;
-            default:
-                push_arg_char(c);
-                break;
-        }
-    }
-    co_return 1;
-}
 
 SCENARIO("test shell")
 {
-    MiniLinux M;
-
-    SimpleScheduler S;
-
-    MiniLinux::Exec E;
-    E.args = {"sh"};
-    E.in = MiniLinux::make_stream("echo hello world\\n ; sleep 10; echo goodbye world;");
-    E.out = MiniLinux::make_stream();
-    E.in->close();
-    auto shell_task = shell(E, S, M);
-
-    S.emplace(std::move(shell_task));
-    S.run();
-    E.out->toStream(std::cout);
-    exit(0);
-}
-
-
-SCENARIO("Test shell222")
-{
-    std::string cmd = "echo hello world | grep hello ; echo good bye | grep bye;";
-    size_t i=0;
-    bool quoted = false;
-
-    std::vector<MiniLinux::Exec> E;
-
-    char last_char =' ';
-    auto next_arg  = [&](){if(E.back().args.back().size() != 0) E.back().args.emplace_back();};
-    auto next_exec = [&](){E.emplace_back(); E.back().args.emplace_back();};
-    auto last_arg = [&]() -> std::string& {return E.back().args.back();};
-    auto push_arg_char = [&](char c) {
-        last_arg().push_back(c);
-        last_char = last_arg().back();
-    };
-
-    auto execute = [&]()
     {
-        std::cout << "Executing:\n";
-        {
-            for(auto & e : E)
-            {
-                std::cout << fmt::format("\"{}\"\n", fmt::join(e.args, " "));
-            }
-            std::cout << std::endl;
-            E.clear();
-            next_exec();
-            next_arg();
-        }
-    };
-
-    (void)last_arg;
-    next_exec();
-    next_arg();
-
-    while(i < cmd.size())
-    {
-        auto c = cmd[i];
-        switch(c)
-        {
-        case '\\':
-            ++i;
-            c = cmd[i];
-            push_arg_char(c);
-            break;
-        case ' ':
-            if(quoted)
-                push_arg_char(c);
-            else
-                next_arg();
-            break;
-        case '"':
-            quoted = !quoted;
-            break;
-        case '|':
-            if(!quoted)
-            {
-                next_exec();
-            }
-            break;
-        case ';':
-        case '\n':
-            execute();
-            // execute E
-            break;
-        default:
-            push_arg_char(c);
-            break;
-        }
-        ++i;
+        auto v = bl::parse_command_line("echo hello world");
+        REQUIRE(v.size() == 1);
+        REQUIRE(v[0].args.size() == 3);
+        REQUIRE(v[0].args[0] == "echo");
+        REQUIRE(v[0].args[1] == "hello");
+        REQUIRE(v[0].args[2] == "world");
     }
+    {
+        auto v = bl::parse_command_line("echo hello world | grep world");
+        REQUIRE(v.size() == 2);
+        REQUIRE(v[0].args.size() == 3);
+        REQUIRE(v[0].args[0] == "echo");
+        REQUIRE(v[0].args[1] == "hello");
+        REQUIRE(v[0].args[2] == "world");
 
+        REQUIRE(v[1].args.size() == 2);
+        REQUIRE(v[1].args[0] == "grep");
+        REQUIRE(v[1].args[1] == "world");
+    }
     exit(0);
 }
+
 
 
 
