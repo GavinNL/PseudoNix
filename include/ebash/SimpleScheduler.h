@@ -8,19 +8,33 @@
 namespace bl
 {
 
+/**
+ * @brief The SimpleScheduler class
+ *
+ * This SimpleScheduler holds all the coroutine tasks
+ * in a map and executes them in order when the scheduler
+ * is invoked
+ */
 struct SimpleScheduler
 {
     struct proc
     {
         std::promise<int>    returnCode_promise;
         MiniLinux::task_type task;
-        //
+
+        // optional
         MiniLinux::Exec      exec;
     };
 
     std::map< size_t, proc > _tasks;
     size_t _proc=1;
 
+    /**
+     * @brief emplace
+     * @param t
+     * @return
+     *
+     */
     std::future<int> emplace(MiniLinux::task_type && t)
     {
         proc _t = { std::promise<int>(), std::move(t)};
@@ -28,6 +42,22 @@ struct SimpleScheduler
         return _tasks.at(_proc-1).returnCode_promise.get_future();
     }
 
+    std::future<int> emplace_process(bl::MiniLinux::task_type && _task, bl::MiniLinux::Exec E)
+    {
+        auto f = this->emplace(std::move(_task));
+        auto proc = _proc-1;
+        _tasks.at(proc).exec = E;
+        return f;
+    }
+
+    /**
+     * @brief run_once
+     * @return
+     *
+     * Execute all the coroutines once and returns the number
+     * of coroutines currently in the list.
+     *
+     */
     size_t run_once()
     {
         for(auto it = _tasks.begin(); it != _tasks.end(); )
@@ -52,9 +82,7 @@ struct SimpleScheduler
 
     void run()
     {
-        while(run_once())
-        {
-        }
+        while(run_once());
     }
 
     static MiniLinux::task_type test_task()

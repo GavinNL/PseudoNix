@@ -127,7 +127,8 @@ std::shared_ptr<AstNode> generateTree(std::string_view cmdline)
 }
 
 
-auto parse_command_line(std::string_view command, std::shared_ptr<MiniLinux::stream_type> in={}, std::shared_ptr<MiniLinux::stream_type> out={}) {
+auto parse_command_line(std::string_view command, std::shared_ptr<MiniLinux::stream_type> in={}, std::shared_ptr<MiniLinux::stream_type> out={})
+{
     std::vector<MiniLinux::Exec> E;
     std::vector<std::string> args;
     std::string current;
@@ -185,20 +186,15 @@ auto parse_command_line(std::string_view command, std::shared_ptr<MiniLinux::str
 }
 
 
-auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in, auto _out) -> gul::Task_t<int>
+auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto _in, auto _out) -> gul::Task_t<int>
 {
-    using SchedulerFunction = std::decay_t<decltype(S)>;
-    constexpr bool has_1arg = requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>() ); };
-    constexpr bool has_2arg = requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>(), MiniLinux::Exec{} ); };
-
-    static_assert(has_2arg, "needs 2 arg function");
 
     if(node->value == "&&" || node->value == "||")
     {
         auto & left = node->left;
         auto & right = node->right;
 
-        auto left_task = ast_execute(left, L, S, _in, _out);
+        auto left_task = ast_execute(left, L, _in, _out);
         while(!left_task.done())
         {
             left_task.resume();
@@ -216,8 +212,7 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in
             co_return ret;
         }
 
-
-        auto right_task = ast_execute(right, L, S, _in, _out);
+        auto right_task = ast_execute(right, L, _in, _out);
         while(!right_task.done())
         {
             right_task.resume();
@@ -228,8 +223,21 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in
     }
 
 
-    auto E = parse_command_line(node->value, _in, _out);
 
+    bool in_background = false;
+
+    auto in_stream = _in;
+    if(node->value.back() == '&')
+    {
+        node->value.pop_back();
+        in_background = true;
+        in_stream = MiniLinux::make_stream();
+        in_stream->close();
+    }
+
+    auto E = parse_command_line(node->value,
+                                in_stream,
+                                _out);
 
 
 #if 0
@@ -275,17 +283,7 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in
     for(auto & e : E)
     {
 #if 1
-        auto _t = L.runRawCommand(e);
-        if constexpr(has_2arg)
-        {
-
-            _returnValues.emplace_back(S(std::move(_t), e));
-        }
-        //else if constexpr(has_1arg)
-        //{
-        //    _returnValues.emplace_back(S(std::move(_t)));
-        //}
-
+        _returnValues.emplace_back( L.system(e));
 #else
         auto it = L.funcs.find(e.args[0]);
 
@@ -304,7 +302,7 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in
     size_t count = 0;
     int _retval = 0;
 
-    while(true)
+    while(!in_background)
     {
         // check each of the futures for their completion
         for(size_t i=0;i<_returnValues.size();i++)
@@ -352,17 +350,8 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in
  * The SchedulerFunction is a functional object with opertor() overriden
  * It takes a
  *
- * std::future<int> operator()(MiniLinux::task_type&&)
- * or
- * std::future<int> operator()(MiniLinux::task_type&&, MiniLinux::Exec)
  */
-template<typename SchedulerFunction>
-MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux & L)
-    requires requires(SchedulerFunction obj) {
-        { SchedulerFunction()( std::declval<MiniLinux::task_type&&>() ) } -> std::same_as< std::future<int> >;  // First acceptable form
-    } || requires(SchedulerFunction obj) {
-        { SchedulerFunction()( std::declval<MiniLinux::task_type&&>(), MiniLinux::Exec{} ) }  -> std::same_as< std::future<int> >;      // Second acceptable form
-    }
+MiniLinux::task_type shell(MiniLinux::Exec exev)
 {
     std::string _current;
     static int count = 0;
@@ -371,27 +360,14 @@ MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux 
     int shell_number = count;
 
 
-    constexpr bool has_1arg = requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>() ); };
-    constexpr bool has_2arg = requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>(), exev ); };
-
-    static_assert(has_1arg || has_2arg, "Template function requires for SchedulerFunction does not match one of the required");
-
-    if constexpr (requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>() ); }) {
-        std::cout << "Contains method operator()(task_type&&)" << std::endl;
-    }
-
-    if constexpr (requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>(), MiniLinux::Exec{} ); }) {;
-        std::cout << "Contains method callMe(int, float)" << std::endl;
-    }
-
     exev << "-------------------------\n";
     exev << std::format("Welcome to shell: {}\n",shell_number);
     exev << "-------------------------\n";
     exev << std::format("{}", exev.env["PROMPT"]);
 
-    while(!exev.in->eof() )
+    while(!exev.is_sigkill() && !exev.in->eof())
     {
-        while(!exev.in->has_data())
+        while(!exev.in->has_data() && !exev.is_sigkill())
         {
             co_await std::suspend_always{};
         }
@@ -416,10 +392,15 @@ MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux 
             std::cout << shell_number << std::endl;
         }
 
-        {
-            auto _task = ast_execute(top, L, S, exev.in, exev.out);
 
-            while(!_task.done())
+        {            
+
+            // If we are not runing in the background (eg: we dont have the & at the end)
+            // we will execute the task and then wait for it
+            auto _task = ast_execute(top, *exev.mini, exev.in, exev.out);
+
+            // Wait for the task to complete
+            while(!_task.done() && !exev.is_sigkill())
             {
                 _task.resume();
                 co_await std::suspend_always{};
