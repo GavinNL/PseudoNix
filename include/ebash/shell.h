@@ -9,6 +9,20 @@
 namespace bl
 {
 
+template <typename Range>
+std::string join(const Range& elements, const std::string& delimiter) {
+    std::ostringstream oss;
+    bool first = true;
+    for (const auto& element : elements) {
+        if (!first) {
+            oss << delimiter;
+        }
+        oss << element;
+        first = false;
+    }
+    return oss.str();
+}
+
 struct AstNode
 {
     std::string value;
@@ -173,6 +187,12 @@ auto parse_command_line(std::string_view command, std::shared_ptr<MiniLinux::str
 
 auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in, auto _out) -> gul::Task_t<int>
 {
+    using SchedulerFunction = std::decay_t<decltype(S)>;
+    constexpr bool has_1arg = requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>() ); };
+    constexpr bool has_2arg = requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>(), MiniLinux::Exec{} ); };
+
+    static_assert(has_2arg, "needs 2 arg function");
+
     if(node->value == "&&" || node->value == "||")
     {
         auto & left = node->left;
@@ -212,11 +232,11 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in
 
 
 
-#if 1
+#if 0
     std::vector<MiniLinux::task_type> taskList;
     for(auto & e : E)
     {
-        //std::cout << "Exec: " << fmt::format("{}", fmt::join(e.args, ", ")) << std::endl;
+        //std::cout << "Exec: " << std::format("{}", fmt::join(e.args, ", ")) << std::endl;
         //std::cout << "  in: " << e.in << std::endl;
         //std::cout << " out: " << e.out << std::endl;
         taskList.emplace_back(L.runRawCommand(e));
@@ -254,18 +274,31 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in
 
     for(auto & e : E)
     {
-        std::cout << "Finding: " << e.args[0] << std::endl;
+#if 1
+        auto _t = L.runRawCommand(e);
+        if constexpr(has_2arg)
+        {
+
+            _returnValues.emplace_back(S(std::move(_t), e));
+        }
+        //else if constexpr(has_1arg)
+        //{
+        //    _returnValues.emplace_back(S(std::move(_t)));
+        //}
+
+#else
         auto it = L.funcs.find(e.args[0]);
 
         if(it != L.funcs.end())
         {
-            std::cout << "Found: " << e.args[0] << std::endl;
+            //std::cout << "Found: " << e.args[0] << std::endl;
             _returnValues.emplace_back(S(it->second(e)));
         }
         else
         {
             co_return 127;
         }
+#endif
     }
 
     size_t count = 0;
@@ -318,9 +351,18 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto & S, auto _in
  *
  * The SchedulerFunction is a functional object with opertor() overriden
  * It takes a
+ *
+ * std::future<int> operator()(MiniLinux::task_type&&)
+ * or
+ * std::future<int> operator()(MiniLinux::task_type&&, MiniLinux::Exec)
  */
 template<typename SchedulerFunction>
 MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux & L)
+    requires requires(SchedulerFunction obj) {
+        { SchedulerFunction()( std::declval<MiniLinux::task_type&&>() ) } -> std::same_as< std::future<int> >;  // First acceptable form
+    } || requires(SchedulerFunction obj) {
+        { SchedulerFunction()( std::declval<MiniLinux::task_type&&>(), MiniLinux::Exec{} ) }  -> std::same_as< std::future<int> >;      // Second acceptable form
+    }
 {
     std::string _current;
     static int count = 0;
@@ -329,11 +371,23 @@ MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux 
     int shell_number = count;
 
 
+    constexpr bool has_1arg = requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>() ); };
+    constexpr bool has_2arg = requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>(), exev ); };
+
+    static_assert(has_1arg || has_2arg, "Template function requires for SchedulerFunction does not match one of the required");
+
+    if constexpr (requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>() ); }) {
+        std::cout << "Contains method operator()(task_type&&)" << std::endl;
+    }
+
+    if constexpr (requires {  SchedulerFunction()( std::declval<MiniLinux::task_type&&>(), MiniLinux::Exec{} ); }) {;
+        std::cout << "Contains method callMe(int, float)" << std::endl;
+    }
 
     exev << "-------------------------\n";
-    exev << fmt::format("Welcome to shell: {}\n",shell_number);
+    exev << std::format("Welcome to shell: {}\n",shell_number);
     exev << "-------------------------\n";
-    exev << fmt::format("{} >", shell_number);
+    exev << std::format("{}", exev.env["PROMPT"]);
 
     while(!exev.in->eof() )
     {
@@ -370,13 +424,13 @@ MiniLinux::task_type shell(MiniLinux::Exec exev, SchedulerFunction S, MiniLinux 
                 _task.resume();
                 co_await std::suspend_always{};
             }
-            exev << fmt::format("{} >", shell_number);
+            exev << std::format("{}", exev.env["PROMPT"]);
         }
 
         //std::cout << "\n" << shell_number << "> " << std::flush;
         _current.clear();
     }
-    exev << fmt::format("Exiting Shell {}\n", shell_number);
+    exev << std::format("Exiting Shell {}\n", shell_number);
     //std::cout << "Exited" << std::endl;
     co_return 0;
 }

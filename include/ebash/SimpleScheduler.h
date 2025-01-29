@@ -7,28 +7,39 @@
 
 namespace bl
 {
+
 struct SimpleScheduler
 {
-    std::map< size_t, std::pair<std::promise<int>, MiniLinux::task_type > > _tasks;
+    struct proc
+    {
+        std::promise<int>    returnCode_promise;
+        MiniLinux::task_type task;
+        //
+        MiniLinux::Exec      exec;
+    };
+
+    std::map< size_t, proc > _tasks;
     size_t _proc=1;
+
     std::future<int> emplace(MiniLinux::task_type && t)
     {
-        std::pair<std::promise<int>, MiniLinux::task_type > _t = { std::promise<int>(), std::move(t)};
+        proc _t = { std::promise<int>(), std::move(t)};
         _tasks.emplace(_proc++, std::move(_t));
-        return _tasks.at(_proc-1).first.get_future();
+        return _tasks.at(_proc-1).returnCode_promise.get_future();
     }
+
     size_t run_once()
     {
         for(auto it = _tasks.begin(); it != _tasks.end(); )
         {
-            if(!it->second.second.done())
+            if(!it->second.task.done())
             {
-                it->second.second.resume();
+                it->second.task.resume();
             }
-            auto _done = it->second.second.done();
+            auto _done = it->second.task.done();
             if(_done)
             {
-                it->second.first.set_value(it->second.second());
+                it->second.returnCode_promise.set_value(it->second.task());
                 it = _tasks.erase(it);
             }
             else

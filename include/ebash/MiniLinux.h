@@ -6,13 +6,13 @@
 #include <map>
 #include <functional>
 #include <filesystem>
+#include <future>
 
 #include "ReaderWriterStream.h"
 #include "task.h"
 
 namespace bl
 {
-
 
 struct MiniLinux
 {
@@ -27,6 +27,7 @@ struct MiniLinux
         std::shared_ptr<stream_type>       out;
         std::map<std::string, std::string> env;
         std::filesystem::path              work_dir;
+        //UserType                           user_data;
 
         Exec& operator << (std::string const &ss)
         {
@@ -55,6 +56,7 @@ struct MiniLinux
         }
     };
 
+    std::function< std::future<int>(task_type&&, Exec) > m_scheduler;
     std::map<std::string, std::function< task_type(Exec) >> funcs;
 
 
@@ -242,9 +244,17 @@ protected:
             (void)args;
             co_return 0;
         };
+        funcs["help"] = [this](Exec args) -> task_type
+        {
+            args << "List of commands:\n\n";
+            for(auto & f : funcs)
+            {
+                args << f.first << '\n';
+            }
+            co_return 0;
+        };
         funcs["echo"] = [](Exec args) -> task_type
         {
-            (void)args;
             for(size_t i=1;i<args.args.size();i++)
             {
                 args << args.args[i] << (i==args.args.size()-1 ? "\n" : " ");
@@ -317,7 +327,7 @@ protected:
                     co_await std::suspend_always{};
             }
 
-            args << std::to_string(i);
+            args << std::to_string(i) << '\n';
             //std::cout << std::to_string(i);
             co_return 0;
         };
