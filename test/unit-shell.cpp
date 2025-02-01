@@ -34,8 +34,10 @@ SCENARIO("test shell")
             return sch->emplace(std::move(_task));
         }
     };
-    DD d{&S};
-    M.funcs["sh"] = std::bind(shell<DD>, std::placeholders::_1, d, M);
+
+    M.m_scheduler = std::bind(&bl::SimpleScheduler::emplace_process, &S, std::placeholders::_1, std::placeholders::_2);
+
+    M.funcs["sh"] = bl::shell;
 
 
     MiniLinux::Exec E;

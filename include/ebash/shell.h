@@ -5,6 +5,7 @@
 #include <future>
 #include <fmt/format.h>
 #include "MiniLinux.h"
+#include <regex>
 
 namespace bl
 {
@@ -113,7 +114,7 @@ std::shared_ptr<AstNode> generateTree(std::string_view cmdline)
     {
         auto s = T.next();
         if(s.empty()) break;
-        if(s == "&&" || s == "||")
+        if(s == "&&" || s == "||" || s == ">>")
         {
             right->left  = std::make_shared<AstNode>(right->value);
             right->right = std::make_shared<AstNode>(T.next());
@@ -127,9 +128,115 @@ std::shared_ptr<AstNode> generateTree(std::string_view cmdline)
 }
 
 
+
+template<typename pred>
+std::vector<std::string> splitCmd_t(std::string command, pred pre)
+{
+    bool quoted = false;
+    std::string current;
+    std::vector<std::string> args;
+    for(size_t i=0;i<command.size();i++)
+    {
+        if(quoted && command[i] != '"')
+        {
+            current += command[i];
+        }
+        else
+        {
+            if(command[i] == '"')
+            {
+                quoted = !quoted;
+            }
+            else
+            {
+                if(pre(command[i]))
+                {
+                    if(!current.empty())
+                    {
+                        args.push_back(current);
+                        current.clear();
+                    }
+                }
+                else
+                {
+                    current += command[i];
+                }
+            }
+        }
+    }
+    if(!current.empty())
+    {
+        args.push_back(current);
+    }
+    return args;
+}
+
+template<typename callable_t>
+void splitSpace(std::string_view str, callable_t && c)
+{
+    bool quoted = false;
+    std::string out;
+    for(size_t i=0;i<str.size();i++)
+    {
+        if(quoted && str[i] != '"')
+        {
+            out += str[i];
+        }
+        else
+        {
+            if(str[i] == '"')
+            {
+                quoted = !quoted;
+            }
+            else
+            {
+                if(str[i] == ' ')
+                {
+                    while(str[i] == ' ')
+                    {
+                        ++i;
+                    }
+                    --i;
+                    c(out);
+                    out.clear();
+                }
+                else
+                {
+                    out += str[i];
+                }
+            }
+        }
+    }
+    if(!out.empty())
+        c(out);
+}
+
+std::pair<std::string_view, std::string_view> splitVar(std::string_view var_def)
+{
+    auto i = var_def.find_first_of('=');
+    if(i!=std::string::npos)
+    {
+        return {{&var_def[0],i}, {&var_def[i+1], var_def.size()-i-1}};
+    }
+    return {};
+}
+
+std::vector<std::string> splitCmd(std::string command)
+{
+    return splitCmd_t(command, [](char c)
+                      {
+        return c==' ';
+    });
+}
+
 auto parse_command_line(std::string_view command, std::shared_ptr<MiniLinux::stream_type> in={}, std::shared_ptr<MiniLinux::stream_type> out={})
 {
     std::vector<MiniLinux::Exec> E;
+    (void)command;
+#if 0
+
+#else
+    std::map<std::string, std::string> env;
     std::vector<std::string> args;
     std::string current;
     bool in_single_quote = false;
@@ -174,6 +281,51 @@ auto parse_command_line(std::string_view command, std::shared_ptr<MiniLinux::str
     }
 
 
+    auto _splitIfVar = [](std::string const & str) -> std::pair<std::string, std::string>
+    {
+        for(size_t i=0;i<str.size();i++)
+        {
+            if(str[i] == '=')
+            {
+                bool quoted = false;
+                for(size_t j=i+1; j<str.size();j++)
+                {
+                    if(str[j]=='"' && !quoted)
+                    {
+                        quoted = !quoted;
+                    }
+                    if(str[j] == '=' && !quoted)
+                    {
+                        return {};
+                    }
+                }
+
+                return std::make_pair(str.substr(0, i),
+                                      str.substr(i+1));
+            }
+        }
+        return {};
+    };
+
+    for(auto & e : E)
+    {
+        std::reverse(e.args.begin(), e.args.end());
+        while(e.args.size())
+        {
+            auto [var, val] = _splitIfVar(e.args.back());
+            if(!var.empty() && !val.empty())
+            {
+                e.args.pop_back();
+                e.env[var] = val;
+            }
+            else
+            {
+                break;
+            }
+        }
+        std::reverse(e.args.begin(), e.args.end());
+    }
+#endif
     E[0].in = in;
     E.back().out = out;
     for(size_t j=0;j<E.size()-1;j++)
@@ -186,7 +338,7 @@ auto parse_command_line(std::string_view command, std::shared_ptr<MiniLinux::str
 }
 
 
-auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto _in, auto _out) -> gul::Task_t<int>
+auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto env, auto _in, auto _out) -> gul::Task_t<int>
 {
 
     if(node->value == "&&" || node->value == "||")
@@ -194,7 +346,7 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto _in, auto _ou
         auto & left = node->left;
         auto & right = node->right;
 
-        auto left_task = ast_execute(left, L, _in, _out);
+        auto left_task = ast_execute(left, L, env, _in, _out);
         while(!left_task.done())
         {
             left_task.resume();
@@ -212,7 +364,7 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto _in, auto _ou
             co_return ret;
         }
 
-        auto right_task = ast_execute(right, L, _in, _out);
+        auto right_task = ast_execute(right, L, env, _in, _out);
         while(!right_task.done())
         {
             right_task.resume();
@@ -238,7 +390,13 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto _in, auto _ou
     auto E = parse_command_line(node->value,
                                 in_stream,
                                 _out);
-
+    for(auto & e : E)
+    {
+        for(auto & [var,val] : env)
+        {
+            e.env[var] = val;
+        }
+    }
 
 #if 0
     std::vector<MiniLinux::task_type> taskList;
@@ -334,6 +492,37 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto _in, auto _ou
 #endif
 };
 
+
+std::string var_sub(std::string_view str, std::map<std::string,std::string> const & env)
+{
+    (void)env;
+    std::string outstr;
+    for(size_t i=0;i<str.size();i++)
+    {
+        if(str[i] == '}')
+        {
+            std::string var_name;
+            while(outstr.back() != '{')
+            {
+                var_name += outstr.back();
+                outstr.pop_back();
+            }
+            std::reverse(var_name.begin(), var_name.end());
+
+            outstr.pop_back();
+            outstr.pop_back();
+            auto it = env.find(var_name);
+            if(it != env.end())
+                outstr += it->second;
+        }
+        else
+        {
+            outstr += str[i];
+        }
+    }
+    return outstr;
+}
+
 /**
  * @brief shell
  * @param exev
@@ -382,22 +571,49 @@ MiniLinux::task_type shell(MiniLinux::Exec exev)
         if(_current.empty())
             continue;
 
-        auto top = generateTree(_current);
+        // Perform the variable substitution first
+        _current = var_sub(_current, exev.env);
+
+        std::string new_command;
+        std::map<std::string,std::string> new_env;
+        bool end_of_env = false;
+        splitSpace(_current, [&](auto arg)
+        {
+            auto [var,val] = splitVar(arg);
+            if(!end_of_env && !var.empty())
+            {
+                new_env[std::string(var)] = val;
+            }
+            else
+            {
+                end_of_env = true;
+                new_command += arg;
+                new_command += ' ';
+            }
+        });
+        if(!new_command.empty()) new_command.pop_back();
+
+        if(new_command.empty())
+        {
+            for(auto & [var,val] : new_env)
+            {
+                exev.env[var] = val;
+            }
+            continue;
+        }
+
+        auto top = generateTree(new_command);
+
         if(top->value == "exit")
         {
             break;
         }
-        if(top->value == "count")
-        {
-            std::cout << shell_number << std::endl;
-        }
-
 
         {            
 
             // If we are not runing in the background (eg: we dont have the & at the end)
             // we will execute the task and then wait for it
-            auto _task = ast_execute(top, *exev.mini, exev.in, exev.out);
+            auto _task = ast_execute(top, *exev.mini, new_env, exev.in, exev.out);
 
             // Wait for the task to complete
             while(!_task.done() && !exev.is_sigkill())
@@ -420,3 +636,4 @@ MiniLinux::task_type shell(MiniLinux::Exec exev)
 
 }
 #endif
+

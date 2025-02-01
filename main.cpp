@@ -70,19 +70,10 @@ int main()
     MiniLinux M;
     SimpleScheduler S;
 
-    struct DD
-    {
-        SimpleScheduler * sch;
-        std::future<int> operator()(MiniLinux::task_type && _task)
-        {
-            auto f = sch->emplace(std::move(_task));
-            std::cout << "Total Tasks: " << sch->_tasks.size() << std::endl;
-            return f;
-        }
-    };
 
-    DD d{&S};
-    M.funcs["sh"] = std::bind(shell<DD>, std::placeholders::_1, d, std::ref(M));
+    M.m_scheduler = std::bind(&bl::SimpleScheduler::emplace_process, &S, std::placeholders::_1, std::placeholders::_2);
+
+    M.funcs["sh"] = bl::shell;
 
     MiniLinux::Exec E;
     E.args = {"sh"};
@@ -94,15 +85,26 @@ int main()
 
     // finally get the coroutine task and place it
     // into our scheduler
-    auto shell_task = M.runRawCommand(E);
+    //auto shell_task = M.runRawCommand(E);
 
-    S.emplace(std::move(shell_task));
+    M.system(E);
+
+    //S.emplace(std::move(shell_task));
     S.emplace(read_from_cin(E.in));
     // Run the scheduler so that it will
     // continuiously execute the coroutines
     while(S.run_once())
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+        // we have our special task that is used to read
+        // from stdin and put it into the stream
+        // and one "sh" task, if the shell task is closed
+        // then we can exit the program
+        if(S._tasks.size() == 1)
+        {
+            break;
+        }
     }
 
 

@@ -5,8 +5,112 @@
 #include <ebash/SimpleScheduler.h>
 #include <future>
 #include <ebash/shell.h>
+#include <regex>
 
 using namespace bl;
+
+
+
+
+
+SCENARIO("Test split")
+{
+    splitSpace("\"Hello     world\"    world", [](auto x )
+    {
+        std::cout << x << std::endl;
+    });
+}
+
+SCENARIO("Test split var")
+{
+    auto [a,b] = splitVar("Xsd=4234");
+    REQUIRE(a=="Xsd");
+    REQUIRE(b=="4234");
+}
+
+SCENARIO("Test cmd var")
+{
+    std::string cmd = "X=\"hello world\" env -n \"jejd=323\"";
+    splitSpace(cmd, [](auto arg)
+    {
+        auto [var,val] = splitVar(arg);
+        if(!var.empty())
+        {
+            std::cout << std::format("{}={}\n", var, val);
+        }
+        else
+        {
+            std::cout << arg << std::endl;
+        }
+    });
+    exit(0);
+}
+
+SCENARIO("A Test T2")
+{
+    {
+        auto [left,op,right] = splitOp("  left    &&    right  || again");
+        REQUIRE(left == "left");
+        REQUIRE(op == "&&");
+        REQUIRE(right == "right  || again");
+    }
+}
+
+SCENARIO("A Test T")
+{
+    {
+        auto args = splitCmd("echo hello world");
+        REQUIRE(args.size() == 3);
+        REQUIRE(args[0] == "echo");
+        REQUIRE(args[1] == "hello");
+        REQUIRE(args[2] == "world");
+    }
+    {
+        auto args = splitCmd("echo hello    world");
+        REQUIRE(args.size() == 3);
+        REQUIRE(args[0] == "echo");
+        REQUIRE(args[1] == "hello");
+        REQUIRE(args[2] == "world");
+    }
+
+    {
+        auto args = splitCmd("echo \"hello world\"");
+        REQUIRE(args.size() == 2);
+        REQUIRE(args[0] == "echo");
+        REQUIRE(args[1] == "hello world");
+    }
+    {
+        auto args = splitCmd("Var1=hello var2=world var3=\"hello world\" echo \"hello world\"");
+        REQUIRE(args.size() == 5);
+    }
+
+    {
+        auto args = splitCmd("X=\"hello world\" echo \"hello world\"");
+        REQUIRE(args.size() == 3);
+    }
+    {
+        auto [var, val] = splitVar("X=hello");
+        REQUIRE(var=="X");
+        REQUIRE(val=="hello");
+    }
+    {
+        auto [var, val] = splitVar("X=hello world");
+        REQUIRE(var=="X");
+        REQUIRE(val=="hello world");
+    }
+    {
+        auto [var, val] = splitVar("echo hello world");
+        REQUIRE(var=="X");
+        REQUIRE(val=="hello world");
+    }
+    exit(0);
+}
+
+SCENARIO("SimpleScheduler1")
+{
+    std::cout << var_sub("echo ${var}", {{"var", "gavin"}}) << std::endl;
+    std::cout << var_sub("echo ${var_${var}}", {{"var", "gavin"}, {"var_gavin", "hello"}}) << std::endl;
+}
 
 
 SCENARIO("SimpleScheduler")
@@ -25,6 +129,15 @@ SCENARIO("SimpleScheduler")
 SCENARIO("test shell")
 {
     {
+        auto v = bl::parse_command_line("X=3234");
+        REQUIRE(v.size() == 1);
+        REQUIRE(v[0].args.size() == 3);
+        REQUIRE(v[0].args[0] == "echo");
+        REQUIRE(v[0].args[1] == "hello");
+        REQUIRE(v[0].args[2] == "world");
+    }
+
+    {
         auto v = bl::parse_command_line("echo hello world");
         REQUIRE(v.size() == 1);
         REQUIRE(v[0].args.size() == 3);
@@ -32,6 +145,15 @@ SCENARIO("test shell")
         REQUIRE(v[0].args[1] == "hello");
         REQUIRE(v[0].args[2] == "world");
     }
+
+    {
+        auto v = bl::parse_command_line("echo \"hello world\"");
+        REQUIRE(v.size() == 1);
+        REQUIRE(v[0].args.size() == 2);
+        REQUIRE(v[0].args[0] == "echo");
+        REQUIRE(v[0].args[1] == "hello world");
+    }
+
     {
         auto v = bl::parse_command_line("echo hello world | grep world");
         REQUIRE(v.size() == 2);
@@ -44,78 +166,21 @@ SCENARIO("test shell")
         REQUIRE(v[1].args[0] == "grep");
         REQUIRE(v[1].args[1] == "world");
     }
-    exit(0);
-}
-
-
-
-
-SCENARIO("MiniLinux: MiniLinux::cmdLineToChain")
-{
-    MiniLinux M;
-
     {
-        auto chain = MiniLinux::cmdLineToChain("false && echo hello world");
+        auto v = bl::parse_command_line("X=hello Y=world Z=\"Hello world\" echo hello world ");
+        REQUIRE(v.size() == 1);
+        REQUIRE(v[0].args.size() == 3);
+        REQUIRE(v[0].args[0] == "echo");
+        REQUIRE(v[0].args[1] == "hello");
+        REQUIRE(v[0].args[2] == "world");
 
-        REQUIRE(chain.size() == 2);
-        REQUIRE(chain[0].cmdLine == "false");
-        REQUIRE(chain[0].next == MiniLinux::CmdExecList::RUN_NEXT_ON_SUCCESS);
-        REQUIRE(chain[1].cmdLine == "echo hello world");
-        REQUIRE(chain[1].next == MiniLinux::CmdExecList::RUN_NEXT_ALWAYS);
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("false || echo hello world");
-
-        REQUIRE(chain.size() == 2);
-        REQUIRE(chain[0].cmdLine == "false");
-        REQUIRE(chain[0].next == MiniLinux::CmdExecList::RUN_NEXT_ON_FAIL);
-        REQUIRE(chain[1].cmdLine == "echo hello world");
-        REQUIRE(chain[1].next == MiniLinux::CmdExecList::RUN_NEXT_ALWAYS);
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("echo hello world | grep hello");
-
-        REQUIRE(chain.size() == 2);
-        REQUIRE(chain[0].cmdLine == "echo hello world");
-        REQUIRE(chain[0].next == MiniLinux::CmdExecList::RUN_NEXT_WITH_PIPED);
-        REQUIRE(chain[1].cmdLine == "grep hello");
-        REQUIRE(chain[1].next == MiniLinux::CmdExecList::RUN_NEXT_ALWAYS);
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("false || echo \"hello && world || goodbye | pipe\" ");
-
-        REQUIRE(chain.size() == 2);
-        REQUIRE(chain[0].cmdLine == "false");
-        REQUIRE(chain[0].next == MiniLinux::CmdExecList::RUN_NEXT_ON_FAIL);
-        REQUIRE(chain[1].cmdLine == "echo \"hello && world || goodbye | pipe\"");
-        REQUIRE(chain[1].next == MiniLinux::CmdExecList::RUN_NEXT_ALWAYS);
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("echo $(getHomeDir ${USER}) | grep /home && echo good");
-
-        REQUIRE(chain.size() == 3);
-        REQUIRE(chain[0].cmdLine == "echo $(getHomeDir ${USER})");
-        REQUIRE(chain[0].next == MiniLinux::CmdExecList::RUN_NEXT_WITH_PIPED);
-        REQUIRE(chain[1].cmdLine == "grep /home");
-        REQUIRE(chain[1].next == MiniLinux::CmdExecList::RUN_NEXT_ON_SUCCESS);
-        REQUIRE(chain[2].cmdLine == "echo good");
-        REQUIRE(chain[2].next == MiniLinux::CmdExecList::RUN_NEXT_ALWAYS);
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("echo hello ; echo world");
-
-        REQUIRE(chain.size() == 2);
-        REQUIRE(chain[0].cmdLine == "echo hello");
-        REQUIRE(chain[0].next == MiniLinux::CmdExecList::RUN_NEXT_ALWAYS);
-        REQUIRE(chain[1].cmdLine == "echo world");
-        REQUIRE(chain[1].next == MiniLinux::CmdExecList::RUN_NEXT_ALWAYS);
+        REQUIRE(v[0].env.size() == 3);
+        REQUIRE(v[0].env["X"] == "hello");
+        REQUIRE(v[0].env["Y"] == "world");
+        REQUIRE(v[0].env["Z"] == "Hello world");
     }
 }
+
 
 SCENARIO("MiniLinux: Run a single command manually")
 {
@@ -286,210 +351,6 @@ SCENARIO("MiniLinux: Execute two commands and have one piped into the other")
 
 
 
-SCENARIO("Test Helper Functions")
-{
-    // This scenario shows how to use the helper function
-    // to perform the previous example
-    MiniLinux M;
-
-
-    // There are 3 helper functions, the third function is just a combination
-    // of the first two and should be in all cases. This example of the first
-    // two functions are just for unit test purposes
-    {
-        // We can use cmdLineToChain to generate the chain of execs
-        // that need to be run
-        //
-        auto chain = MiniLinux::cmdLineToChain("echo hello | rev | rev");
-
-        auto in  = MiniLinux::make_stream();
-        auto out = MiniLinux::make_stream();
-
-        // executePipedChain means that all commands have to be piped into
-        // each other
-        //
-        // This will return a single task that can be placed onto your
-        // coroutine scheduler
-        auto T = MiniLinux::executePipedChain(chain,
-                                              in,
-                                              out,
-                                              &M);
-
-        // Execute all commands
-        while(!T.done())
-        {
-            T.resume();
-        }
-
-        std::stringstream ss;
-        out->toStream(ss);
-        REQUIRE(ss.str() == "hello");
-    }
-
-}
-
-SCENARIO("Test piped")
-{
-    MiniLinux M;
-    {
-        auto chain = MiniLinux::cmdLineToChain("echo hello");
-
-        auto in  = std::make_shared<MiniLinux::stream_type>();
-        auto out = std::make_shared<MiniLinux::stream_type>();
-
-        auto T = MiniLinux::executePipedChain(chain, in, out, &M);
-        while(!T.done())
-        {
-            T.resume();
-        }
-
-        std::stringstream ss;
-        out->toStream(ss);
-        REQUIRE(ss.str() == "hello");
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("echo hello | rev");
-
-        auto in  = std::make_shared<MiniLinux::stream_type>();
-        auto out = std::make_shared<MiniLinux::stream_type>();
-
-        auto T = MiniLinux::executePipedChain(chain, in, out, &M);
-        while(!T.done())
-        {
-            T.resume();
-        }
-
-        std::stringstream ss;
-        out->toStream(ss);
-        REQUIRE(ss.str() == "olleh");
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("echo hello | rev | rev");
-
-        auto in  = std::make_shared<MiniLinux::stream_type>();
-        auto out = std::make_shared<MiniLinux::stream_type>();
-
-        auto T = MiniLinux::executePipedChain(chain, in, out, &M);
-        while(!T.done())
-        {
-            T.resume();
-        }
-
-        std::stringstream ss;
-        out->toStream(ss);
-        REQUIRE(ss.str() == "hello");
-    }
-}
-
-SCENARIO("Test non-piped chain")
-{
-    MiniLinux M;
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("echo hello");
-
-        auto in  = std::make_shared<MiniLinux::stream_type>();
-        auto out = std::make_shared<MiniLinux::stream_type>();
-
-        auto T = MiniLinux::executeNonPipedChain(chain, in, out, &M);
-        while(!T.done())
-        {
-            T.resume();
-        }
-        REQUIRE(T() == 0);
-        std::stringstream ss;
-        out->toStream(ss);
-        REQUIRE(ss.str() == "hello");
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("true && echo hello");
-
-        auto in  = std::make_shared<MiniLinux::stream_type>();
-        auto out = std::make_shared<MiniLinux::stream_type>();
-
-        auto T = MiniLinux::executeNonPipedChain(chain, in, out, &M);
-        while(!T.done())
-        {
-            T.resume();
-        }
-        REQUIRE(T() == 0);
-        std::stringstream ss;
-        out->toStream(ss);
-        REQUIRE(ss.str() == "hello");
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("false && echo hello");
-
-        auto in  = std::make_shared<MiniLinux::stream_type>();
-        auto out = std::make_shared<MiniLinux::stream_type>();
-
-        auto T = MiniLinux::executeNonPipedChain(chain, in, out, &M);
-        while(!T.done())
-        {
-            T.resume();
-        }
-        REQUIRE(T() == 1);
-        std::stringstream ss;
-        out->toStream(ss);
-        REQUIRE(ss.str().empty());
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("true && echo hello | rev");
-
-        auto in  = std::make_shared<MiniLinux::stream_type>();
-        auto out = std::make_shared<MiniLinux::stream_type>();
-
-        auto T = MiniLinux::executeNonPipedChain(chain, in, out, &M);
-        while(!T.done())
-        {
-            T.resume();
-        }
-        REQUIRE(T() == 0);
-        std::stringstream ss;
-        out->toStream(ss);
-        REQUIRE(ss.str() == "olleh");
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("false && echo hello | rev");
-
-        auto in  = std::make_shared<MiniLinux::stream_type>();
-        auto out = std::make_shared<MiniLinux::stream_type>();
-
-        auto T = MiniLinux::executeNonPipedChain(chain, in, out, &M);
-        while(!T.done())
-        {
-            T.resume();
-        }
-        REQUIRE(T() == 1);
-        std::stringstream ss;
-        out->toStream(ss);
-        REQUIRE(ss.str().empty());
-    }
-
-    {
-        auto chain = MiniLinux::cmdLineToChain("true && echo hello | rev | rev | rev && echo done");
-
-        auto in  = std::make_shared<MiniLinux::stream_type>();
-        auto out = std::make_shared<MiniLinux::stream_type>();
-
-        auto T = MiniLinux::executeNonPipedChain(chain, in, out, &M);
-        while(!T.done())
-        {
-            T.resume();
-        }
-        REQUIRE(T() == 0);
-        std::stringstream ss;
-        out->toStream(ss);
-        REQUIRE(ss.str() == "ollehdone");
-    }
-
-}
 
 
 #if 0
@@ -582,6 +443,7 @@ SCENARIO("MiniLinux: sh - pipe")
     }
 }
 #endif
+
 
 
 

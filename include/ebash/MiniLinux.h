@@ -14,6 +14,11 @@
 namespace bl
 {
 
+struct ProcessControl
+{
+    bool sig_kill = false;
+};
+
 struct MiniLinux
 {
     using stream_type = bl::ReaderWriterStream;
@@ -29,7 +34,8 @@ struct MiniLinux
 
         // Set automatically
         MiniLinux *mini = nullptr;
-        std::shared_ptr<bool> kill;
+
+        std::shared_ptr<ProcessControl> control;
 
         // If the process performs a lot of suspends
         // use this to determine when to quit
@@ -42,11 +48,7 @@ struct MiniLinux
         //
         bool is_sigkill() const
         {
-            if(kill)
-            {
-                return *kill;
-            }
-            return false;
+            return control->sig_kill;
         }
 
         Exec& operator << (std::string const &ss)
@@ -115,8 +117,8 @@ struct MiniLinux
             exec.in = make_stream();
             exec.in->close();
         }
-        if(!exec.kill)
-            exec.kill = std::make_shared<bool>(false);
+        if(!exec.control)
+            exec.control = std::make_shared<ProcessControl>();
 
         return m_scheduler(runRawCommand(exec), exec);
     }
@@ -262,6 +264,14 @@ protected:
             for(auto & f : funcs)
             {
                 args << f.first << '\n';
+            }
+            co_return 0;
+        };
+        funcs["env"] = [this](Exec args) -> task_type
+        {
+            for(auto & [var, val] : args.env)
+            {
+                args << std::format("{}={}\n", var,val);
             }
             co_return 0;
         };

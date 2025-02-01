@@ -34,4 +34,12 @@ SCENARIO("MiniLinux: sh - pipe")
         printAST(top, "");
     }
 
+
+    {
+        auto top = bl::generateTree("X=test echo hello world && echo helo");
+
+        printAST(top, "");
+    }
+
+
 }

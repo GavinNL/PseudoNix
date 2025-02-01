@@ -37,7 +37,7 @@ struct SimpleScheduler
      */
     std::future<int> emplace(MiniLinux::task_type && t)
     {
-        proc _t = { std::promise<int>(), std::move(t)};
+        proc _t = { std::promise<int>(), std::move(t), {}};
         _tasks.emplace(_proc++, std::move(_t));
         return _tasks.at(_proc-1).returnCode_promise.get_future();
     }
@@ -45,8 +45,8 @@ struct SimpleScheduler
     std::future<int> emplace_process(bl::MiniLinux::task_type && _task, bl::MiniLinux::Exec E)
     {
         auto f = this->emplace(std::move(_task));
-        auto proc = _proc-1;
-        _tasks.at(proc).exec = E;
+        auto pid = _proc-1;
+        _tasks.at(pid).exec = E;
         return f;
     }
 
