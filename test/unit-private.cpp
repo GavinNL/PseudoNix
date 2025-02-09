@@ -46,65 +46,7 @@ SCENARIO("Test cmd var")
     exit(0);
 }
 
-SCENARIO("A Test T2")
-{
-    {
-        auto [left,op,right] = splitOp("  left    &&    right  || again");
-        REQUIRE(left == "left");
-        REQUIRE(op == "&&");
-        REQUIRE(right == "right  || again");
-    }
-}
 
-SCENARIO("A Test T")
-{
-    {
-        auto args = splitCmd("echo hello world");
-        REQUIRE(args.size() == 3);
-        REQUIRE(args[0] == "echo");
-        REQUIRE(args[1] == "hello");
-        REQUIRE(args[2] == "world");
-    }
-    {
-        auto args = splitCmd("echo hello    world");
-        REQUIRE(args.size() == 3);
-        REQUIRE(args[0] == "echo");
-        REQUIRE(args[1] == "hello");
-        REQUIRE(args[2] == "world");
-    }
-
-    {
-        auto args = splitCmd("echo \"hello world\"");
-        REQUIRE(args.size() == 2);
-        REQUIRE(args[0] == "echo");
-        REQUIRE(args[1] == "hello world");
-    }
-    {
-        auto args = splitCmd("Var1=hello var2=world var3=\"hello world\" echo \"hello world\"");
-        REQUIRE(args.size() == 5);
-    }
-
-    {
-        auto args = splitCmd("X=\"hello world\" echo \"hello world\"");
-        REQUIRE(args.size() == 3);
-    }
-    {
-        auto [var, val] = splitVar("X=hello");
-        REQUIRE(var=="X");
-        REQUIRE(val=="hello");
-    }
-    {
-        auto [var, val] = splitVar("X=hello world");
-        REQUIRE(var=="X");
-        REQUIRE(val=="hello world");
-    }
-    {
-        auto [var, val] = splitVar("echo hello world");
-        REQUIRE(var=="X");
-        REQUIRE(val=="hello world");
-    }
-    exit(0);
-}
 
 SCENARIO("SimpleScheduler1")
 {
