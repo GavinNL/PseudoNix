@@ -29,7 +29,9 @@ struct promise_void
 };
 
 
-template<typename T>
+template<typename T,
+         typename initial_suspend_t = std::suspend_never,
+         typename final_suspend_t = std::suspend_always>
 struct Task_t
 {
     struct promise_type : public std::conditional_t< std::is_same_v<void,T>, promise_void, promise_value<T> >
@@ -56,7 +58,7 @@ struct Task_t
         // state the coroutine should start in.
         // in this case we are not-suspending when
         // we first start the coroutine
-        std::suspend_never initial_suspend() {
+        initial_suspend_t initial_suspend() {
             _done = false;
             //std::cout << "initial suspend\n";
             return {};
@@ -64,7 +66,7 @@ struct Task_t
 
         // executes when the coroutine finishes
         // executing.
-        std::suspend_always final_suspend() noexcept {
+        final_suspend_t final_suspend() noexcept {
             _done = true;
             //std::cout << "final suspend\n";
             return {};
@@ -122,7 +124,6 @@ struct Task_t
 
     T operator()()
     {
-        //handle.resume();
         return std::move(handle.promise().result);
     }
 
