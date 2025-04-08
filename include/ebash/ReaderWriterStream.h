@@ -3,13 +3,16 @@
 
 #include <readerwriterqueue/readerwriterqueue.h>
 
+
 namespace bl
 {
 
-struct ReaderWriterStream
+
+template<typename T>
+struct ReaderWriterStream_t
 {
 protected:
-    moodycamel::ReaderWriterQueue<char> data;
+    moodycamel::ReaderWriterQueue<T> data;
     bool _closed = false;
 public:
     bool has_data() const
@@ -34,21 +37,23 @@ public:
         _closed = true;
     }
 
-    char get()
+    T get()
     {
-        char ch = {};
+        T ch = {};
         data.try_dequeue(ch);
         return ch;
     }
 
-    void put(char c)
+    void put(T c)
     {
         data.enqueue(c);
     }
 
-    ReaderWriterStream(){}
+    ReaderWriterStream_t(){}
 
-    ReaderWriterStream(std::string const & d)
+    template<typename iter_container>
+    requires std::ranges::range<iter_container>
+    ReaderWriterStream_t(iter_container const & d)
     {
         for(auto i : d)
         {
@@ -68,7 +73,7 @@ public:
         return j;
     }
 
-    ReaderWriterStream& operator << (ReaderWriterStream &ss)
+    ReaderWriterStream_t& operator << (ReaderWriterStream_t &ss)
     {
         while(ss.has_data())
         {
@@ -77,7 +82,9 @@ public:
         return *this;
     }
 
-    ReaderWriterStream& operator << (std::string const &ss)
+    template<typename iter_container>
+    requires std::ranges::range<iter_container>
+    ReaderWriterStream_t& operator << (iter_container const &ss)
     {
         for(auto i : ss)
         {
@@ -85,7 +92,8 @@ public:
         }
         return *this;
     }
-    ReaderWriterStream& operator << (char d)
+
+    ReaderWriterStream_t& operator << (T const& d)
     {
         data.enqueue(d);
         return *this;
@@ -101,23 +109,24 @@ public:
         return s;
     }
 
-    void fromStream(std::istream & out)
-    {
-        char c;
-        while(out.eof())
-        {
-            out.get(&c,1);
-            put(c);
-        }
-    }
-    void toStream(std::ostream & out)
-    {
-        while(has_data()){
-            out << get();
-        }
-    }
+    //void fromStream(std::istream & out)
+    //{
+    //    char c;
+    //    while(out.eof())
+    //    {
+    //        out.get(&c,1);
+    //        put(c);
+    //    }
+    //}
+    //void toStream(std::ostream & out)
+    //{
+    //    while(has_data()){
+    //        out << get();
+    //    }
+    //}
 };
 
+using ReaderWriterStream = ReaderWriterStream_t<char>;
 }
 
 

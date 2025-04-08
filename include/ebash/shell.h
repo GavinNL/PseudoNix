@@ -348,7 +348,9 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto env, auto _in
     for(auto & e : E)
     {
 #if 1
-        _returnValues.emplace_back( L.m_scheduler( L.runRawCommand(e)));
+        auto _pid = L.runRawCommand2(e);
+        if(_pid != 0xFFFFFFFF)
+            _returnValues.emplace_back( L.getProcessFuture(_pid));
 #else
         auto it = L.funcs.find(e.args[0]);
 
@@ -365,7 +367,7 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto env, auto _in
     }
 
     size_t count = 0;
-    int _retval = 0;
+    MiniLinux::return_code_type _retval = 0;
 
     while(!in_background)
     {
@@ -461,13 +463,9 @@ MiniLinux::task_type shell(MiniLinux::Exec exev)
     exev << "-------------------------\n";
     exev << std::format("{}", exev.env["PROMPT"]);
 
-    const auto _is_sigkill = []()
+    while(!exev.is_sigkill() && !exev.in->eof())
     {
-        return false;
-    };
-    while(!_is_sigkill() && !exev.in->eof())
-    {
-        while(!exev.in->has_data() && !_is_sigkill())
+        while(!exev.in->has_data() && !exev.is_sigkill())
         {
             co_await std::suspend_always{};
         }
@@ -523,10 +521,10 @@ MiniLinux::task_type shell(MiniLinux::Exec exev)
         {            
             // If we are not runing in the background (eg: we dont have the & at the end)
             // we will execute the task and then wait for it
-            auto _task = ast_execute(top, *exev.mini, new_env, exev.in, exev.out);
+            auto _task = ast_execute(top, *exev.control->mini, new_env, exev.in, exev.out);
 
             // Wait for the task to complete
-            while(!_task.done() && !_is_sigkill())
+            while(!_task.done() && !exev.is_sigkill())
             {
                 _task.resume();
                 co_await std::suspend_always{};

@@ -14,17 +14,20 @@
 namespace bl
 {
 
-struct ProcessControl
-{
-    bool sig_kill = false;
-};
-
-
 struct MiniLinux
 {
     using stream_type = bl::ReaderWriterStream;
-    using path_type   = std::filesystem::path;
-    using task_type   =  gul::Task_t<int, std::suspend_always, std::suspend_always>;
+
+    using pid_type         = uint32_t;
+    using return_code_type = int32_t;
+    using path_type        = std::filesystem::path;
+    using task_type        =  gul::Task_t<return_code_type, std::suspend_always, std::suspend_always>;
+
+    struct ProcessControl
+    {
+        bool sig_kill = false;
+        MiniLinux *mini = nullptr;
+    };
 
     struct Exec
     {
@@ -33,10 +36,6 @@ struct MiniLinux
         std::shared_ptr<stream_type>       out;
         std::map<std::string, std::string> env;
 
-        // Set automatically
-        MiniLinux *mini = nullptr;
-
-#if 0
         std::shared_ptr<ProcessControl> control;
 
         // If the process performs a lot of suspends
@@ -52,7 +51,6 @@ struct MiniLinux
         {
             return control->sig_kill;
         }
-#endif
 
         Exec& operator << (std::string_view const &ss)
         {
@@ -135,13 +133,13 @@ struct MiniLinux
      * inside the system without calling it from the shell.
      *
      */
-    std::future<int> system(e_type e_type)
-    {
-        //if(!e_type.control)
-        //    e_type.control = std::make_shared<ProcessControl>();
+    //std::future<int> system(e_type e_type)
+    //{
+    //    //if(!e_type.control)
+    //    //    e_type.control = std::make_shared<ProcessControl>();
 
-        return m_scheduler(runRawCommand(e_type));
-    }
+    //    return m_scheduler(runRawCommand(e_type));
+    //}
 #endif
 
     /**
@@ -179,6 +177,7 @@ struct MiniLinux
      *
      *
      */
+#if 0
     task_type runRawCommand(e_type args)
     {
         // Try to find the name of the function to run
@@ -192,7 +191,10 @@ struct MiniLinux
         auto & exec_args = m_procs[_pid];
 
         exec_args = std::move(args);
-        exec_args.mini = this;
+        if(!exec_args.control)
+            exec_args.control = std::make_shared<ProcessControl>();
+
+        exec_args.control->mini = this;
 
         if(!exec_args.in)
         {
@@ -206,7 +208,7 @@ struct MiniLinux
             m_preExec(exec_args);
 
         // run the function, it is a coroutine:
-        // it will return a task
+        // it will return a task}
         auto T = it->second(exec_args);
 
         // loop/suspend until the coroutine is done
@@ -233,10 +235,97 @@ struct MiniLinux
 
         co_return exit_code;
     }
+#endif
+    pid_type runRawCommand2(e_type args)
+    {
+        // Try to find the name of the function to run
+        auto it = m_funcs.find(args.args[0]);
+        if(it ==  m_funcs.end())
+            return 0xFFFFFFFF;
 
+        uint32_t _pid = _pid_count++;
 
+        auto & exec_args = args;
 
+        if(!exec_args.control)
+            exec_args.control = std::make_shared<ProcessControl>();
 
+        exec_args.control->mini = this;
+
+        if(!exec_args.in)
+        {
+            exec_args.in = make_stream();
+            exec_args.in->close();
+        }
+
+        exec_args.env["PID"] = std::to_string(_pid);
+
+        if(m_preExec)
+            m_preExec(exec_args);
+
+        // run the function, it is a coroutine:
+        // it will return a task}
+        auto T = it->second(exec_args);
+
+        Process _t = { std::promise<int>(), std::move(exec_args), std::move(T)};
+        m_procs2.emplace(_pid, std::move(_t));
+
+        return _pid;
+    }
+
+    std::future<int> getProcessFuture(uint32_t pid)
+    {
+        return m_procs2.at(pid).return_promise.get_future();
+    }
+    /**
+     * @brief execute
+     * @param pid
+     *
+     * Executes a specific PID
+     */
+    bool execute(uint32_t pid)
+    {
+        auto & coro = m_procs2.at(pid);
+        if(!coro.task.done())
+        {
+            coro.task.resume();
+        }
+        if(coro.task.done())
+        {
+            auto exit_code = coro.task();
+            coro.exec.env["?"] = std::to_string(exit_code);
+
+            if(m_postExec)
+                m_postExec(coro.exec);
+
+            coro.return_promise.set_value(exit_code);
+
+            if(coro.exec.out)
+            {
+                coro.exec.out->close();
+            }
+
+            return true;
+        }
+        return false;
+    }
+
+    void executeAll()
+    {
+        for(auto it = m_procs2.begin(); it!=m_procs2.end();)
+        {
+            auto & T = it->second;
+            auto & pid = it->first;
+            if(execute(pid))
+            {
+                it = m_procs2.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
 
     static std::vector<std::string> cmdLineToArgs(std::string_view line)
     {
@@ -309,9 +398,9 @@ struct MiniLinux
     };
 
     std::map<uint32_t, Process > m_procs2;
+
     std::map<std::string, std::function< task_type(e_type) >> m_funcs;
 protected:
-    std::map<uint32_t, e_type> m_procs;
     uint32_t _pid_count=1;
 
     void setDefaultFunctions()
