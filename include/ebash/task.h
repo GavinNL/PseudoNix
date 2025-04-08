@@ -45,10 +45,10 @@ struct Task_t
         // called for the first time
         // Its job is to construct the return
         // object
-        Task_t<T> get_return_object()
+        Task_t<T, initial_suspend_t, final_suspend_t> get_return_object()
         {
             //std::cout << "get_return_object()\n";
-            return Task_t<T>{std::coroutine_handle<promise_type>::from_promise(*this)};
+            return Task_t<T, initial_suspend_t, final_suspend_t>{std::coroutine_handle<promise_type>::from_promise(*this)};
         }
 
         // returns an awaiter. can return
@@ -94,10 +94,10 @@ struct Task_t
         if(handle)
             handle.destroy();
     }
-    Task_t(Task_t<T> &&V) : handle(std::exchange(V.handle, nullptr))
+    Task_t(Task_t<T, initial_suspend_t, final_suspend_t> &&V) : handle(std::exchange(V.handle, nullptr))
     {
     }
-    Task_t & operator=(Task_t<T> && V)
+    Task_t & operator=(Task_t<T, initial_suspend_t, final_suspend_t> && V)
     {
         if(&V != this)
         {
@@ -105,8 +105,8 @@ struct Task_t
         }
         return *this;
     }
-    Task_t(Task_t<T> const &handle_) = delete;
-    Task_t & operator=(Task_t<T> const & V) = delete;
+    Task_t(Task_t<T, initial_suspend_t, final_suspend_t> const &handle_) = delete;
+    Task_t & operator=(Task_t<T, initial_suspend_t, final_suspend_t> const & V) = delete;
 
     void resume()
     {

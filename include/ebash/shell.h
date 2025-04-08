@@ -3,7 +3,6 @@
 
 #include <map>
 #include <future>
-#include <fmt/format.h>
 #include "MiniLinux.h"
 
 
@@ -349,7 +348,7 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto env, auto _in
     for(auto & e : E)
     {
 #if 1
-        _returnValues.emplace_back( L.system(e));
+        _returnValues.emplace_back( L.m_scheduler( L.runRawCommand(e)));
 #else
         auto it = L.funcs.find(e.args[0]);
 
@@ -462,9 +461,13 @@ MiniLinux::task_type shell(MiniLinux::Exec exev)
     exev << "-------------------------\n";
     exev << std::format("{}", exev.env["PROMPT"]);
 
-    while(!exev.is_sigkill() && !exev.in->eof())
+    const auto _is_sigkill = []()
     {
-        while(!exev.in->has_data() && !exev.is_sigkill())
+        return false;
+    };
+    while(!_is_sigkill() && !exev.in->eof())
+    {
+        while(!exev.in->has_data() && !_is_sigkill())
         {
             co_await std::suspend_always{};
         }
@@ -518,13 +521,12 @@ MiniLinux::task_type shell(MiniLinux::Exec exev)
         }
 
         {            
-
             // If we are not runing in the background (eg: we dont have the & at the end)
             // we will execute the task and then wait for it
             auto _task = ast_execute(top, *exev.mini, new_env, exev.in, exev.out);
 
             // Wait for the task to complete
-            while(!_task.done() && !exev.is_sigkill())
+            while(!_task.done() && !_is_sigkill())
             {
                 _task.resume();
                 co_await std::suspend_always{};

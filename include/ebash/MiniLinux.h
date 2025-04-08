@@ -19,11 +19,12 @@ struct ProcessControl
     bool sig_kill = false;
 };
 
+
 struct MiniLinux
 {
     using stream_type = bl::ReaderWriterStream;
     using path_type   = std::filesystem::path;
-    using task_type   = gul::Task_t<int>;
+    using task_type   =  gul::Task_t<int, std::suspend_always, std::suspend_always>;
 
     struct Exec
     {
@@ -35,6 +36,7 @@ struct MiniLinux
         // Set automatically
         MiniLinux *mini = nullptr;
 
+#if 0
         std::shared_ptr<ProcessControl> control;
 
         // If the process performs a lot of suspends
@@ -50,8 +52,9 @@ struct MiniLinux
         {
             return control->sig_kill;
         }
+#endif
 
-        Exec& operator << (std::string const &ss)
+        Exec& operator << (std::string_view const &ss)
         {
             if(!out)
             {
@@ -76,12 +79,23 @@ struct MiniLinux
             out->put(d);
             return *this;
         }
-
-
     };
 
-    std::function< std::future<int>(task_type&&, Exec) > m_scheduler;
-    std::map<std::string, std::function< task_type(Exec) >> funcs;
+    using e_type = Exec;
+
+    void setScheduler(std::function< std::future<int>(task_type&&) > schedulerFunc)
+    {
+        m_scheduler = schedulerFunc;
+    }
+
+    void clearFunction(std::string name)
+    {
+        m_funcs.erase(name);
+    }
+    void setFunction(std::string name, std::function< task_type(e_type) > _f)
+    {
+        m_funcs[name] = _f;
+    }
 
 
     static std::shared_ptr<stream_type> make_stream(std::string const& initial_data="")
@@ -97,56 +111,65 @@ struct MiniLinux
         setDefaultFunctions();
     }
 
-
+#if 1
     /**
      * @brief system
-     * @param exec
+     * @param e_type
      * @return
      *
-     * Execute a system call to the mini linux and place
+     * e_typeute a system call to the mini linux and place
      * the new process into the scheduler. Returns
-     * a future<int> for the return code
+     * a future<int> for the return code.
      *
-     * This is the main function you shoudl run
-     * to execute something within the minilinux
+     * This is the main function you should run
+     * to e_typeute something within the minilinux.
+     *
+     * The future that is returned to you can be used to determine
+     * when the coroutine finishes. the <int> is the exit code of the
+     * function process. You can ignore this.
+     *
+     * Normally, you'd have a single root function, the shell function,
+     * which can be used to excute new procsses.
+     *
+     * You'd only need the future if you plan on running a process
+     * inside the system without calling it from the shell.
+     *
      */
-    std::future<int> system(Exec exec)
+    std::future<int> system(e_type e_type)
     {
-        if(!exec.in)
-        {
-            exec.in = make_stream();
-            exec.in->close();
-        }
-        if(!exec.control)
-            exec.control = std::make_shared<ProcessControl>();
+        //if(!e_type.control)
+        //    e_type.control = std::make_shared<ProcessControl>();
 
-        return m_scheduler(runRawCommand(exec), exec);
+        return m_scheduler(runRawCommand(e_type));
     }
+#endif
 
-/**
+    /**
      * @brief runRawCommand
-     * @param exec
+     * @param e_type
      * @return
+     *
+     * You should not need to use this function:
      *
      * This command searches for the appropriate command
-     * in the command list, executes the coroutine and
+     * in the command list, e_typeutes the coroutine and
      * returns the task.
      *
-     * You must explicitally execute the task yourself
+     * You must explicitally e_typeute the task yourself
      * in your own scheduler.
      *
      * This function ensures that the output stream
      * is closed when the command completes.
      *
-     *   Exec exec;
-     *   exec.args = {"echo", "hello", "world"};
-     *   exec.in  = std::make_shared<stream_type>();
-     *   exec.out = std::make_shared<stream_type>();
-     *   exec.in->close();
+     *   e_type e_type;
+     *   e_type.args = {"echo", "hello", "world"};
+     *   e_type.in  = std::make_shared<stream_type>();
+     *   e_type.out = std::make_shared<stream_type>();
+     *   e_type.in->close();
      *
      *   // This returns  co-routine task that must
      *   // be waited on
-     *   auto shell_task = M.runRawCommand(exec);
+     *   auto shell_task = M.runRawCommand(e_type);
      *
      *   while(!shell_task.done())
      *   {
@@ -156,32 +179,61 @@ struct MiniLinux
      *
      *
      */
-    task_type runRawCommand(Exec exec)
+    task_type runRawCommand(e_type args)
     {
-        auto & args = exec.args;
-        exec.mini = this;
-
-        auto it = funcs.find(args[0]);
-        if(it ==  funcs.end())
+        // Try to find the name of the function to run
+        auto it = m_funcs.find(args.args[0]);
+        if(it ==  m_funcs.end())
             co_return 127;
 
-        auto T = it->second(exec);
 
-        //std::cout << "Running: " << args[0] << std::endl;
-        while (!T.done()) {
-            co_await std::suspend_always{};
-            T.resume();
-        }
+        uint32_t _pid = _pid_count++;
 
-        if(exec.out)
+        auto & exec_args = m_procs[_pid];
+
+        exec_args = std::move(args);
+        exec_args.mini = this;
+
+        if(!exec_args.in)
         {
-            exec.out->close();
+            exec_args.in = make_stream();
+            exec_args.in->close();
         }
 
-        //std::cout << "Finished: " << args[0] << std::endl;
-        // Return the final value
-        co_return T();
+        exec_args.env["PID"] = std::to_string(_pid);
+
+        if(m_preExec)
+            m_preExec(exec_args);
+
+        // run the function, it is a coroutine:
+        // it will return a task
+        auto T = it->second(exec_args);
+
+        // loop/suspend until the coroutine is done
+        while (!T.done()) {
+            T.resume();
+            co_await std::suspend_always{};
+        }
+
+        // Get the exit code from the coroutine
+        auto exit_code = T();
+
+        exec_args.env["?"] = std::to_string(exit_code);
+
+        if(m_postExec)
+            m_postExec(exec_args);
+
+        // Automatically close the output stream
+        // when we are done
+        if(exec_args.out)
+        {
+            exec_args.out->close();
+        }
+        m_procs.erase(_pid);
+
+        co_return exit_code;
     }
+
 
 
 
@@ -244,30 +296,46 @@ struct MiniLinux
         return _cmds;
     }
 
+
+    std::function< std::future<int>(task_type&&) > m_scheduler;
+    std::function< void(e_type&) >                 m_preExec;
+    std::function< void(e_type&) >                 m_postExec;
+
+    struct Process
+    {
+        std::promise<int> return_promise;
+        e_type            exec;
+        task_type         task;
+    };
+
+    std::map<uint32_t, Process > m_procs2;
+    std::map<std::string, std::function< task_type(e_type) >> m_funcs;
 protected:
+    std::map<uint32_t, e_type> m_procs;
+    uint32_t _pid_count=1;
 
     void setDefaultFunctions()
     {
-        funcs["false"] = [](Exec args) -> task_type
+        m_funcs["false"] = [](e_type args) -> task_type
         {
             (void)args;
             co_return 1;
         };
-        funcs["true"] = [](Exec args) -> task_type
+        m_funcs["true"] = [](e_type args) -> task_type
         {
             (void)args;
             co_return 0;
         };
-        funcs["help"] = [this](Exec args) -> task_type
+        m_funcs["help"] = [this](e_type args) -> task_type
         {
             args << "List of commands:\n\n";
-            for(auto & f : funcs)
+            for(auto & f : m_funcs)
             {
                 args << f.first << '\n';
             }
             co_return 0;
         };
-        funcs["env"] = [this](Exec args) -> task_type
+        m_funcs["env"] = [this](e_type args) -> task_type
         {
             for(auto & [var, val] : args.env)
             {
@@ -275,7 +343,7 @@ protected:
             }
             co_return 0;
         };
-        funcs["echo"] = [](Exec args) -> task_type
+        m_funcs["echo"] = [](e_type args) -> task_type
         {
             for(size_t i=1;i<args.args.size();i++)
             {
@@ -283,7 +351,7 @@ protected:
             }
             co_return 0;
         };
-        funcs["sleep"] = [](Exec args) -> task_type
+        m_funcs["sleep"] = [](e_type args) -> task_type
         {
             std::string output;
             if(args.args.size() < 2)
@@ -291,18 +359,19 @@ protected:
             float t = 0.0f;
             std::istringstream in(args.args[1]);
             in >> t;
-            auto T = std::chrono::milliseconds( static_cast<uint64_t>(t*1000));
-            auto T0 = std::chrono::system_clock::now();
+
+            auto T1 = std::chrono::system_clock::now() +
+                        std::chrono::milliseconds( static_cast<uint64_t>(t*1000));
             // NOTE: do not acutally use this_thread::sleep
             // this is a coroutine, so you should suspend
             // the routine
-            while(std::chrono::system_clock::now()-T0 < T)
+            while(std::chrono::system_clock::now() < T1)
             {
                 co_await std::suspend_always{};
             }
             co_return 0;
         };
-        funcs["rev"] = [](Exec args) -> task_type
+        m_funcs["rev"] = [](e_type args) -> task_type
         {
             std::string output;
 
@@ -332,7 +401,7 @@ protected:
             }
             co_return 0;
         };
-        funcs["wc"] = [](Exec args) -> task_type
+        m_funcs["wc"] = [](e_type args) -> task_type
         {
             uint32_t i=0;
 
