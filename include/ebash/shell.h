@@ -198,7 +198,11 @@ auto parse_command_line(std::string_view command,
 
         // Handle escape sequences
         if (c == '\\' && i + 1 < command.size()) {
-            current += command[++i];  // Skip the backslash and add the next character
+            auto next = command[++i];
+            if(next == 'n')
+                current += '\n';
+            else
+                current += command[++i];  // Skip the backslash and add the next character
         }
         else if (c == '\'' && !in_double_quote) {
             in_single_quote = !in_single_quote;
