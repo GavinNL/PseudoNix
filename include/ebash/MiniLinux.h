@@ -81,11 +81,6 @@ struct MiniLinux
 
     using e_type = Exec;
 
-    void setScheduler(std::function< std::future<int>(task_type&&) > schedulerFunc)
-    {
-        m_scheduler = schedulerFunc;
-    }
-
     void clearFunction(std::string name)
     {
         m_funcs.erase(name);
@@ -109,38 +104,6 @@ struct MiniLinux
         setDefaultFunctions();
     }
 
-#if 1
-    /**
-     * @brief system
-     * @param e_type
-     * @return
-     *
-     * e_typeute a system call to the mini linux and place
-     * the new process into the scheduler. Returns
-     * a future<int> for the return code.
-     *
-     * This is the main function you should run
-     * to e_typeute something within the minilinux.
-     *
-     * The future that is returned to you can be used to determine
-     * when the coroutine finishes. the <int> is the exit code of the
-     * function process. You can ignore this.
-     *
-     * Normally, you'd have a single root function, the shell function,
-     * which can be used to excute new procsses.
-     *
-     * You'd only need the future if you plan on running a process
-     * inside the system without calling it from the shell.
-     *
-     */
-    //std::future<int> system(e_type e_type)
-    //{
-    //    //if(!e_type.control)
-    //    //    e_type.control = std::make_shared<ProcessControl>();
-
-    //    return m_scheduler(runRawCommand(e_type));
-    //}
-#endif
 
     /**
      * @brief runRawCommand
@@ -177,65 +140,6 @@ struct MiniLinux
      *
      *
      */
-#if 0
-    task_type runRawCommand(e_type args)
-    {
-        // Try to find the name of the function to run
-        auto it = m_funcs.find(args.args[0]);
-        if(it ==  m_funcs.end())
-            co_return 127;
-
-
-        uint32_t _pid = _pid_count++;
-
-        auto & exec_args = m_procs[_pid];
-
-        exec_args = std::move(args);
-        if(!exec_args.control)
-            exec_args.control = std::make_shared<ProcessControl>();
-
-        exec_args.control->mini = this;
-
-        if(!exec_args.in)
-        {
-            exec_args.in = make_stream();
-            exec_args.in->close();
-        }
-
-        exec_args.env["PID"] = std::to_string(_pid);
-
-        if(m_preExec)
-            m_preExec(exec_args);
-
-        // run the function, it is a coroutine:
-        // it will return a task}
-        auto T = it->second(exec_args);
-
-        // loop/suspend until the coroutine is done
-        while (!T.done()) {
-            T.resume();
-            co_await std::suspend_always{};
-        }
-
-        // Get the exit code from the coroutine
-        auto exit_code = T();
-
-        exec_args.env["?"] = std::to_string(exit_code);
-
-        if(m_postExec)
-            m_postExec(exec_args);
-
-        // Automatically close the output stream
-        // when we are done
-        if(exec_args.out)
-        {
-            exec_args.out->close();
-        }
-        m_procs.erase(_pid);
-
-        co_return exit_code;
-    }
-#endif
     pid_type runRawCommand2(e_type args)
     {
         // Try to find the name of the function to run
@@ -273,15 +177,27 @@ struct MiniLinux
         return _pid;
     }
 
-    std::future<int> getProcessFuture(uint32_t pid)
+    /**
+     * @brief getProcessFuture
+     * @param pid
+     * @return
+     *
+     * Return the std::future of the pid. This can only be
+     * called once. Only use this if you need a future
+     * for tracking purposes. The future will become available
+     * when the processs has finished
+     */
+    std::future<return_code_type> getProcessFuture(uint32_t pid)
     {
         return m_procs2.at(pid).return_promise.get_future();
     }
+
     /**
      * @brief execute
      * @param pid
      *
-     * Executes a specific PID
+     * Executes a specific PID and returns true if the
+     * coroutine is completed
      */
     bool execute(uint32_t pid)
     {
@@ -386,7 +302,7 @@ struct MiniLinux
     }
 
 
-    std::function< std::future<int>(task_type&&) > m_scheduler;
+    //std::function< std::future<int>(task_type&&) > m_scheduler;
     std::function< void(e_type&) >                 m_preExec;
     std::function< void(e_type&) >                 m_postExec;
 
@@ -397,10 +313,11 @@ struct MiniLinux
         task_type         task;
     };
 
-    std::map<uint32_t, Process > m_procs2;
 
     std::map<std::string, std::function< task_type(e_type) >> m_funcs;
 protected:
+
+    std::map<uint32_t, Process > m_procs2;
     uint32_t _pid_count=1;
 
     void setDefaultFunctions()
@@ -510,6 +427,41 @@ protected:
             args << std::to_string(i) << '\n';
             //std::cout << std::to_string(i);
             co_return 0;
+        };
+        m_funcs["ps"] = [](e_type args) -> task_type
+        {
+            uint32_t i=0;
+            auto & M = *args.control->mini;
+
+            args << std::format("PID   CMD\n");
+            for(auto & [pid, P] : M.m_procs2)
+            {
+                std::string cmd;
+                for(auto & c : P.exec.args)
+                    cmd += c + " ";
+                args << std::format("{}     {}\n", pid, cmd);
+            }
+
+            //std::cout << std::to_string(i);
+            co_return 0;
+        };
+        m_funcs["kill"] = [](e_type args) -> task_type
+        {
+            if(args.args.size() < 2)
+                co_return 1;
+
+            pid_type pid = 0;
+            auto [ptr, ec] = std::from_chars(args.args[1].data(), args.args[1].data() + args.args[1].size(), pid);
+
+            auto & M = *args.control->mini;
+            auto it = M.m_procs2.find(pid);
+            if(it != M.m_procs2.end())
+            {
+                it->second.exec.control->sig_kill = true;
+                co_return 0;
+            }
+            args << std::format("Could not find process ID: {}\n", pid);
+            co_return 1;
         };
     }
 
