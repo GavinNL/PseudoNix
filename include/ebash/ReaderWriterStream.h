@@ -93,6 +93,17 @@ public:
         return *this;
     }
 
+    template<typename iter_container>
+        requires std::ranges::range<iter_container>
+    ReaderWriterStream_t& operator >> (iter_container &ss)
+    {
+        while(has_data())
+        {
+            ss.push_back(get());
+        }
+        return *this;
+    }
+
     ReaderWriterStream_t& operator << (T const& d)
     {
         data.enqueue(d);
