@@ -198,7 +198,7 @@ struct MiniLinux
 
     bool isRunning(pid_type pid) const
     {
-        return m_procs2.count(pid) == 1;
+        return m_procs2.count(pid) != 0;
     }
     void kill(pid_type pid) const
     {

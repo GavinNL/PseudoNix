@@ -60,13 +60,6 @@ int main()
     //
     M.m_funcs["fromCin"] = [](bl::MiniLinux::Exec exev) -> bl::MiniLinux::task_type
     {
-        static int count = 0;
-        {
-        if(count!=0)
-            exev << "Only one of these processes can be run at a time\n";
-            co_return 1;
-        }
-        count++;
         while (!exev.is_sigkill())
         {
             // std::getline blocks until data is entered, but
@@ -87,21 +80,11 @@ int main()
                 co_await std::suspend_always{};
             }
         }
-        count--;
-        std::cout << "fromCin exit" << std::endl;
         co_return 0;
     };
 
     M.m_funcs["toCout"] = [](bl::MiniLinux::Exec exev) -> bl::MiniLinux::task_type
     {
-        static int count = 0;
-        if(count!=0)
-        {
-            exev << "Only one of these processes can be run at a time\n";
-            co_return 1;
-        }
-        count++;
-
         while(!exev.is_sigkill())
         {
             while (exev.in->has_data() && !exev.is_sigkill())
@@ -112,8 +95,7 @@ int main()
             }
             co_await std::suspend_always{};
         }
-        count--;
-        std::cout << "toCout exit: " << exev.is_sigkill() << std::endl;
+
         co_return 0;
     };
 
@@ -140,9 +122,9 @@ int main()
     auto pid2 = M.runRawCommand2(E[1]);
     auto pid3 = M.runRawCommand2(E[2]);
 
-    std::cout << pid1 << pid2 << pid3 << std::endl;
     // Run the scheduler so that it will
     // continuiously execute the coroutines
+
     while(M.executeAll())
     {
         // since we are actually running the "sh" function, we can technically
@@ -151,11 +133,13 @@ int main()
         // We want to make sure that if any of the processes get killed
         // we kill all three of them. Otherwise, killing one of them
         // will halt the program since they are not receiving data
+
         if(!M.isRunning(pid1) || !M.isRunning(pid2) || !M.isRunning(pid3))
         {
-            //M.kill(pid1);
-            //M.kill(pid2);
-            //M.kill(pid3);
+            std::cout << "Killing all" << std::endl;
+            M.kill(pid1);
+            M.kill(pid2);
+            M.kill(pid3);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }

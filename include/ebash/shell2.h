@@ -391,6 +391,7 @@ MiniLinux::task_type shell2(MiniLinux::Exec exev)
             co_await std::suspend_always{};
         }
     }
+    exev << "Shell exiting\n";
     co_return 0;
 
 }
