@@ -105,28 +105,68 @@ struct Tokenizer2
 };
 
 
-//MiniLinux::task_type  execute_no_brackets(std::vector<std::string> tokens, std::string &std_out)
 MiniLinux::task_type execute(std::vector<std::string> tokens,
                                MiniLinux* mini,
                                std::shared_ptr<MiniLinux::stream_type> in={},
                                std::shared_ptr<MiniLinux::stream_type> out={})
 {
-    MiniLinux::Exec E;
-    E.args = tokens;
-    E.in   = in;
-    E.out  = out;
 
-    auto pid = mini->runRawCommand2(E);
-    if(pid != 0xFFFFFFFF)
+
+    auto first = tokens.begin();
+    auto last = std::find(first, tokens.end(), "|");
+
+    std::vector<MiniLinux::Exec> E(1);
+
+    while(last != tokens.end())
     {
-        auto f = mini->getProcessFuture(pid);
-        while( f.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+        E.back().args = std::vector(first, last);
+        E.back().in   = nullptr;
+        E.back().out  = nullptr;
+
+        first = last+1;
+        last = std::find(first, tokens.end(), "|");
+        E.push_back({});
+    }
+    E.back().args = std::vector(first, last);
+
+
+    E.front().in = in;
+    E.back().out = out;
+
+    for(size_t i=1;i<E.size();i++)
+    {
+        E[i-1].out = MiniLinux::make_stream();
+        E[i].in = E[i-1].out;
+    }
+
+    std::vector<std::future<int>> _futures;
+    for(auto & e : E)
+    {
+        auto pid = mini->runRawCommand2(e);
+        if(pid != 0xFFFFFFFF)
+        {
+            _futures.push_back(mini->getProcessFuture(pid));
+        }
+    }
+
+    while(true)
+    {
+        size_t count=0;
+        for(auto & f : _futures)
+        {
+            count += f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+        }
+        if(count != _futures.size())
         {
             co_await std::suspend_always{};
+            continue;
         }
-        co_return f.get();
+        break;
     }
-    co_return 127;
+    int ret_value = 0;
+    for(auto & f : _futures)
+        ret_value = f.get();
+    co_return ret_value;
 }
 
 MiniLinux::task_type execute_no_brackets(std::vector<std::string> tokens,
@@ -267,6 +307,48 @@ MiniLinux::task_type execute_brackets(std::vector<std::string> tokens,
 }
 
 #endif
+
+
+/**
+ * @brief var_sub
+ * @param str
+ * @param env
+ * @return
+ *
+ * Given a string that contains ${VARNAME} or $VARNAME, and the env map, substitue
+ * the appropriate variables and return a new string.
+ */
+std::string var_sub1(std::string_view str, std::map<std::string,std::string> const & env)
+{
+    (void)env;
+    std::string outstr;
+
+    for(size_t i=0;i<str.size();i++)
+    {
+        if(str[i] == '$')
+        {
+            std::string var_name;
+            for(i=i+1; i<str.size(); i++)
+            {
+                if(str[i] == '}' || std::isspace(str[i]))
+                {
+                    break;
+                }
+                var_name += str[i];
+            }
+            auto it = env.find((var_name.size() && var_name.front() == '{') ? var_name.substr(1) : var_name);
+            if(it != env.end())
+                outstr += it->second;
+
+        }
+        else
+        {
+            outstr += str[i];
+        }
+    }
+    return outstr;
+}
+
 MiniLinux::task_type shell2(MiniLinux::Exec exev)
 {
     std::string _current;
@@ -299,7 +381,9 @@ MiniLinux::task_type shell2(MiniLinux::Exec exev)
             continue;
 
 
+        _current = var_sub1(_current, exev.env);
         auto args = Tokenizer2::to_vector(_current);
+
         _current.clear();
         auto _task = execute_brackets(args, exev.control->mini, exev.in, exev.out);
         while(!_task.done())
