@@ -2,126 +2,13 @@
 #include <catch2/benchmark/catch_benchmark_all.hpp>
 #include <fmt/format.h>
 #include <ebash/MiniLinux.h>
-#include <ebash/SimpleScheduler.h>
-#include <future>
-#include <ebash/shell.h>
-#include <regex>
+
+#include <ebash/shell2.h>
 
 using namespace bl;
 
 
-
-
-
-SCENARIO("Test split")
-{
-    splitSpace("\"Hello     world\"    world", [](auto x )
-    {
-        std::cout << x << std::endl;
-    });
-}
-
-SCENARIO("Test split var")
-{
-    auto [a,b] = splitVar("Xsd=4234");
-    REQUIRE(a=="Xsd");
-    REQUIRE(b=="4234");
-}
-
-SCENARIO("Test cmd var")
-{
-    std::string cmd = "X=\"hello world\" env -n \"jejd=323\"";
-    splitSpace(cmd, [](auto arg)
-    {
-        auto [var,val] = splitVar(arg);
-        if(!var.empty())
-        {
-            std::cout << std::format("{}={}\n", var, val);
-        }
-        else
-        {
-            std::cout << arg << std::endl;
-        }
-    });
-    exit(0);
-}
-
-
-
-SCENARIO("SimpleScheduler1")
-{
-    std::cout << var_sub("echo ${var}", {{"var", "gavin"}}) << std::endl;
-    std::cout << var_sub("echo ${var_${var}}", {{"var", "gavin"}, {"var_gavin", "hello"}}) << std::endl;
-}
-
-
-SCENARIO("SimpleScheduler")
-{
-    SimpleScheduler S;
-    auto t1 = S.emplace(S.test_task());
-    auto t2 = S.emplace(S.test_task());
-    auto t3 = S.emplace(S.test_task());
-    S.run();
-    std::cout << t1.get() << std::endl;
-    std::cout << t2.get() << std::endl;
-    std::cout << t3.get() << std::endl;
-}
-
-
-SCENARIO("test shell")
-{
-    {
-        auto v = bl::parse_command_line("X=3234");
-        REQUIRE(v.size() == 1);
-        REQUIRE(v[0].args.size() == 3);
-        REQUIRE(v[0].args[0] == "echo");
-        REQUIRE(v[0].args[1] == "hello");
-        REQUIRE(v[0].args[2] == "world");
-    }
-
-    {
-        auto v = bl::parse_command_line("echo hello world");
-        REQUIRE(v.size() == 1);
-        REQUIRE(v[0].args.size() == 3);
-        REQUIRE(v[0].args[0] == "echo");
-        REQUIRE(v[0].args[1] == "hello");
-        REQUIRE(v[0].args[2] == "world");
-    }
-
-    {
-        auto v = bl::parse_command_line("echo \"hello world\"");
-        REQUIRE(v.size() == 1);
-        REQUIRE(v[0].args.size() == 2);
-        REQUIRE(v[0].args[0] == "echo");
-        REQUIRE(v[0].args[1] == "hello world");
-    }
-
-    {
-        auto v = bl::parse_command_line("echo hello world | grep world");
-        REQUIRE(v.size() == 2);
-        REQUIRE(v[0].args.size() == 3);
-        REQUIRE(v[0].args[0] == "echo");
-        REQUIRE(v[0].args[1] == "hello");
-        REQUIRE(v[0].args[2] == "world");
-
-        REQUIRE(v[1].args.size() == 2);
-        REQUIRE(v[1].args[0] == "grep");
-        REQUIRE(v[1].args[1] == "world");
-    }
-    {
-        auto v = bl::parse_command_line("X=hello Y=world Z=\"Hello world\" echo hello world ");
-        REQUIRE(v.size() == 1);
-        REQUIRE(v[0].args.size() == 3);
-        REQUIRE(v[0].args[0] == "echo");
-        REQUIRE(v[0].args[1] == "hello");
-        REQUIRE(v[0].args[2] == "world");
-
-        REQUIRE(v[0].env.size() == 3);
-        REQUIRE(v[0].env["X"] == "hello");
-        REQUIRE(v[0].env["Y"] == "world");
-        REQUIRE(v[0].env["Z"] == "Hello world");
-    }
-}
+#if 1
 
 
 SCENARIO("MiniLinux: Run a single command manually")
@@ -129,13 +16,13 @@ SCENARIO("MiniLinux: Run a single command manually")
     MiniLinux M;
 
     // Clear any default commands
-    M.funcs.clear();
+    M.m_funcs.clear();
 
     // add our command manually
-    M.funcs["echo"] = [](MiniLinux::Exec args) -> MiniLinux::task_type {
+    M.m_funcs["echo"] = [](MiniLinux::Exec args) -> MiniLinux::task_type {
         (void) args;
         for (size_t i = 1; i < args.args.size(); i++) {
-            *args.out << args.args[i] << (i == args.args.size() - 1 ? "" : " ");
+            *args.out << args.args[i] + (i == args.args.size() - 1 ? "" : " ");
         }
         co_return 0;
     };
@@ -157,13 +44,12 @@ SCENARIO("MiniLinux: Run a single command manually")
     //=======================================================
     // Execute the command
     //=======================================================
-    auto shell_task = M.runRawCommand(exec);
+    auto pid = M.runRawCommand2(exec);
+    (void)pid;
 
     // We dont have a scheduler, so we'll manually
     // run this until its finished
-    while (!shell_task.done()) {
-        shell_task.resume();
-    }
+    while (M.executeAll());
 
     REQUIRE(exec.out->str() == "hello world");
 }
@@ -173,10 +59,10 @@ SCENARIO("MiniLinux: Run a single command manually read from input")
     MiniLinux M;
 
     // Clear any default commands
-    M.funcs.clear();
+    M.m_funcs.clear();
 
     // add our command manually
-    M.funcs["echo_from_input"] = [](MiniLinux::Exec args) -> gul::Task<int> {
+    M.m_funcs["echo_from_input"] = [](MiniLinux::Exec args) -> MiniLinux::task_type {
         while (true)
         {
             if (args.in->eof())
@@ -212,13 +98,12 @@ SCENARIO("MiniLinux: Run a single command manually read from input")
     // your own scheduler
     //
     //=======================================================
-    auto shell_task = M.runRawCommand(exec);
+    auto pid = M.runRawCommand2(exec);
+    (void)pid;
 
     // We dont have a scheduler, so we'll manually
     // run this until its finished
-    while (!shell_task.done()) {
-        shell_task.resume();
-    }
+    while (M.executeAll());
 
     REQUIRE(exec.out->str() == "Hello world");
 }
@@ -251,73 +136,44 @@ SCENARIO("MiniLinux: Execute two commands and have one piped into the other")
     // your own scheduler
     //
     //=======================================================
-    std::array<MiniLinux::task_type, 2> tasks = {
-        M.runRawCommand(exec[0]),
-        M.runRawCommand(exec[1])
-    };
+    M.runRawCommand2(exec[0]);
+    M.runRawCommand2(exec[1]);
 
     // We now have two tasks and each task may block at anytime
     // because it's a coroutine. So we need to resume() each
     // task in whatever order the scheduler decides (we'll just do it
     // in order) until all the tasks are done.
 
-    while(true)
-    {
-        uint32_t count = 0;
+    // We dont have a scheduler, so we'll manually
+    // run this until its finished
+    while (M.executeAll());
 
-        for(size_t i=0;i<tasks.size();i++)
-        {
-            auto & T = tasks[i];
-
-            // check if the task is done, if it is
-            // then get the final return code and
-            // close it's output stream
-            if(T.done())
-            {
-                auto retcode = T();
-                (void)retcode; // we dont need this
-                exec[i].out->close();
-                count++;
-            }
-            else
-            {
-                T.resume();
-            }
-        }
-        if(count == tasks.size())
-            break;
-    }
-
-    REQUIRE(exec[1].out->str() == "dlrow olleH");
+    REQUIRE(exec[1].out->str() == "dlrow olleH\n");
 }
 
 
 
 
 
-#if 0
-
-
 SCENARIO("MiniLinux: sh")
 {
     MiniLinux M;
-
+    M.m_funcs["sh"] = bl::shell2;
 
     MiniLinux::Exec sh;
     sh.args = {"sh"};
     sh.in  = std::make_shared<MiniLinux::stream_type>();
     sh.out = std::make_shared<MiniLinux::stream_type>();
 
-    *sh.in << "echo hello world";
+    *sh.in << "echo hello world;";
     sh.in->close();
-    auto shell_task = M.runRawCommand(sh);
-    while(!shell_task.done())
-    {
-        shell_task.resume();
-    }
+    M.runRawCommand(sh);
+
+    while(M.executeAll());
 
     REQUIRE(sh.out->str() == "hello world\n");
 }
+#if 0
 
 
 SCENARIO("MiniLinux: sh - multicommand")
@@ -386,6 +242,6 @@ SCENARIO("MiniLinux: sh - pipe")
 }
 #endif
 
-
+#endif
 
 

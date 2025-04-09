@@ -33,6 +33,7 @@ struct Tokenizer2
         }
         return tokens;
     }
+
     std::string next()
     {
         std::string current;
@@ -45,22 +46,19 @@ struct Tokenizer2
 
             if(!quoted)
             {
-                if(c == '(')
+                if(sub == "&&" || sub == "||" || sub == "$(")
                 {
-                    pos+=1;
-                    return std::string(1,c);
+                    if(!current.empty())
+                        return current;
+                    pos+=2;
+                    return std::string(sub);
                 }
-                else if(c==')')
+                else if(c==')' || c == '|' || c=='(')
                 {
                     if(!current.empty())
                         return current;
                     pos+=1;
                     return std::string(1,c);
-                }
-                if(sub == "&&" || sub == "||" || sub == "$(")
-                {
-                    pos+=2;
-                    return std::string(sub);
                 }
                 else if( c == '"')
                 {
@@ -102,6 +100,7 @@ struct Tokenizer2
         }
         return {};
     }
+
 };
 
 
@@ -325,7 +324,8 @@ std::string var_sub1(std::string_view str, std::map<std::string,std::string> con
 
     for(size_t i=0;i<str.size();i++)
     {
-        if(str[i] == '$')
+        auto sub = str.substr(i,2);
+        if(sub == "${" || (sub[0]=='$' && std::isalpha(sub[1])) )
         {
             std::string var_name;
             for(i=i+1; i<str.size(); i++)
@@ -339,7 +339,6 @@ std::string var_sub1(std::string_view str, std::map<std::string,std::string> con
             auto it = env.find((var_name.size() && var_name.front() == '{') ? var_name.substr(1) : var_name);
             if(it != env.end())
                 outstr += it->second;
-
         }
         else
         {

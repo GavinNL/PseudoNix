@@ -1,10 +1,7 @@
 #include <iostream>
-#include <vector>
 #include <string>
-#include <sstream>
 #include <memory>
 #include <chrono>
-#include <thread>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -12,8 +9,7 @@
 #include <unistd.h>
 
 #include <ebash/MiniLinux.h>
-#include <ebash/SimpleScheduler.h>
-#include <ebash/shell.h>
+#include <ebash/shell2.h>
 
 bool is_cin_ready() {
     // Get the current flags of stdin
@@ -45,69 +41,127 @@ int bytes_available_in_stdin() {
     return count;
 }
 
-gul::Task_t<int> read_from_cin(std::shared_ptr<bl::MiniLinux::stream_type> _out)
-{
-    while (true) {
-        int bytes = bytes_available_in_stdin();
-        if (bytes > 0) {
-            //std::cout << "Bytes available in stdin: " << bytes << '\n';
-            std::string input;
-            std::getline(std::cin, input);
-            //std::cout << "Read input: " << input << '\n';
-            *_out << input;
-            *_out << '\n';
-        } else {
-            //std::cout << "No input yet, waiting...\n";
-            co_await std::suspend_always{};
-        }
-    }
-}
-
 int main()
 {
     using namespace bl;
 
     MiniLinux M;
-    SimpleScheduler S;
 
+    M.m_funcs["sh"] = bl::shell2;
 
-    M.m_scheduler = std::bind(&bl::SimpleScheduler::emplace_process, &S, std::placeholders::_1, std::placeholders::_2);
+    // since we are running this application from the terminal, we need a way
+    // to get the bytes from stdin and pipe it into the shell process.
+    //
+    // We're going to essentially run this following:
+    //
+    //     fromCin | sh | toCout
+    //
+    // We will create the two function fromCin and toCout below
+    //
+    M.m_funcs["fromCin"] = [](bl::MiniLinux::Exec exev) -> bl::MiniLinux::task_type
+    {
+        static int count = 0;
+        {
+        if(count!=0)
+            exev << "Only one of these processes can be run at a time\n";
+            co_return 1;
+        }
+        count++;
+        while (!exev.is_sigkill())
+        {
+            // std::getline blocks until data is entered, but
+            // we dont want to do that because this will block our entire
+            // process
+            // we want to check if bytes are available and then
+            // read them in, if no bytes are there, we should suspend the
+            // coroutine
+            int bytes = bytes_available_in_stdin();
 
-    M.funcs["sh"] = bl::shell;
+            if (bytes > 0) {
+                std::string input;
+                std::getline(std::cin, input);
 
-    MiniLinux::Exec E;
-    E.args = {"sh"};
+                *exev.out << input;
+                *exev.out << '\n';
+            } else {
+                co_await std::suspend_always{};
+            }
+        }
+        count--;
+        std::cout << "fromCin exit" << std::endl;
+        co_return 0;
+    };
 
-    // Here we're going to put our shell script code into the input
-    // stream of the process function, similar to how linux works
-    E.in  = MiniLinux::make_stream();
-    E.out = {}; // blank means it will go to std::cout
+    M.m_funcs["toCout"] = [](bl::MiniLinux::Exec exev) -> bl::MiniLinux::task_type
+    {
+        static int count = 0;
+        if(count!=0)
+        {
+            exev << "Only one of these processes can be run at a time\n";
+            co_return 1;
+        }
+        count++;
 
-    // finally get the coroutine task and place it
-    // into our scheduler
-    //auto shell_task = M.runRawCommand(E);
+        while(!exev.is_sigkill())
+        {
+            while (exev.in->has_data() && !exev.is_sigkill())
+            {
+                std::string s;
+                *exev.in >> s;
+                std::cout << s;
+            }
+            co_await std::suspend_always{};
+        }
+        count--;
+        std::cout << "toCout exit: " << exev.is_sigkill() << std::endl;
+        co_return 0;
+    };
 
-    M.system(E);
+    MiniLinux::Exec E[3];
 
-    //S.emplace(std::move(shell_task));
-    S.emplace(read_from_cin(E.in));
+    // Manually create each of the processes
+    // and make sure to set the output of N to
+    // the input of N+1
+    E[0].args = {"fromCin"};
+    E[0].in = MiniLinux::make_stream(); // no need for input here
+    E[0].out = MiniLinux::make_stream();
+
+    E[1].args = {"sh"};
+    E[1].in = E[0].out;
+    E[1].out = MiniLinux::make_stream();
+
+    E[2].args = {"toCout"};
+    E[2].in = E[1].out;
+    E[2].out = MiniLinux::make_stream(); // no need for output here
+
+    // Throw all three commands onto
+    // into the scheduler to run
+    auto pid1 = M.runRawCommand2(E[0]);
+    auto pid2 = M.runRawCommand2(E[1]);
+    auto pid3 = M.runRawCommand2(E[2]);
+
+    std::cout << pid1 << pid2 << pid3 << std::endl;
     // Run the scheduler so that it will
     // continuiously execute the coroutines
-    while(S.run_once())
+    while(M.executeAll())
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-
-        // we have our special task that is used to read
-        // from stdin and put it into the stream
-        // and one "sh" task, if the shell task is closed
-        // then we can exit the program
-        if(S._tasks.size() == 1)
+        // since we are actually running the "sh" function, we can technically
+        // kill our own process using "ps" and "kill"
+        //
+        // We want to make sure that if any of the processes get killed
+        // we kill all three of them. Otherwise, killing one of them
+        // will halt the program since they are not receiving data
+        if(!M.isRunning(pid1) || !M.isRunning(pid2) || !M.isRunning(pid3))
         {
-            break;
+            //M.kill(pid1);
+            //M.kill(pid2);
+            //M.kill(pid3);
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-
+    std::cout << "Exit" << std::endl;
 
     return 0;
 }
+
 

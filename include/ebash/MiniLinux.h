@@ -177,6 +177,10 @@ struct MiniLinux
         return _pid;
     }
 
+    pid_type runRawCommand(e_type args)
+    {
+        return runRawCommand2(args);
+    }
     /**
      * @brief getProcessFuture
      * @param pid
@@ -192,6 +196,17 @@ struct MiniLinux
         return m_procs2.at(pid).return_promise.get_future();
     }
 
+    bool isRunning(pid_type pid) const
+    {
+        return m_procs2.count(pid) == 1;
+    }
+    void kill(pid_type pid) const
+    {
+        if(isRunning(pid))
+        {
+            m_procs2.at(pid).exec.control->sig_kill=true;
+        }
+    }
     /**
      * @brief execute
      * @param pid
@@ -226,11 +241,10 @@ struct MiniLinux
         return false;
     }
 
-    void executeAll()
+    size_t executeAll()
     {
         for(auto it = m_procs2.begin(); it!=m_procs2.end();)
         {
-            auto & T = it->second;
             auto & pid = it->first;
             if(execute(pid))
             {
@@ -241,6 +255,7 @@ struct MiniLinux
                 ++it;
             }
         }
+        return m_procs2.size();
     }
 
     static std::vector<std::string> cmdLineToArgs(std::string_view line)
@@ -430,7 +445,6 @@ protected:
         };
         m_funcs["ps"] = [](e_type args) -> task_type
         {
-            uint32_t i=0;
             auto & M = *args.control->mini;
 
             args << std::format("PID   CMD\n");
@@ -452,7 +466,8 @@ protected:
 
             pid_type pid = 0;
             auto [ptr, ec] = std::from_chars(args.args[1].data(), args.args[1].data() + args.args[1].size(), pid);
-
+            (void)ec;
+            (void)ptr;
             auto & M = *args.control->mini;
             auto it = M.m_procs2.find(pid);
             if(it != M.m_procs2.end())

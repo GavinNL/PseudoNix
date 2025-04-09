@@ -1,48 +1,86 @@
 #include <catch2/catch_all.hpp>
 #include <catch2/benchmark/catch_benchmark_all.hpp>
-#include <fmt/format.h>
-#include <ebash/MiniLinux.h>
-#include <ebash/SimpleScheduler.h>
-#include <ebash/shell.h>
-#include <future>
+#include <ebash/shell2.h>
 
 using namespace bl;
+
+
+SCENARIO("TEST tokenize")
+{
+    using Tokenizer = Tokenizer2;
+
+    {
+        auto args = Tokenizer::to_vector("echo hello|rev");
+
+        REQUIRE(args[0] == "echo");
+        REQUIRE(args[1] == "hello");
+        REQUIRE(args[2] == "|");
+        REQUIRE(args[3] == "rev");
+    }
+
+    {
+        auto args = Tokenizer::to_vector("echo hello | rev");
+
+        REQUIRE(args[0] == "echo");
+        REQUIRE(args[1] == "hello");
+        REQUIRE(args[2] == "|");
+        REQUIRE(args[3] == "rev");
+    }
+
+    {
+        auto args = Tokenizer::to_vector("echo hello && rev");
+
+        REQUIRE(args[0] == "echo");
+        REQUIRE(args[1] == "hello");
+        REQUIRE(args[2] == "&&");
+        REQUIRE(args[3] == "rev");
+    }
+    {
+        auto args = Tokenizer::to_vector("echo hello&&rev");
+
+        REQUIRE(args[0] == "echo");
+        REQUIRE(args[1] == "hello");
+        REQUIRE(args[2] == "&&");
+        REQUIRE(args[3] == "rev");
+    }
+    {
+        auto args = Tokenizer::to_vector("echo hello||rev");
+
+        REQUIRE(args[0] == "echo");
+        REQUIRE(args[1] == "hello");
+        REQUIRE(args[2] == "||");
+        REQUIRE(args[3] == "rev");
+    }
+
+    {
+        auto args = Tokenizer::to_vector("echo hello $(echo gavin&&echo world) && echo second run");
+
+        REQUIRE(args[0] == "echo");
+        REQUIRE(args[1] == "hello");
+        REQUIRE(args[2] == "$(");
+        REQUIRE(args[3] == "echo");
+        REQUIRE(args[4] == "gavin");
+        REQUIRE(args[5] == "&&");
+        REQUIRE(args[6] == "echo");
+        REQUIRE(args[7] == "world");
+        REQUIRE(args[8] == ")");
+        REQUIRE(args[9] == "&&");
+        REQUIRE(args[10] == "echo");
+        REQUIRE(args[11] == "second");
+        REQUIRE(args[12] == "run");
+    }
+}
 
 
 SCENARIO("test shell")
 {
     MiniLinux M;
 
-    SimpleScheduler S;
-
-
-    // the shell() command acts like linux's sh command, it reads commands from its
-    // input and then executes additional commands.
-    //
-    // The shell() function is a template function that you need to provide a few
-    // additional information to.
-    //
-    // 1. You need to provide it a function that takes a move-only task_type
-    //    and returns a std::future<int>. The main goal of the funciton is to place
-    //    that task onto your own scheduler, and when that task is completed, set the
-    //    future value
-    struct DD
-    {
-        SimpleScheduler * sch;
-        std::future<int> operator()(MiniLinux::task_type && _task)
-        {
-            return sch->emplace(std::move(_task));
-        }
-    };
-
-    M.m_scheduler = std::bind(&bl::SimpleScheduler::emplace_process, &S, std::placeholders::_1, std::placeholders::_2);
-
-    M.funcs["sh"] = bl::shell;
+    M.m_funcs["sh"] = bl::shell2;
 
 
     MiniLinux::Exec E;
     E.args = {"sh"};
-    //E.out = MiniLinux::make_stream();
 
     // Here we're going to put our shell script code into the input
     // stream of the process function, similar to how linux works
@@ -54,21 +92,20 @@ sleep 1
 echo hello again
 )foo");
     // We're going to close the stream so that the task will complete, otherwise
-    // it will keep trying to read code. Eg: you can have std::in pass data into
-    // this stream
+    // it will keep trying to read code.
     E.in->close();
 
-    // finally get the coroutine task and place it
-    // into our scheduler
-    auto shell_task = M.runRawCommand(E);
+    // Finally execute the command and get the PID
+    // The command does not do any processing until execute() is called
+    auto pid = M.runRawCommand2(E);
+    REQUIRE(pid == 1);
 
-    S.emplace(std::move(shell_task));
-
-    // Run the scheduler so that it will
-    // continuiously execute the coroutines
-    S.run();
+    // run an infinate loop
+    // processing all the coroutines
+    while(M.executeAll());
 
     //E.out->toStream(std::cout);
     exit(0);
 }
+
 
