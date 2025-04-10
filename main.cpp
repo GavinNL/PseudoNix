@@ -47,6 +47,9 @@ int main()
 
     MiniLinux M;
 
+    // Add the shell function
+    // this isn't added by default because it's quite a large
+    // function.
     M.m_funcs["sh"] = bl::shell2;
 
     // since we are running this application from the terminal, we need a way
@@ -111,6 +114,22 @@ int main()
     E[1].args = {"sh"};
     E[1].in = E[0].out;
     E[1].out = MiniLinux::make_stream();
+    E[1].env = {
+                {"USER", "bob"}
+    };
+
+    // We can pipe some additional shell commands into the input
+    // stream so that they will be executed as soon as it starts
+    *E[1].in << R"foo(
+echo "===================="
+echo "Welcome to the shell"
+echo "===================="
+SHELL=sh
+USER=bob
+echo Hello ${USER}. Welcome to ${SHELL}
+export USER
+export SHELL
+env;)foo";
 
     E[2].args = {"toCout"};
     E[2].in = E[1].out;
@@ -131,12 +150,9 @@ int main()
         // kill our own process using "ps" and "kill"
         //
         // We want to make sure that if any of the processes get killed
-        // we kill all three of them. Otherwise, killing one of them
-        // will halt the program since they are not receiving data
-
+        // we kill all three of them.
         if(!M.isRunning(pid1) || !M.isRunning(pid2) || !M.isRunning(pid3))
         {
-            std::cout << "Killing all" << std::endl;
             M.kill(pid1);
             M.kill(pid2);
             M.kill(pid3);

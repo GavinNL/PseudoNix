@@ -23,6 +23,7 @@ struct MiniLinux
     using path_type        = std::filesystem::path;
     using task_type        =  gul::Task_t<return_code_type, std::suspend_always, std::suspend_always>;
 
+
     struct ProcessControl
     {
         bool sig_kill = false;
@@ -80,6 +81,7 @@ struct MiniLinux
     };
 
     using e_type = Exec;
+    using function_type    = std::function< task_type(e_type)>;
 
     void clearFunction(std::string name)
     {

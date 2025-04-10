@@ -10,6 +10,13 @@ SCENARIO("TEST tokenize")
     using Tokenizer = Tokenizer2;
 
     {
+        auto args = Tokenizer::to_vector("XX=\"hello world\" YY=fdasdf");
+
+        REQUIRE(args[0] == "XX=.ehello world");
+        REQUIRE(args[1] == "YY=fdasdf");
+    }
+
+    {
         auto args = Tokenizer::to_vector("echo hello|rev");
 
         REQUIRE(args[0] == "echo");
