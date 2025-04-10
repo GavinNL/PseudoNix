@@ -12,7 +12,7 @@ SCENARIO("TEST tokenize")
     {
         auto args = Tokenizer::to_vector("XX=\"hello world\" YY=fdasdf");
 
-        REQUIRE(args[0] == "XX=.ehello world");
+        REQUIRE(args[0] == "XX=hello world");
         REQUIRE(args[1] == "YY=fdasdf");
     }
 
@@ -76,9 +76,19 @@ SCENARIO("TEST tokenize")
         REQUIRE(args[11] == "second");
         REQUIRE(args[12] == "run");
     }
+
+    {
+        auto args = Tokenizer::to_vector("echo hello||rev &");
+
+        REQUIRE(args[0] == "echo");
+        REQUIRE(args[1] == "hello");
+        REQUIRE(args[2] == "||");
+        REQUIRE(args[3] == "rev");
+        REQUIRE(args[4] == "&");
+    }
 }
 
-
+#if 1
 SCENARIO("test shell")
 {
     MiniLinux M;
@@ -94,9 +104,10 @@ SCENARIO("test shell")
     E.in  = MiniLinux::make_stream(R"foo(
 echo hello world
 sleep 2
-echo goodbye world | rev
-sleep 1
+echo hello world | rev
+ps
 echo hello again
+exit
 )foo");
     // We're going to close the stream so that the task will complete, otherwise
     // it will keep trying to read code.
@@ -116,3 +127,4 @@ echo hello again
 }
 
 
+#endif

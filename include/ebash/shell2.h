@@ -536,19 +536,40 @@ MiniLinux::task_type shell2(MiniLinux::Exec exev, ShellEnv shellEnv = {})
         auto args = Tokenizer2::to_vector(_current);
         _current.clear();
 
+        bool run_in_background = false;
+        (void)run_in_background;
+
+        if(args.back() == "&")
+        {
+            run_in_background = true;
+            args.erase(args.end()-1);
+        }
+        else if(args.back().back() == '&')
+        {
+            args.back().pop_back();
+            run_in_background = true;
+        }
+
         auto _task = execute_brackets(args,
                                       exev.control->mini,
                                       &shellEnv,
                                       exev.in,
                                       exev.out);
 
-        while(!_task.done())
+        if(run_in_background)
         {
-            _task.resume();
-            co_await std::suspend_always{};
+            exev.control->mini->registerProcess(std::move(_task), {});
         }
-        ret_value = _task();
-        shellEnv.env["?"] = std::to_string(ret_value);
+        else
+        {
+            while(!_task.done())
+            {
+                _task.resume();
+                co_await std::suspend_always{};
+            }
+            ret_value = _task();
+            shellEnv.env["?"] = std::to_string(ret_value);
+        }
     }
     exev << "Shell exiting\n";
     co_return 0;

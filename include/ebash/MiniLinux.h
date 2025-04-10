@@ -21,12 +21,13 @@ struct MiniLinux
     using pid_type         = uint32_t;
     using return_code_type = int32_t;
     using path_type        = std::filesystem::path;
-    using task_type        =  gul::Task_t<return_code_type, std::suspend_always, std::suspend_always>;
+    using task_type        = gul::Task_t<return_code_type, std::suspend_always, std::suspend_always>;
 
 
     struct ProcessControl
     {
-        bool sig_kill = false;
+        pid_type    pid = 0xFFFFFFFF;
+        bool   sig_kill = false;
         MiniLinux *mini = nullptr;
     };
 
@@ -149,8 +150,6 @@ struct MiniLinux
         if(it ==  m_funcs.end())
             return 0xFFFFFFFF;
 
-        uint32_t _pid = _pid_count++;
-
         auto & exec_args = args;
 
         if(!exec_args.control)
@@ -164,8 +163,6 @@ struct MiniLinux
             exec_args.in->close();
         }
 
-        exec_args.env["PID"] = std::to_string(_pid);
-
         if(m_preExec)
             m_preExec(exec_args);
 
@@ -173,8 +170,29 @@ struct MiniLinux
         // it will return a task}
         auto T = it->second(exec_args);
 
-        Process _t = { std::promise<int>(), std::move(exec_args), std::move(T)};
+        auto pid = registerProcess(std::move(T), std::move(exec_args));
+
+
+        return pid;
+    }
+
+    // register a task as a process by giving it a PID
+    // and placing it in the scheduler to be run
+    //
+    pid_type registerProcess(task_type && t, e_type arg)
+    {
+        auto _pid = _pid_count++;
+        Process _t = { std::promise<int>(), arg, std::move(t)};
+
         m_procs2.emplace(_pid, std::move(_t));
+        auto & proc = m_procs2.at(_pid);
+
+        if(!proc.exec.control)
+        {
+            proc.exec.control = std::make_shared<ProcessControl>();
+            proc.exec.control->mini = this;
+            proc.exec.control->pid  = _pid;
+        }
 
         return _pid;
     }
@@ -183,6 +201,7 @@ struct MiniLinux
     {
         return runRawCommand2(args);
     }
+
     /**
      * @brief getProcessFuture
      * @param pid
@@ -227,6 +246,7 @@ struct MiniLinux
         {
             auto exit_code = coro.task();
             coro.exec.env["?"] = std::to_string(exit_code);
+            coro.exec.control->pid = pid;
 
             if(m_postExec)
                 m_postExec(coro.exec);
@@ -388,7 +408,7 @@ protected:
             // NOTE: do not acutally use this_thread::sleep
             // this is a coroutine, so you should suspend
             // the routine
-            while(std::chrono::system_clock::now() < T1)
+            while(!args.is_sigkill() && std::chrono::system_clock::now() < T1)
             {
                 co_await std::suspend_always{};
             }
@@ -398,7 +418,7 @@ protected:
         {
             std::string output;
 
-            while(true)
+            while(!args.is_sigkill())
             {
                 while(args.in->has_data())
                 {
@@ -489,3 +509,4 @@ protected:
 
 
 #endif
+
