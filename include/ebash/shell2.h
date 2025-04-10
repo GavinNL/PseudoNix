@@ -133,20 +133,42 @@ struct ShellEnv
             }
         },
         {
+            "", // empty function
+            [](MiniLinux::e_type ex, ShellEnv * shell) -> MiniLinux::task_type
+            {
+                (void)shell;
+                (void)ex;
+                // This function will be called, if we set environment variables
+                // but didn't call an actual function, eg:
+                //     VAR=value VAR2=value2
+                for(auto & [var,val] : ex.env)
+                {
+                    shell->env[var] = val;
+                }
+                co_return 0;
+            }
+        },
+        {
             "export",
             [](MiniLinux::e_type ex, ShellEnv * shell) -> MiniLinux::task_type
             {
+                // used to export variables
                 (void)ex;
                 for(size_t i=1;i<ex.args.size();i++)
                 {
+
                     auto [var,val] = Tokenizer2::splitVar(ex.args[i]);
                     if(!var.empty() && !val.empty())
                     {
+                        // if the arg looked like: VAR=VAL
+                        // then set the variable as well as
+                        // export it
                         shell->exportedVar[std::string(var)] = true;
                         shell->env[std::string(var)] = val;
                     }
                     else
                     {
+                        // just export the variable
                         shell->exportedVar[std::string(ex.args[i])] = true;
                     }
                 }
@@ -221,22 +243,22 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
         // that are being passed directly into the
         // command: ex:  "CC=gcc make"
         //====================================================
-        for(size_t i=0;i<e.args.size();i++)
+        while(e.args.size())
         {
-            auto [var,val] = Tokenizer2::splitVar(e.args[i]);
+            auto [var,val] = Tokenizer2::splitVar(*e.args.begin());
             if(!var.empty())
             {
                 e.env[std::string(var)] = val;
+                e.args.erase(e.args.begin());
                 continue;
             }
-            e.args.erase(e.args.begin(), e.args.begin() + static_cast<ptrdiff_t>(i));
             break;
         }
-        if(auto [var,val] = Tokenizer2::splitVar(e.args.back()); !var.empty() && !val.empty())
+
+        // we set variables, but didnt call a function, eg: CC=gcc CXX=g++
+        if(e.args.empty())
         {
-            for(auto & [var1,val1] : e.env)
-                exported_environment->env[var1] = val1;
-            co_return 0;
+            e.args.push_back("");
         }
         //====================================================
 
@@ -257,7 +279,8 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
             }
             else
             {
-                *out << "--" << e.args[0] << "--: command not found.\n";
+                *out << e.args[0] << ": command not found.\n";
+                std::cout << e.args[0] << std::endl;
             }
         }
     }

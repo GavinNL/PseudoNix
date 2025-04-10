@@ -50,7 +50,7 @@ int main()
     // Add the shell function
     // this isn't added by default because it's quite a large
     // function.
-    M.m_funcs["sh"] = bl::shell2;
+    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, bl::ShellEnv{});
 
     // since we are running this application from the terminal, we need a way
     // to get the bytes from stdin and pipe it into the shell process.
@@ -120,7 +120,7 @@ int main()
 
     // We can pipe some additional shell commands into the input
     // stream so that they will be executed as soon as it starts
-    *E[1].in << R"foo(
+    *E[1].in << std::string(R"foo(
 echo "===================="
 echo "Welcome to the shell"
 echo "===================="
@@ -129,7 +129,7 @@ USER=bob
 echo Hello ${USER}. Welcome to ${SHELL}
 export USER
 export SHELL
-env;)foo";
+)foo");
 
     E[2].args = {"toCout"};
     E[2].in = E[1].out;
