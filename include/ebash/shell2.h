@@ -579,7 +579,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
             shellEnv.env["?"] = std::to_string(ret_value);
         }
     }
-    exev << "Shell exiting\n";
+
     co_return 0;
 }
 

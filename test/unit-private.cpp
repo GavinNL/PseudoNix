@@ -8,9 +8,6 @@
 using namespace bl;
 
 
-#if 1
-
-
 SCENARIO("MiniLinux: Run a single command manually")
 {
     MiniLinux M;
@@ -45,7 +42,8 @@ SCENARIO("MiniLinux: Run a single command manually")
     // Execute the command
     //=======================================================
     auto pid = M.runRawCommand(exec);
-    (void)pid;
+    REQUIRE(pid != 0);
+    REQUIRE(pid != 0xFFFFFFFF);
 
     // We dont have a scheduler, so we'll manually
     // run this until its finished
@@ -100,7 +98,8 @@ SCENARIO("MiniLinux: Run a single command manually read from input")
     //
     //=======================================================
     auto pid = M.runRawCommand(exec);
-    (void)pid;
+    REQUIRE(pid != 0);
+    REQUIRE(pid != 0xFFFFFFFF);
 
     // We dont have a scheduler, so we'll manually
     // run this until its finished
@@ -137,8 +136,8 @@ SCENARIO("MiniLinux: Execute two commands and have one piped into the other")
     // your own scheduler
     //
     //=======================================================
-    M.runRawCommand(exec[0]);
-    M.runRawCommand(exec[1]);
+    REQUIRE(0xFFFFFFFF != M.runRawCommand(exec[0]));
+    REQUIRE(0xFFFFFFFF != M.runRawCommand(exec[1]));
 
     // We now have two tasks and each task may block at anytime
     // because it's a coroutine. So we need to resume() each
@@ -174,26 +173,23 @@ SCENARIO("MiniLinux: sh")
 
     REQUIRE(sh.out->str() == "hello world\n");
 }
-#if 0
 
 
 SCENARIO("MiniLinux: sh - multicommand")
 {
     MiniLinux M;
-
+    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, ShellEnv{});
 
     MiniLinux::Exec sh;
     sh.args = {"sh"};
     sh.in  = std::make_shared<MiniLinux::stream_type>();
     sh.out = std::make_shared<MiniLinux::stream_type>();
 
-    *sh.in << "echo hello ; sleep 2.0 ; echo world";
+    *sh.in << "echo hello ; sleep 2.0 ; echo world;";
     sh.in->close();
-    auto shell_task = M.runRawCommand(sh);
-    while(!shell_task.done())
-    {
-        shell_task.resume();
-    }
+
+    REQUIRE(0xFFFFFFFF != M.runRawCommand(sh) );
+    while(M.executeAll());
 
     REQUIRE(sh.out->str() == "hello\nworld\n");
 }
@@ -201,20 +197,18 @@ SCENARIO("MiniLinux: sh - multicommand")
 SCENARIO("MiniLinux: sh - multicommand with newline")
 {
     MiniLinux M;
-
+    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, ShellEnv{});
 
     MiniLinux::Exec sh;
     sh.args = {"sh"};
     sh.in  = std::make_shared<MiniLinux::stream_type>();
     sh.out = std::make_shared<MiniLinux::stream_type>();
 
-    *sh.in << "echo hello \n sleep 2.0 \n echo world";
+    *sh.in << "echo hello \n sleep 2.0 \n echo world\n";
     sh.in->close();
-    auto shell_task = M.runRawCommand(sh);
-    while(!shell_task.done())
-    {
-        shell_task.resume();
-    }
+
+    REQUIRE(0xFFFFFFFF != M.runRawCommand(sh) );
+    while(M.executeAll());
 
     REQUIRE(sh.out->str() == "hello\nworld\n");
 }
@@ -222,27 +216,23 @@ SCENARIO("MiniLinux: sh - multicommand with newline")
 SCENARIO("MiniLinux: sh - pipe")
 {
     MiniLinux M;
-
+    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, ShellEnv{});
     THEN("We can wr")
     {
         MiniLinux::Exec sh;
         sh.args = {"sh"};
         sh.in  = std::make_shared<MiniLinux::stream_type>();
         sh.out = std::make_shared<MiniLinux::stream_type>();
-        *sh.in << "echo hello | wc && echo goodbye";
+        *sh.in << "echo hello | wc && echo goodbye;";
         sh.in->close();
-        auto shell_task = M.runRawCommand(sh);
-        while(!shell_task.done())
-        {
-            shell_task.resume();
-        }
-        REQUIRE(sh.out->str() == "6");
-        sh.out->toStream(std::cout);
-        std::cout << std::endl;
+
+        REQUIRE(0xFFFFFFFF != M.runRawCommand(sh) );
+        while(M.executeAll());
+
+        REQUIRE(sh.out->str() == "6\ngoodbye\n");
+        //sh.out->toStream(std::cout);
+        //std::cout << std::endl;
     }
 }
-#endif
-
-#endif
 
 
