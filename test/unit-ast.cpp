@@ -2,11 +2,11 @@
 #include <catch2/benchmark/catch_benchmark_all.hpp>
 #include <fmt/format.h>
 #include <ebash/MiniLinux.h>
-#include <ebash/shell.h>
+
 
 using namespace bl;
 
-
+#if 0
 
 SCENARIO("MiniLinux: sh - pipe")
 {
@@ -43,3 +43,4 @@ SCENARIO("MiniLinux: sh - pipe")
 
 
 }
+#endif

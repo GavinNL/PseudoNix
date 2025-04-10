@@ -86,8 +86,9 @@ export SHELL
     //
     // We will create the two function fromCin and toCout below
     //
-    M.m_funcs["fromCin"] = [](bl::MiniLinux::Exec exev) -> bl::MiniLinux::task_type
+    M.m_funcs["fromCin"] = [](bl::MiniLinux::e_type control) -> bl::MiniLinux::task_type
     {
+        auto & exev = *control;
         while (!exev.is_sigkill())
         {
             // std::getline blocks until data is entered, but
@@ -111,8 +112,9 @@ export SHELL
         co_return 0;
     };
 
-    M.m_funcs["toCout"] = [](bl::MiniLinux::Exec exev) -> bl::MiniLinux::task_type
+    M.m_funcs["toCout"] = [](bl::MiniLinux::e_type control) -> bl::MiniLinux::task_type
     {
+        auto & exev = *control;
         while(!exev.is_sigkill())
         {
             while (exev.in->has_data() && !exev.is_sigkill())
@@ -163,9 +165,9 @@ export SHELL
     // The functions are not executed yet
     // they are only executed when the scheduler
     // tells them to run.
-    auto pid1 = M.runRawCommand2(E[0]);
-    auto pid2 = M.runRawCommand2(E[1]);
-    auto pid3 = M.runRawCommand2(E[2]);
+    auto pid1 = M.runRawCommand(E[0]);
+    auto pid2 = M.runRawCommand(E[1]);
+    auto pid3 = M.runRawCommand(E[2]);
 
     // Run the scheduler so that it will
     // continuiously execute the coroutines

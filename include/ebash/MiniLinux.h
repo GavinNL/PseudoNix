@@ -26,35 +26,25 @@ struct MiniLinux
 
     struct ProcessControl
     {
-        pid_type    pid = 0xFFFFFFFF;
-        bool   sig_kill = false;
-        MiniLinux *mini = nullptr;
-    };
-
-    struct Exec
-    {
         std::vector<std::string>           args;
         std::shared_ptr<stream_type>       in;
         std::shared_ptr<stream_type>       out;
         std::map<std::string, std::string> env;
 
-        std::shared_ptr<ProcessControl> control;
+        pid_type    pid = 0xFFFFFFFF;
+        bool   sig_kill = false;
+        MiniLinux *mini = nullptr;
 
-        // If the process performs a lot of suspends
-        // use this to determine when to quit
-        //
-        // while(!is_sigkill())
-        // {
-        //    // do work
-        //    co_await std::suspend_always{};
-        // }
-        //
         bool is_sigkill() const
         {
-            return control->sig_kill;
+            return sig_kill;
+        }
+        pid_type get_pid() const
+        {
+            return pid;
         }
 
-        Exec& operator << (std::string_view const &ss)
+        ProcessControl& operator << (std::string_view const &ss)
         {
             if(!out)
             {
@@ -68,7 +58,7 @@ struct MiniLinux
             }
             return *this;
         }
-        Exec& operator << (char d)
+        ProcessControl& operator << (char d)
         {
             if(!out)
             {
@@ -79,9 +69,18 @@ struct MiniLinux
             out->put(d);
             return *this;
         }
+
     };
 
-    using e_type = Exec;
+    struct Exec
+    {
+        std::vector<std::string>           args;
+        std::shared_ptr<stream_type>       in;
+        std::shared_ptr<stream_type>       out;
+        std::map<std::string, std::string> env;
+    };
+
+    using e_type = std::shared_ptr<ProcessControl>;
     using function_type    = std::function< task_type(e_type)>;
 
     void clearFunction(std::string name)
@@ -143,7 +142,7 @@ struct MiniLinux
      *
      *
      */
-    pid_type runRawCommand2(e_type args)
+    pid_type runRawCommand(Exec args)
     {
         // Try to find the name of the function to run
         auto it = m_funcs.find(args.args[0]);
@@ -151,11 +150,6 @@ struct MiniLinux
             return 0xFFFFFFFF;
 
         auto & exec_args = args;
-
-        if(!exec_args.control)
-            exec_args.control = std::make_shared<ProcessControl>();
-
-        exec_args.control->mini = this;
 
         if(!exec_args.in)
         {
@@ -166,11 +160,16 @@ struct MiniLinux
         if(m_preExec)
             m_preExec(exec_args);
 
+        auto proc_control = std::make_shared<ProcessControl>();
+        proc_control->args = args.args;
+        proc_control->in   = args.in;
+        proc_control->out  = args.out;
+        proc_control->env  = args.env;
         // run the function, it is a coroutine:
         // it will return a task}
-        auto T = it->second(exec_args);
+        auto T = it->second(proc_control);
 
-        auto pid = registerProcess(std::move(T), std::move(exec_args));
+        auto pid = registerProcess(std::move(T), std::move(proc_control));
 
 
         return pid;
@@ -182,24 +181,16 @@ struct MiniLinux
     pid_type registerProcess(task_type && t, e_type arg)
     {
         auto _pid = _pid_count++;
+        if(arg == nullptr)
+            arg = std::make_shared<ProcessControl>();
+
         Process _t = { std::promise<int>(), arg, std::move(t)};
 
+        arg->pid = _pid;
+        arg->mini = this;
         m_procs2.emplace(_pid, std::move(_t));
-        auto & proc = m_procs2.at(_pid);
-
-        if(!proc.exec.control)
-        {
-            proc.exec.control = std::make_shared<ProcessControl>();
-            proc.exec.control->mini = this;
-            proc.exec.control->pid  = _pid;
-        }
 
         return _pid;
-    }
-
-    pid_type runRawCommand(e_type args)
-    {
-        return runRawCommand2(args);
     }
 
     /**
@@ -217,17 +208,39 @@ struct MiniLinux
         return m_procs2.at(pid).return_promise.get_future();
     }
 
+    /**
+     * @brief isRunning
+     * @param pid
+     * @return
+     *
+     *
+     * Checks if a specific pid is running
+     */
     bool isRunning(pid_type pid) const
     {
         return m_procs2.count(pid) != 0;
     }
-    void kill(pid_type pid) const
+
+    /**
+     * @brief kill
+     * @param pid
+     *
+     * Kill a running pid
+     */
+    bool kill(pid_type pid, bool dash_9=false)
     {
         if(isRunning(pid))
         {
-            m_procs2.at(pid).exec.control->sig_kill=true;
+            if(dash_9)
+            {
+                m_procs2.erase(pid);
+            }
+            m_procs2.at(pid).control->sig_kill=true;
+            return true;
         }
+        return false;
     }
+
     /**
      * @brief execute
      * @param pid
@@ -245,17 +258,14 @@ struct MiniLinux
         if(coro.task.done())
         {
             auto exit_code = coro.task();
-            coro.exec.env["?"] = std::to_string(exit_code);
-            coro.exec.control->pid = pid;
-
-            if(m_postExec)
-                m_postExec(coro.exec);
+            coro.control->env["?"] = std::to_string(exit_code);
+            coro.control->pid = pid;
 
             coro.return_promise.set_value(exit_code);
 
-            if(coro.exec.out)
+            if(coro.control->out)
             {
-                coro.exec.out->close();
+                coro.control->out->close();
             }
 
             return true;
@@ -263,6 +273,13 @@ struct MiniLinux
         return false;
     }
 
+    /**
+     * @brief executeAll
+     * @return
+     *
+     * Executes all the processes and returns the total
+     * number of processes still in the scheduler
+     */
     size_t executeAll()
     {
         for(auto it = m_procs2.begin(); it!=m_procs2.end();)
@@ -280,74 +297,15 @@ struct MiniLinux
         return m_procs2.size();
     }
 
-    static std::vector<std::string> cmdLineToArgs(std::string_view line)
-    {
-        std::vector<std::string> _cmds(1);
-        // convert line onto string views
-        char currentQuote = 0;
-
-        for(auto c : line)
-        {
-            if( currentQuote == 0)
-            {
-                if( c == '"')
-                {
-                    currentQuote = '"';
-                    continue;
-                }
-                if( c == '\'')
-                {
-                    currentQuote = '\'';
-                    continue;
-                }
-                if(c == ' ' && !_cmds.back().empty())
-                {
-                    _cmds.push_back({});
-                }
-                if(c != ' ')
-                {
-                    if( c == '|' )
-                    {
-                        _cmds.push_back({});
-                        _cmds.back().push_back('|');
-                        _cmds.push_back({});
-                    }
-                    else
-                    {
-                        _cmds.back().push_back(c);
-                    }
-                    //if(_cmds.back().size() && _cmds.back().back() != '|')
-                    }
-            }
-            else
-            {
-                // we are currently in a quoted string
-                if( c == currentQuote)
-                {
-                    currentQuote = 0;
-                    continue;
-                }
-                else
-                {
-                    _cmds.back().push_back(c);
-                }
-            }
-        }
-        auto dn = std::remove_if( begin(_cmds), end(_cmds), [](auto & c) { return c.empty(); });
-        _cmds.erase(dn, end(_cmds));
-        return _cmds;
-    }
-
-
     //std::function< std::future<int>(task_type&&) > m_scheduler;
-    std::function< void(e_type&) >                 m_preExec;
-    std::function< void(e_type&) >                 m_postExec;
+    std::function< void(Exec&) >                 m_preExec;
+    std::function< void(Exec&) >                 m_postExec;
 
     struct Process
     {
-        std::promise<int> return_promise;
-        e_type            exec;
-        task_type         task;
+        std::promise<int>               return_promise;
+        std::shared_ptr<ProcessControl> control;
+        task_type                       task;
     };
 
 
@@ -359,43 +317,46 @@ protected:
 
     void setDefaultFunctions()
     {
-        m_funcs["false"] = [](e_type args) -> task_type
+        m_funcs["false"] = [](e_type ctrl) -> task_type
         {
-            (void)args;
+            (void)ctrl;
             co_return 1;
         };
-        m_funcs["true"] = [](e_type args) -> task_type
+        m_funcs["true"] = [](e_type ctrl) -> task_type
         {
-            (void)args;
+            (void)ctrl;
             co_return 0;
         };
-        m_funcs["help"] = [this](e_type args) -> task_type
+        m_funcs["help"] = [this](e_type ctrl) -> task_type
         {
-            args << "List of commands:\n\n";
+            auto & arg = *ctrl;
+            arg << "List of commands:\n\n";
             for(auto & f : m_funcs)
             {
-                args << f.first << '\n';
+                arg << f.first << '\n';
             }
             co_return 0;
         };
         m_funcs["env"] = [this](e_type args) -> task_type
         {
-            for(auto & [var, val] : args.env)
+            for(auto & [var, val] : args->env)
             {
-                args << std::format("{}={}\n", var,val);
+                *args << std::format("{}={}\n", var,val);
             }
             co_return 0;
         };
-        m_funcs["echo"] = [](e_type args) -> task_type
+        m_funcs["echo"] = [](e_type ctrl) -> task_type
         {
+            auto & args = *ctrl;
             for(size_t i=1;i<args.args.size();i++)
             {
                 args << args.args[i] << (i==args.args.size()-1 ? "\n" : " ");
             }
             co_return 0;
         };
-        m_funcs["sleep"] = [](e_type args) -> task_type
+        m_funcs["sleep"] = [](e_type ctrl) -> task_type
         {
+            auto & args = *ctrl;
             std::string output;
             if(args.args.size() < 2)
                 co_return 1;
@@ -414,8 +375,9 @@ protected:
             }
             co_return 0;
         };
-        m_funcs["rev"] = [](e_type args) -> task_type
+        m_funcs["rev"] = [](e_type ctrl) -> task_type
         {
+            auto & args = *ctrl;
             std::string output;
 
             while(!args.is_sigkill())
@@ -444,8 +406,9 @@ protected:
             }
             co_return 0;
         };
-        m_funcs["wc"] = [](e_type args) -> task_type
+        m_funcs["wc"] = [](e_type ctrl) -> task_type
         {
+            auto & args = *ctrl;
             uint32_t i=0;
 
             while(true)
@@ -465,15 +428,16 @@ protected:
             //std::cout << std::to_string(i);
             co_return 0;
         };
-        m_funcs["ps"] = [](e_type args) -> task_type
+        m_funcs["ps"] = [](e_type ctrl) -> task_type
         {
-            auto & M = *args.control->mini;
+            auto & args = *ctrl;
+            auto & M = *args.mini;
 
             args << std::format("PID   CMD\n");
             for(auto & [pid, P] : M.m_procs2)
             {
                 std::string cmd;
-                for(auto & c : P.exec.args)
+                for(auto & c : P.control->args)
                     cmd += c + " ";
                 args << std::format("{}     {}\n", pid, cmd);
             }
@@ -481,8 +445,9 @@ protected:
             //std::cout << std::to_string(i);
             co_return 0;
         };
-        m_funcs["kill"] = [](e_type args) -> task_type
+        m_funcs["kill"] = [](e_type ctrl) -> task_type
         {
+            auto & args = *ctrl;
             if(args.args.size() < 2)
                 co_return 1;
 
@@ -490,14 +455,12 @@ protected:
             auto [ptr, ec] = std::from_chars(args.args[1].data(), args.args[1].data() + args.args[1].size(), pid);
             (void)ec;
             (void)ptr;
-            auto & M = *args.control->mini;
-            auto it = M.m_procs2.find(pid);
-            if(it != M.m_procs2.end())
+            auto & M = *args.mini;
+            if(!M.kill(pid))
             {
-                it->second.exec.control->sig_kill = true;
+                args << std::format("Could not find process ID: {}\n", pid);
                 co_return 0;
             }
-            args << std::format("Could not find process ID: {}\n", pid);
             co_return 1;
         };
     }

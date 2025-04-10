@@ -59,9 +59,10 @@ struct Tokenizer
         while(pos < input.size())
         {
             char c = input[pos];
+            bool is_quoted = false;
 
             auto sub = input.substr(pos, 2);
-            if (sub == "&&" || sub == "||") {
+            if (!is_quoted && (sub == "&&" || sub == "||")) {
                 pos += 2;
                 if (!current.empty()) {
                     auto s = std::move(current);
@@ -76,6 +77,8 @@ struct Tokenizer
                 }
                 else
                 {
+                    if(c == '"' && !is_quoted)
+                        is_quoted = !is_quoted;
                     current += c;
                 }
                 ++pos;
@@ -166,6 +169,42 @@ void splitSpace(std::string_view str, callable_t && c)
     if(!out.empty())
         c(out);
 }
+
+template<typename predicate_t>
+auto quotedSplit(std::string_view str, predicate_t && p)
+{
+    bool quoted = false;
+
+    std::vector<std::string> out(1);
+    for(size_t i=0; i<str.size(); i++)
+    {
+        if(quoted && str[i] != '"')
+        {
+            out.back() += str[i];
+        }
+        else
+        {
+            if(str[i] == '"')
+            {
+                quoted = !quoted;
+            }
+            else
+            {
+                auto skip_count = p(str.substr(i));
+                if( skip_count )
+                {
+                    out.push_back({});
+                }
+                else
+                {
+                    out.back() += str[i];
+                }
+            }
+        }
+    }
+    return out;
+}
+
 
 std::pair<std::string_view, std::string_view> splitVar(std::string_view var_def)
 {
@@ -406,27 +445,37 @@ auto ast_execute(std::shared_ptr<bl::AstNode> node, auto & L, auto env, auto _in
 };
 
 
+/**
+ * @brief var_sub
+ * @param str
+ * @param env
+ * @return
+ *
+ * Given a string that contains ${VARNAME} or $VARNAME, and the env map, substitue
+ * the appropriate variables and return a new string.
+ */
 std::string var_sub(std::string_view str, std::map<std::string,std::string> const & env)
 {
     (void)env;
     std::string outstr;
+
     for(size_t i=0;i<str.size();i++)
     {
-        if(str[i] == '}')
+        if(str[i] == '$')
         {
             std::string var_name;
-            while(outstr.back() != '{')
+            for(i=i+1; i<str.size(); i++)
             {
-                var_name += outstr.back();
-                outstr.pop_back();
+                if(str[i] == '}' || std::isspace(str[i]))
+                {
+                    break;
+                }
+                var_name += str[i];
             }
-            std::reverse(var_name.begin(), var_name.end());
-
-            outstr.pop_back();
-            outstr.pop_back();
-            auto it = env.find(var_name);
+            auto it = env.find((var_name.size() && var_name.front() == '{') ? var_name.substr(1) : var_name);
             if(it != env.end())
                 outstr += it->second;
+
         }
         else
         {
@@ -453,14 +502,14 @@ std::string var_sub(std::string_view str, std::map<std::string,std::string> cons
  * It takes a
  *
  */
-MiniLinux::task_type shell(MiniLinux::Exec exev)
+MiniLinux::task_type shell(MiniLinux::e_type control)
 {
     std::string _current;
     static int count = 0;
     count++;
 
     int shell_number = count;
-
+    auto & exev = *control;
 
     exev << "-------------------------\n";
     exev << std::format("Welcome to shell: {}\n",shell_number);
@@ -515,6 +564,98 @@ MiniLinux::task_type shell(MiniLinux::Exec exev)
             continue;
         }
 
+        std::cout << "cmd: " << new_command << std::endl;
+
+        auto vv = bl::quotedSplit(new_command, [](std::string_view str)
+                                  {
+                                      if(str.substr(0,2) == "&&")
+                                          return 2;
+                                      if(str.substr(0,2) == "||")
+                                          return 2;
+                                      return 0;
+                                  });
+
+        int _retval = 0;
+        std::vector<MiniLinux::Exec> E;
+        bool bad_command = false;
+        for(auto & sub_command : vv)
+        {
+            if(sub_command.front() == '&')
+            {
+                if(_retval == 0)
+                    E = parse_command_line(sub_command.substr(1), exev.in, exev.out);
+                else
+                {
+                    E.clear();
+                    continue;
+                }
+            }
+            else if(sub_command.front() == '|')
+            {
+                if(_retval != 0)
+                    E = parse_command_line(sub_command.substr(1), exev.in, exev.out);
+                else
+                {
+                    E.clear();
+                    continue;
+                }
+            }
+            else
+            {
+                E = parse_command_line(sub_command, exev.in, exev.out);
+            }
+
+            std::vector< std::future<int> > _futures;
+            for(auto & e : E)
+            {
+                if(e.args[0] == "exit")
+                    co_return 0;
+
+                auto pid = exev.control->mini->runRawCommand2(e);
+                if(pid == 0xFFFFFFFF)
+                {
+                    bad_command = true;
+                    break;
+                }
+                _futures.push_back(exev.control->mini->getProcessFuture(pid));
+            }
+            if(bad_command) break;
+
+            co_await std::suspend_always{};
+            while(true)
+            {
+                size_t futures_finished_count = 0;
+                for(size_t i=0;i<_futures.size();i++)
+                {
+                    auto & f = _futures[i];
+
+                    if(f.valid())
+                    {
+                        if(f.wait_for(std::chrono::seconds(0))==std::future_status::ready)
+                        {
+                            ++futures_finished_count;
+                            _retval = f.get();
+                            if(E[i].out && i!=_futures.size()-1)
+                                E[i].out->close();
+                        }
+                    }
+                    else
+                    {
+                        futures_finished_count++;
+                    }
+                }
+                if(futures_finished_count == _futures.size())
+                {
+                    break;
+                }
+                else
+                {
+                    co_await std::suspend_always{};
+                }
+            }
+        }
+
+#if 0
         auto top = generateTree(new_command);
 
         if(top->value == "exit")
@@ -535,7 +676,7 @@ MiniLinux::task_type shell(MiniLinux::Exec exev)
             }
             exev << std::format("{}", exev.env["PROMPT"]);
         }
-
+#endif
         //std::cout << "\n" << shell_number << "> " << std::flush;
         _current.clear();
     }

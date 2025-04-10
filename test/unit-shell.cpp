@@ -115,7 +115,7 @@ exit
 
     // Finally execute the command and get the PID
     // The command does not do any processing until execute() is called
-    auto pid = M.runRawCommand2(E);
+    auto pid = M.runRawCommand(E);
     REQUIRE(pid == 1);
 
     // run an infinate loop

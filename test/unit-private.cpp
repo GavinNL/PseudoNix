@@ -19,8 +19,8 @@ SCENARIO("MiniLinux: Run a single command manually")
     M.m_funcs.clear();
 
     // add our command manually
-    M.m_funcs["echo"] = [](MiniLinux::Exec args) -> MiniLinux::task_type {
-        (void) args;
+    M.m_funcs["echo"] = [](MiniLinux::e_type control) -> MiniLinux::task_type {
+        auto & args = *control;
         for (size_t i = 1; i < args.args.size(); i++) {
             *args.out << args.args[i] + (i == args.args.size() - 1 ? "" : " ");
         }
@@ -44,7 +44,7 @@ SCENARIO("MiniLinux: Run a single command manually")
     //=======================================================
     // Execute the command
     //=======================================================
-    auto pid = M.runRawCommand2(exec);
+    auto pid = M.runRawCommand(exec);
     (void)pid;
 
     // We dont have a scheduler, so we'll manually
@@ -62,7 +62,8 @@ SCENARIO("MiniLinux: Run a single command manually read from input")
     M.m_funcs.clear();
 
     // add our command manually
-    M.m_funcs["echo_from_input"] = [](MiniLinux::Exec args) -> MiniLinux::task_type {
+    M.m_funcs["echo_from_input"] = [](MiniLinux::e_type control) -> MiniLinux::task_type {
+        auto & args = *control;
         while (true)
         {
             if (args.in->eof())
@@ -98,7 +99,7 @@ SCENARIO("MiniLinux: Run a single command manually read from input")
     // your own scheduler
     //
     //=======================================================
-    auto pid = M.runRawCommand2(exec);
+    auto pid = M.runRawCommand(exec);
     (void)pid;
 
     // We dont have a scheduler, so we'll manually
@@ -136,8 +137,8 @@ SCENARIO("MiniLinux: Execute two commands and have one piped into the other")
     // your own scheduler
     //
     //=======================================================
-    M.runRawCommand2(exec[0]);
-    M.runRawCommand2(exec[1]);
+    M.runRawCommand(exec[0]);
+    M.runRawCommand(exec[1]);
 
     // We now have two tasks and each task may block at anytime
     // because it's a coroutine. So we need to resume() each

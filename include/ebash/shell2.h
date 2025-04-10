@@ -142,7 +142,7 @@ struct ShellEnv
                 // This function will be called, if we set environment variables
                 // but didn't call an actual function, eg:
                 //     VAR=value VAR2=value2
-                for(auto & [var,val] : ex.env)
+                for(auto & [var,val] : ex->env)
                 {
                     shell->env[var] = val;
                 }
@@ -155,10 +155,10 @@ struct ShellEnv
             {
                 // used to export variables
                 (void)ex;
-                for(size_t i=1;i<ex.args.size();i++)
+                for(size_t i=1;i<ex->args.size();i++)
                 {
 
-                    auto [var,val] = Tokenizer2::splitVar(ex.args[i]);
+                    auto [var,val] = Tokenizer2::splitVar(ex->args[i]);
                     if(!var.empty() && !val.empty())
                     {
                         // if the arg looked like: VAR=VAL
@@ -170,7 +170,7 @@ struct ShellEnv
                     else
                     {
                         // just export the variable
-                        shell->exportedVar[std::string(ex.args[i])] = true;
+                        shell->exportedVar[std::string(ex->args[i])] = true;
                     }
                 }
                 co_return 0;
@@ -260,11 +260,17 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
         auto it = exported_environment->shellFuncs.find(e.args[0]);
         if(it!=exported_environment->shellFuncs.end())
         {
-            _shellTasks.push_back(it->second(e, exported_environment));
+            auto control = std::make_shared<MiniLinux::ProcessControl>();
+            control->mini = mini;
+            control->in = e.in;
+            control->out = e.out;
+            control->env = e.env;
+
+            _shellTasks.push_back(it->second(control, exported_environment));
         }
         else
         {
-            auto pid = mini->runRawCommand2(e);
+            auto pid = mini->runRawCommand(e);
 
             if(pid != 0xFFFFFFFF)
             {
@@ -495,12 +501,14 @@ std::string var_sub1(std::string_view str, std::map<std::string,std::string> con
 }
 
 
-MiniLinux::task_type shell2(MiniLinux::Exec exev, ShellEnv shellEnv = {})
+MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
 {
     std::string _current;
     //static int count = 0;
     //count++;
     int ret_value = 0;
+
+    auto & exev = *control;
 
     // Copy the rc_text into the
     // the input stream so that
@@ -551,14 +559,14 @@ MiniLinux::task_type shell2(MiniLinux::Exec exev, ShellEnv shellEnv = {})
         }
 
         auto _task = execute_brackets(args,
-                                      exev.control->mini,
+                                      exev.mini,
                                       &shellEnv,
                                       exev.in,
                                       exev.out);
 
         if(run_in_background)
         {
-            exev.control->mini->registerProcess(std::move(_task), {});
+            exev.mini->registerProcess(std::move(_task), std::make_shared<MiniLinux::ProcessControl>());
         }
         else
         {
