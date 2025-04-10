@@ -158,7 +158,7 @@ SCENARIO("MiniLinux: Execute two commands and have one piped into the other")
 SCENARIO("MiniLinux: sh")
 {
     MiniLinux M;
-    M.m_funcs["sh"] = bl::shell2;
+    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, ShellEnv{});
 
     MiniLinux::Exec sh;
     sh.args = {"sh"};

@@ -83,7 +83,7 @@ SCENARIO("test shell")
 {
     MiniLinux M;
 
-    M.m_funcs["sh"] = bl::shell2;
+    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, ShellEnv{});
 
 
     MiniLinux::Exec E;

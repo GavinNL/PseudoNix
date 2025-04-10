@@ -114,6 +114,7 @@ struct Tokenizer2
 
 struct ShellEnv
 {
+    std::string                        rc_text;
     std::map<std::string, bool>        exportedVar;
     std::map<std::string, std::string> env;
     bool exitShell = false;
@@ -178,14 +179,6 @@ struct ShellEnv
     };
 };
 
-//MiniLinux::task_type execute(std::vector<std::string> tokens,
-//                             MiniLinux* mini,
-//                             ShellEnv * exported_environment,
-//                             std::shared_ptr<MiniLinux::stream_type> in={},
-//                             std::shared_ptr<MiniLinux::stream_type> out={})
-//{
-//
-//}
 
 MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
                              MiniLinux* mini,
@@ -501,17 +494,25 @@ std::string var_sub1(std::string_view str, std::map<std::string,std::string> con
     return outstr;
 }
 
-MiniLinux::task_type shell2(MiniLinux::Exec exev)
+
+MiniLinux::task_type shell2(MiniLinux::Exec exev, ShellEnv shellEnv = {})
 {
     std::string _current;
     //static int count = 0;
     //count++;
     int ret_value = 0;
 
-    //int shell_number = count;
+    // Copy the rc_text into the
+    // the input stream so that
+    // it will be executed first
+    *exev.in << shellEnv.rc_text;
 
-    ShellEnv shellEnv;
-    shellEnv.env = exev.env;
+    // Copy the additional environment variables
+    // into our workinv variables
+    for(auto & [var, val] : exev.env)
+    {
+        shellEnv.env[var] = val;
+    }
 
     while(!shellEnv.exitShell && !exev.is_sigkill() && !exev.in->eof())
     {
@@ -551,8 +552,8 @@ MiniLinux::task_type shell2(MiniLinux::Exec exev)
     }
     exev << "Shell exiting\n";
     co_return 0;
-
 }
+
 
 }
 
