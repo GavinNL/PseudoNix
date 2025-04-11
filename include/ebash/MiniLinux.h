@@ -381,6 +381,14 @@ struct MiniLinux
         return false;
     }
 
+    std::pair<std::shared_ptr<stream_type>, std::shared_ptr<stream_type>> getIO(pid_type pid)
+    {
+        if(isRunning(pid))
+        {
+            return {m_procs2.at(pid).control->in, m_procs2.at(pid).control->out};
+        }
+        return {};
+    }
     /**
      * @brief execute
      * @param pid

@@ -507,9 +507,10 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
         if(exev.in->eof()) break;
         if(shellEnv.exitShell) break;
 
-        while(!exev.has_data() && !exev.is_sigkill())
+        while(!exev.has_data())
         {
             co_await std::suspend_always{};
+            if(exev.is_sigkill()) co_return 0;
         }
 
 
@@ -561,11 +562,11 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
 
                 _task.resume();
                 *exev.out << *stdout;
+
                 co_await std::suspend_always{};
             }
 
-            // reset the sigkill
-            exev.sig_kill = false;
+
 
             ret_value = _task();
             shellEnv.env["?"] = std::to_string(ret_value);
