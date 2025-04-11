@@ -513,7 +513,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
             if(exev.is_sigkill()) co_return 0;
         }
 
-
         auto c = exev.get();
         _current += c;
         if(c != ';' && c != '\n')

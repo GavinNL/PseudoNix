@@ -10,6 +10,8 @@
 #include "ReaderWriterStream.h"
 #include "task.h"
 
+#include  <sys/ioctl.h>
+
 namespace bl
 {
 
@@ -615,6 +617,90 @@ protected:
                 co_return 0;
             }
             co_return 1;
+        };
+        m_funcs["launcher"] = [](bl::MiniLinux::e_type control) -> bl::MiniLinux::task_type
+        {
+            // This is launcher process.
+            // You don't need to use this if you are building a GUI application
+            // but if you are building a commandline app, then you'll need a way
+            // to read stdin and direct it to to the sh process
+            //
+            auto & exev = *control;
+
+            static auto count = 0;
+            if(count != 0)
+            {
+                *exev.out << "Only one instance of fromCin can exist\n";
+                co_return 1;
+            }
+
+            count++;
+
+            if(exev.args.size() < 2)
+            {
+                std::cout << "Requires a command to be called\\nn";
+                std::cout << "   launcher sh";
+                co_return 1;
+            }
+
+            // Execute a raw command
+            auto sh_pid = control->mini->runRawCommand(bl::MiniLinux::parseArguments({exev.args[1]}));
+            if(sh_pid == 0xFFFFFFFF)
+            {
+                std::cout << "Invalid Command: " << exev.args[1] << "\n";
+                co_return 1;
+            }
+
+            // Get the input and output streams for the
+            // shell process
+            auto [c_in, c_out] = control->mini->getIO(sh_pid);
+
+            char buffer[1024];
+
+            while (!exev.is_sigkill())
+            {
+                // std::getline blocks until data is entered, but
+                // we dont want to do that because this will block our entire
+                // process
+                // we want to check if bytes are available and then
+                // read them in, if no bytes are there, we should suspend the
+                // coroutine
+                int bytes = 0;
+                // check if there are any bytes in stdin
+                if (ioctl(STDIN_FILENO, FIONREAD, &bytes) == -1) {
+                    co_return 1;
+                }
+
+                // Read all the bytes from standard input
+                while(bytes > 0)
+                {
+                    int bytes_to_read = std::min(bytes, 1023);
+                    std::cin.read(buffer, bytes_to_read);
+
+                    // and pipe them into the
+                    // output stream
+                    for(int i=0;i<bytes_to_read;i++)
+                        c_in->put(buffer[i]);
+
+                    if (ioctl(STDIN_FILENO, FIONREAD, &bytes) == -1) {
+                        co_return 1;
+                    }
+                }
+
+                // If there are any bytes in the output stream of
+                // sh, read them and write them to std::cout
+                while(c_out->has_data())
+                    std::cout.put( c_out->get());
+
+                // Check if the sh function is still running
+                // if not, quit.
+                if(!control->mini->isRunning(sh_pid))
+                    co_return 0;
+
+                co_await std::suspend_always{};
+            }
+            count--;
+            co_return 0;
         };
     }
 
