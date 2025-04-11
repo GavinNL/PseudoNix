@@ -27,9 +27,7 @@ public:
 
     bool eof() const
     {
-        if(has_data())
-            return false;
-        return _closed;
+        return !has_data() && _closed;
     }
 
     void close()
@@ -46,6 +44,9 @@ public:
 
     void put(T c)
     {
+//        if(!_closed)
+//        {
+//        }
         data.enqueue(c);
     }
 
@@ -77,7 +78,7 @@ public:
     {
         while(ss.has_data())
         {
-            data.enqueue(ss.get());
+            put(ss.get());
         }
         return *this;
     }
@@ -88,7 +89,7 @@ public:
     {
         for(auto i : ss)
         {
-            data.enqueue(i);
+            put(i);
         }
         return *this;
     }
@@ -119,22 +120,6 @@ public:
         }
         return s;
     }
-
-    //void fromStream(std::istream & out)
-    //{
-    //    char c;
-    //    while(out.eof())
-    //    {
-    //        out.get(&c,1);
-    //        put(c);
-    //    }
-    //}
-    //void toStream(std::ostream & out)
-    //{
-    //    while(has_data()){
-    //        out << get();
-    //    }
-    //}
 };
 
 using ReaderWriterStream = ReaderWriterStream_t<char>;

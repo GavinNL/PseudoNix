@@ -118,17 +118,53 @@ struct MiniLinux
         }
     };
 
+    static Exec parseArguments(std::vector<std::string> args)
+    {
+        Exec e;
+        e.args = args;
+        // cycle through the arguments and search for the first
+        // element that does not have the following pattern:
+        //
+        // VARNAME=VARVALUE
+        //
+        // As the patterns are found, remove them and place
+        // them in the environment map
+        auto it = std::find_if(e.args.begin(), e.args.end(), [&e](auto & arg)
+                                    {
+                                        auto [var,val] = splitVar(arg);
+                                        if(!var.empty())
+                                        {
+                                            e.env[std::string(var)] = val;
+                                            return false;
+                                        }
+                                        return true;
+        });
+        e.args.erase(e.args.begin(), it);
+
+        return e;
+    }
+
+    /**
+     * @brief genPipeline
+     * @param array_of_args
+     * @return
+     *
+     * Given a vector of argument lists, generte a vector of exec objects
+     * where one cmd is piped into the next
+     *
+     */
     static std::vector<Exec> genPipeline( std::vector<std::vector<std::string> > array_of_args)
     {
-        std::vector<Exec> out(array_of_args.size());
-        for(size_t i=0;i<out.size();i++)
+        std::vector<Exec> out;
+
+        for(size_t i=0;i<array_of_args.size();i++)
         {
-            out[i].args = array_of_args[i];
-            out[i].in   = make_stream();
+            out.push_back(parseArguments(array_of_args[i]));
+            out.back().out = make_stream();
         }
-        for(size_t i=0;i<out.size()-1;i++)
+        for(size_t i=1;i<out.size();i++)
         {
-            out[i].out   = out[i+1].in;
+            out[i].in = out[i-1].out;
         }
         return out;
     }
@@ -145,6 +181,16 @@ struct MiniLinux
         m_funcs[name] = _f;
     }
 
+
+    static std::pair<std::string_view, std::string_view> splitVar(std::string_view var_def)
+    {
+        auto i = var_def.find_first_of('=');
+        if(i!=std::string::npos)
+        {
+            return {{&var_def[0],i}, {&var_def[i+1], var_def.size()-i-1}};
+        }
+        return {};
+    };
 
     static std::shared_ptr<stream_type> make_stream(std::string const& initial_data="")
     {
@@ -207,11 +253,14 @@ struct MiniLinux
         if(!exec_args.in)
         {
             exec_args.in = make_stream();
-            exec_args.in->close();
+            //exec_args.in->close();
         }
 
         if(m_preExec)
             m_preExec(exec_args);
+
+        if(!args.out) args.out = make_stream();
+        if(!args.in) args.in = make_stream();
 
         auto proc_control = std::make_shared<ProcessControl>();
         proc_control->args = args.args;
@@ -219,14 +268,12 @@ struct MiniLinux
         proc_control->out  = args.out;
         proc_control->env  = args.env;
 
-        assert(args.out);
-        assert(args.in);
+
         // run the function, it is a coroutine:
         // it will return a task}
         auto T = it->second(proc_control);
 
         auto pid = registerProcess(std::move(T), std::move(proc_control));
-
 
         return pid;
     }
@@ -249,6 +296,42 @@ struct MiniLinux
         return _pid;
     }
 
+
+    std::vector<pid_type> runPipeline(std::vector<Exec> E)
+    {
+        if(!E.front().in)
+            E.front().in = make_stream();
+        if(!E.back().out)
+            E.back().out = make_stream();
+
+        for(size_t i=0;i<E.size()-1;i++)
+        {
+            assert(E[i].out == E[i+1].in);
+        }
+
+        std::vector<pid_type> out;
+        for(auto & e  : E)
+        {
+            out.push_back(runRawCommand(e));
+        }
+        return out;
+    }
+
+    /**
+     * @brief setStdIn
+     * @param pid
+     * @param stream
+     * @return
+     *
+     * Sets the standard input of a PID to a specific stream
+     */
+    bool setStdIn(pid_type pid, std::shared_ptr<stream_type> stream)
+    {
+        auto it = m_procs2.find(pid);
+        if(it == m_procs2.end()) return false;
+        it->second.control->in = stream;
+        return true;
+    }
 
     /**
      * @brief getProcessFuture
@@ -322,6 +405,7 @@ struct MiniLinux
 
             if(coro.control->out)
             {
+                //std::cout << "Total User Count: " << coro.control->out.use_count() << std::endl;
                 coro.control->out->close();
             }
 
@@ -365,7 +449,10 @@ struct MiniLinux
         task_type                       task;
     };
 
-
+    std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)
+    {
+        return m_procs2.at(pid).control;
+    }
     std::map<std::string, std::function< task_type(e_type) >> m_funcs;
 protected:
 
@@ -463,6 +550,7 @@ protected:
             }
             co_return 0;
         };
+
         m_funcs["wc"] = [](e_type ctrl) -> task_type
         {
             auto & args = *ctrl;
@@ -475,7 +563,10 @@ protected:
                     args.get();
                     ++i;
                 }
-                co_await std::suspend_always{};
+                if(args.eof())
+                    break;
+                else
+                    co_await std::suspend_always{};
             }
 
             args << std::to_string(i) << '\n';

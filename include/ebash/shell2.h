@@ -111,6 +111,8 @@ struct Tokenizer2
 
 };
 
+struct ShellEnv;
+inline std::map<uint32_t, ShellEnv*> _shells;
 
 struct ShellEnv
 {
@@ -118,76 +120,77 @@ struct ShellEnv
     std::map<std::string, bool>        exportedVar;
     std::map<std::string, std::string> env;
     bool                               exitShell = false;
+    MiniLinux::pid_type                shellPID = 0;
 
-    // Shell tasks are similar to the normal functions
-    // but they are only executed inside the "sh" function
-    //
-    // They do not sure up under the process list
-    std::map<std::string, std::function<MiniLinux::task_type(MiniLinux::e_type, ShellEnv*) >  > shellFuncs = {
-        {
-            "exit",
-            [](MiniLinux::e_type ex, ShellEnv * shell) -> MiniLinux::task_type
+
+    static void setFuncs(MiniLinux * L)
+    {
+        #define _GET_SHELL \
+                MiniLinux::pid_type shell_pid = static_cast<MiniLinux::pid_type>(std::stoul(ex->env["SHELL_PID"]));\
+                    auto *shell = _shells[shell_pid];\
+                    if(!shell)\
+                    co_return 0;\
+
+        auto & f = L->m_funcs;
+
+        f["exit"] = [](MiniLinux::e_type ex) -> MiniLinux::task_type
             {
-                (void)ex;
+                _GET_SHELL
+
                 shell->exitShell = true;
                 co_return 0;
-            }
-        },
+        };
+        f[""] = [](MiniLinux::e_type ex) -> MiniLinux::task_type
         {
-            "", // empty function
-            [](MiniLinux::e_type ex, ShellEnv * shell) -> MiniLinux::task_type
+            _GET_SHELL
+            (void)ex;
+            // This function will be called, if we set environment variables
+            // but didn't call an actual function, eg:
+            //     VAR=value VAR2=value2
+            for(auto & [var,val] : ex->env)
             {
-                (void)shell;
-                (void)ex;
-                // This function will be called, if we set environment variables
-                // but didn't call an actual function, eg:
-                //     VAR=value VAR2=value2
-                for(auto & [var,val] : ex->env)
-                {
-                    shell->env[var] = val;
-                }
-                co_return 0;
+                shell->env[var] = val;
             }
-        },
+            co_return 0;
+        };
+        f["export"] = [](MiniLinux::e_type ex) -> MiniLinux::task_type
         {
-            "export",
-            [](MiniLinux::e_type ex, ShellEnv * shell) -> MiniLinux::task_type
+            _GET_SHELL
+
+            // used to export variables
+            for(size_t i=1;i<ex->args.size();i++)
             {
-                // used to export variables
-                for(size_t i=1;i<ex->args.size();i++)
+                auto [var,val] = Tokenizer2::splitVar(ex->args[i]);
+                if(!var.empty() && !val.empty())
                 {
-                    auto [var,val] = Tokenizer2::splitVar(ex->args[i]);
-                    if(!var.empty() && !val.empty())
-                    {
-                        // if the arg looked like: VAR=VAL
-                        // then set the variable as well as
-                        // export it
-                        shell->exportedVar[std::string(var)] = true;
-                        shell->env[std::string(var)] = val;
-                    }
-                    else
-                    {
-                        // just export the variable
-                        shell->exportedVar[std::string(ex->args[i])] = true;
-                    }
+                    // if the arg looked like: VAR=VAL
+                    // then set the variable as well as
+                    // export it
+                    shell->exportedVar[std::string(var)] = true;
+                    shell->env[std::string(var)] = val;
                 }
-                co_return 0;
+                else
+                {
+                    // just export the variable
+                    shell->exportedVar[std::string(ex->args[i])] = true;
+                }
             }
-        },
+            co_return 0;
+        };
+
+        f["exported"] = [](MiniLinux::e_type ex) -> MiniLinux::task_type
         {
-            "exported",
-            [](MiniLinux::e_type ex, ShellEnv * shell) -> MiniLinux::task_type
+            _GET_SHELL
+            // used to export variables
+            (void)ex;
+            for(auto & x : shell->exportedVar)
             {
-                // used to export variables
-                (void)ex;
-                for(auto & x : shell->exportedVar)
-                {
-                    *ex->out << x.first << '\n';
-                }
-                co_return 0;
+                *ex->out << x.first << '\n';
             }
-        }
-    };
+            co_return 0;
+        };
+
+    }
 };
 
 
@@ -202,64 +205,45 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
     auto first = tokens.begin();
     auto last = std::find(first, tokens.end(), "|");
 
-    std::vector<MiniLinux::Exec> E(1);
+    std::vector<std::vector<std::string>> list_of_args;
 
     while(last != tokens.end())
     {
-        E.back().args = std::vector(first, last);
-        E.back().in   = nullptr;
-        E.back().out  = nullptr;
-
+        list_of_args.push_back(std::vector(first, last));
         first = last+1;
         last = std::find(first, tokens.end(), "|");
-        E.push_back({});
     }
-    E.back().args = std::vector(first, last);
+    list_of_args.push_back(std::vector(first, last));
 
 
+    auto E = MiniLinux::genPipeline(list_of_args);
     E.front().in = in;
     E.back().out = out;
 
-    for(size_t i=1;i<E.size();i++)
-    {
-        E[i-1].out = MiniLinux::make_stream();
-        E[i].in = E[i-1].out;
-    }
-
-    std::vector<std::future<int>> _futures;
-
-    std::map<std::string, std::string> env;
+    // Copy all the exported varaibles to
+    // each of the processes we're going to be running
     for(auto & [name, exp] : exported_environment->exportedVar)
     {
         if(exported_environment->env.count(name))
-            env[name] = exported_environment->env[name];
+        {
+            for(auto & e : E)
+                e.env[name] = exported_environment->env[name];
+        }
     }
 
-    std::vector<MiniLinux::task_type> _shellTasks;
+
+    std::vector<std::future<int>> _futures;
+
     for(auto & e : E)
     {
-        // copy the default exported variables
-        e.env = env;
-
-
-        //====================================================
-        // Find all the environment variables
-        // that are being passed directly into the
-        // command: ex:  "CC=gcc make"
-        //====================================================
-        while(e.args.size())
-        {
-            auto [var,val] = Tokenizer2::splitVar(*e.args.begin());
-            if(!var.empty())
-            {
-                e.env[std::string(var)] = val;
-                e.args.erase(e.args.begin());
-                continue;
-            }
-            break;
-        }
+        // Copy the SHELL_PID value so that
+        // calling functions can know which shell its running under
+        e.env["SHELL_PID"] = std::to_string(exported_environment->shellPID);
 
         // we set variables, but didnt call a function, eg: CC=gcc CXX=g++
+        //
+        // We can use this to set environment variables for the shell
+        //
         if(e.args.empty())
         {
             e.args.push_back("");
@@ -268,19 +252,6 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
 
         // Try to find the shell function first
         // to see if it exists
-        auto it = exported_environment->shellFuncs.find(e.args[0]);
-        if(it != exported_environment->shellFuncs.end())
-        {
-            auto control = std::make_shared<MiniLinux::ProcessControl>();
-            control->mini = mini;
-            control->in = e.in;
-            control->out = e.out;
-            control->env = e.env;
-            control->args = e.args;
-
-            _shellTasks.push_back(it->second(control, exported_environment));
-        }
-        else
         {
             auto pid = mini->runRawCommand(e);
 
@@ -300,25 +271,12 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
     {
         size_t count=0;
 
-        // wait for all shell tasks as well
-        for(auto & _t : _shellTasks)
-        {
-            if(!_t.done())
-            {
-                _t.resume();
-                continue;
-            }
-            else
-            {
-                ++count;
-            }
-        }
         for(auto & f : _futures)
         {
             count += f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
         }
 
-        if(count != _futures.size() + _shellTasks.size())
+        if(count != _futures.size() )
         {
             co_await std::suspend_always{};
             continue;
@@ -522,6 +480,8 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
 
     auto & exev = *control;
 
+
+    ShellEnv::setFuncs(control->mini);
     // Copy the rc_text into the
     // the input stream so that
     // it will be executed first
@@ -533,14 +493,19 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
     {
         shellEnv.env[var] = val;
     }
+    shellEnv.shellPID = control->get_pid();
+    assert(shellEnv.shellPID != 0xFFFFFFFF);
 
-    while(!shellEnv.exitShell && !exev.is_sigkill() && !exev.in->eof())
+    _shells[shellEnv.shellPID] = &shellEnv;
+
+    while(!exev.is_sigkill() && !exev.in->eof() && !shellEnv.exitShell)
     {
-        while(!exev.in->has_data() && !exev.is_sigkill())
+        while(!exev.has_data() && !exev.is_sigkill())
         {
             co_await std::suspend_always{};
         }
-        auto c = exev.in->get();
+
+        auto c = exev.get();
         _current += c;
         if(c != ';' && c != '\n')
         {
@@ -551,13 +516,10 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
         if(_current.empty())
             continue;
 
-
-        _current = var_sub1(_current, shellEnv.env);
-        auto args = Tokenizer2::to_vector(_current);
+        auto args = Tokenizer2::to_vector(var_sub1(_current, shellEnv.env));
         _current.clear();
 
         bool run_in_background = false;
-        (void)run_in_background;
 
         if(args.back() == "&")
         {
@@ -570,11 +532,12 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
             run_in_background = true;
         }
 
+        auto stdout = MiniLinux::make_stream();
         auto _task = execute_brackets(args,
                                       exev.mini,
                                       &shellEnv,
                                       exev.in,
-                                      exev.out);
+                                      stdout);
 
         if(run_in_background)
         {
@@ -585,6 +548,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
             while(!_task.done())
             {
                 _task.resume();
+                *exev.out << *stdout;
                 co_await std::suspend_always{};
             }
             ret_value = _task();

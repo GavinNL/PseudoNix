@@ -150,6 +150,30 @@ export HOME
     };
 
 
+#define USE_PIPELINE
+#if defined USE_PIPELINE
+    auto pipeline = MiniLinux::genPipeline({
+        {{"fromCin"}},
+        {{"sh"}},
+        {{"toCout"}},
+    });
+    auto pids = M.runPipeline(pipeline);
+    while(M.executeAll())
+    {
+        // since we are actually running the "sh" function, we can technically
+        // kill our own process using "ps" and "kill"
+        //
+        // We want to make sure that if any of the processes get killed
+        // we kill all three of them.
+        if(std::any_of(pids.begin(), pids.end(), [&](auto && p) { return !M.isRunning(p); }))
+        {
+            for(auto & p : pids) M.kill(p);
+        }
+        // sleep for 1 millisecond so we're not
+        // doing a busy loop
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+#else
     // Finally lets start our first process
     // within the system. We will run the
     // the following:
@@ -187,7 +211,6 @@ export HOME
     auto pid1 = M.runRawCommand(E[0]);
     auto pid2 = M.runRawCommand(E[1]);
     auto pid3 = M.runRawCommand(E[2]);
-
     // Run the scheduler so that it will
     // continuiously execute the coroutines
     //
@@ -209,6 +232,8 @@ export HOME
         // doing a busy loop
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+#endif
+
 
     return 0;
 }

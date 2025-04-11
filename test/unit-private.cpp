@@ -8,6 +8,39 @@
 using namespace bl;
 
 
+SCENARIO("MiniLinux: gen pipeline")
+{
+    MiniLinux M;
+
+    {
+        auto E = MiniLinux::parseArguments( {"X=53", "Y=hello", "echo", "hello"});
+
+        REQUIRE(E.args[0] == "echo");
+        REQUIRE(E.args[1] == "hello");
+        REQUIRE(E.env.at("X") == "53");
+        REQUIRE(E.env.at("Y") == "hello");
+    }
+
+    {
+        auto E = MiniLinux::parseArguments( {"X=53", "Y=hello"});
+
+        REQUIRE(E.args.size() == 0);
+        REQUIRE(E.env.at("X") == "53");
+        REQUIRE(E.env.at("Y") == "hello");
+    }
+
+    {
+        auto E = MiniLinux::parseArguments( {"X=53", "Y=hello", "env", "Z=arg"});
+
+        REQUIRE(E.args.size() == 2);
+        REQUIRE(E.args[0] == "env");
+        REQUIRE(E.args[1] == "Z=arg");
+        REQUIRE(E.env.at("X") == "53");
+        REQUIRE(E.env.at("Y") == "hello");
+    }
+}
+
+
 SCENARIO("MiniLinux: Run a single command manually")
 {
     MiniLinux M;

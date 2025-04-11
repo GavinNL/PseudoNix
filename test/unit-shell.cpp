@@ -112,6 +112,7 @@ exit
     // We're going to close the stream so that the task will complete, otherwise
     // it will keep trying to read code.
     E.in->close();
+    E.out = MiniLinux::make_stream();
 
     // Finally execute the command and get the PID
     // The command does not do any processing until execute() is called
