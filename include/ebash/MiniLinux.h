@@ -363,6 +363,15 @@ struct MiniLinux
         return m_procs2.count(pid) != 0;
     }
 
+    bool isAllComplete(std::vector<pid_type> const &pid) const
+    {
+        for(auto & p : pid)
+        {
+            if(isRunning(p)) return false;
+        }
+        return true;
+    }
+
     /**
      * @brief kill
      * @param pid

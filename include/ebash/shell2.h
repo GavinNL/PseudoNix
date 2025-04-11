@@ -123,6 +123,15 @@ struct ShellEnv
     MiniLinux::pid_type                shellPID = 0;
     bool                               isSigTerm = false;
 
+    // child PIDs
+    struct Internal_
+    {
+        std::vector<MiniLinux::pid_type>   pids;
+        std::vector<std::future<int>>   futures;
+    };
+    std::shared_ptr<Internal_> internal = std::make_shared<Internal_>();
+
+
     static void setFuncs(MiniLinux * L)
     {
         #define _GET_SHELL \
@@ -244,52 +253,27 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
         }
     }
 
-    std::vector<std::future<int>> _futures;
-    std::vector<MiniLinux::pid_type> pids;
+    auto & _futures = exported_environment->internal->futures;
+    auto & pids     = exported_environment->internal->pids;
 
-    for(auto & e : E)
+    pids = mini->runPipeline(E);
+
+    for(auto p : pids)
     {
-        auto pid = mini->runRawCommand(e);
-
-        if(pid != 0xFFFFFFFF)
-        {
-            _futures.push_back(mini->getProcessFuture(pid));
-        }
-        else
-        {
-            *out << e.args[0] << ": command not found.\n";
-        }
-        pids.push_back(pid);
+        _futures.push_back(p!=0xFFFFFFFF ? mini->getProcessFuture(p) : std::future<int>());
     }
 
-    while(true)
+    while(!mini->isAllComplete(pids))
     {
-        size_t count=0;
-
-        if(exported_environment->isSigTerm)
-        {
-            for(auto p : pids)
-            {
-                mini->kill(p);
-            }
-        }
-
-        for(auto & f : _futures)
-        {
-            count += f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
-        }
-
-        if(count != _futures.size() )
-        {
-            co_await std::suspend_always{};
-            continue;
-        }
-        break;
+        co_await std::suspend_always{};
     }
 
     int ret_value = 0;
     for(auto & f : _futures)
         ret_value = f.get();
+
+    exported_environment->internal->pids.clear();
+    exported_environment->internal->futures.clear();
     co_return ret_value;
 }
 
