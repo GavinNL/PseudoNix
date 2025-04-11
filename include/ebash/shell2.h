@@ -121,7 +121,7 @@ struct ShellEnv
     std::map<std::string, std::string> env;
     bool                               exitShell = false;
     MiniLinux::pid_type                shellPID = 0;
-
+    bool                               isSigTerm = false;
 
     static void setFuncs(MiniLinux * L)
     {
@@ -189,7 +189,6 @@ struct ShellEnv
             }
             co_return 0;
         };
-
     }
 };
 
@@ -200,8 +199,6 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
                              std::shared_ptr<MiniLinux::stream_type> in={},
                              std::shared_ptr<MiniLinux::stream_type> out={})
 {
-
-
     auto first = tokens.begin();
     auto last = std::find(first, tokens.end(), "|");
 
@@ -231,9 +228,6 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
         }
     }
 
-
-    std::vector<std::future<int>> _futures;
-
     for(auto & e : E)
     {
         // Copy the SHELL_PID value so that
@@ -248,28 +242,37 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
         {
             e.args.push_back("");
         }
-        //====================================================
+    }
 
-        // Try to find the shell function first
-        // to see if it exists
+    std::vector<std::future<int>> _futures;
+    std::vector<MiniLinux::pid_type> pids;
+
+    for(auto & e : E)
+    {
+        auto pid = mini->runRawCommand(e);
+
+        if(pid != 0xFFFFFFFF)
         {
-            auto pid = mini->runRawCommand(e);
-
-            if(pid != 0xFFFFFFFF)
-            {
-                _futures.push_back(mini->getProcessFuture(pid));
-            }
-            else
-            {
-                *out << e.args[0] << ": command not found.\n";
-                std::cout << e.args[0] << std::endl;
-            }
+            _futures.push_back(mini->getProcessFuture(pid));
         }
+        else
+        {
+            *out << e.args[0] << ": command not found.\n";
+        }
+        pids.push_back(pid);
     }
 
     while(true)
     {
         size_t count=0;
+
+        if(exported_environment->isSigTerm)
+        {
+            for(auto p : pids)
+            {
+                mini->kill(p);
+            }
+        }
 
         for(auto & f : _futures)
         {
@@ -283,6 +286,7 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
         }
         break;
     }
+
     int ret_value = 0;
     for(auto & f : _futures)
         ret_value = f.get();
@@ -480,7 +484,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
 
     auto & exev = *control;
 
-
     ShellEnv::setFuncs(control->mini);
     // Copy the rc_text into the
     // the input stream so that
@@ -498,12 +501,17 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
 
     _shells[shellEnv.shellPID] = &shellEnv;
 
-    while(!exev.is_sigkill() && !exev.in->eof() && !shellEnv.exitShell)
+    while(true)
     {
+        if(exev.is_sigkill()) break;
+        if(exev.in->eof()) break;
+        if(shellEnv.exitShell) break;
+
         while(!exev.has_data() && !exev.is_sigkill())
         {
             co_await std::suspend_always{};
         }
+
 
         auto c = exev.get();
         _current += c;
@@ -547,10 +555,18 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
         {
             while(!_task.done())
             {
+                // make sure to check if we have a sigterm
+                // and set the flag so that the subprocess can exit as well
+                shellEnv.isSigTerm = exev.is_sigkill();
+
                 _task.resume();
                 *exev.out << *stdout;
                 co_await std::suspend_always{};
             }
+
+            // reset the sigkill
+            exev.sig_kill = false;
+
             ret_value = _task();
             shellEnv.env["?"] = std::to_string(ret_value);
         }
