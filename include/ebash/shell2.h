@@ -117,7 +117,7 @@ struct ShellEnv
     std::string                        rc_text;
     std::map<std::string, bool>        exportedVar;
     std::map<std::string, std::string> env;
-    bool exitShell = false;
+    bool                               exitShell = false;
 
     // Shell tasks are similar to the normal functions
     // but they are only executed inside the "sh" function
@@ -154,10 +154,8 @@ struct ShellEnv
             [](MiniLinux::e_type ex, ShellEnv * shell) -> MiniLinux::task_type
             {
                 // used to export variables
-                (void)ex;
                 for(size_t i=1;i<ex->args.size();i++)
                 {
-
                     auto [var,val] = Tokenizer2::splitVar(ex->args[i]);
                     if(!var.empty() && !val.empty())
                     {
@@ -172,6 +170,19 @@ struct ShellEnv
                         // just export the variable
                         shell->exportedVar[std::string(ex->args[i])] = true;
                     }
+                }
+                co_return 0;
+            }
+        },
+        {
+            "exported",
+            [](MiniLinux::e_type ex, ShellEnv * shell) -> MiniLinux::task_type
+            {
+                // used to export variables
+                (void)ex;
+                for(auto & x : shell->exportedVar)
+                {
+                    *ex->out << x.first << '\n';
                 }
                 co_return 0;
             }
@@ -258,13 +269,14 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
         // Try to find the shell function first
         // to see if it exists
         auto it = exported_environment->shellFuncs.find(e.args[0]);
-        if(it!=exported_environment->shellFuncs.end())
+        if(it != exported_environment->shellFuncs.end())
         {
             auto control = std::make_shared<MiniLinux::ProcessControl>();
             control->mini = mini;
             control->in = e.in;
             control->out = e.out;
             control->env = e.env;
+            control->args = e.args;
 
             _shellTasks.push_back(it->second(control, exported_environment));
         }

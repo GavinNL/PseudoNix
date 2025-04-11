@@ -69,6 +69,7 @@ USER=bob
 echo Hello ${USER}. Welcome to ${SHELL}
 export USER
 export SHELL
+export HOME
 )foo";
     // bind the shellEnv input to the shell function
     M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, shellEnv);
@@ -89,6 +90,16 @@ export SHELL
     M.m_funcs["fromCin"] = [](bl::MiniLinux::e_type control) -> bl::MiniLinux::task_type
     {
         auto & exev = *control;
+
+        static auto count = 0;
+        if(count != 0)
+        {
+            *exev.out << "Only one instance of fromCin can exist\n";
+            co_return 1;
+        }
+
+
+        count++;
         while (!exev.is_sigkill())
         {
             // std::getline blocks until data is entered, but
@@ -97,9 +108,16 @@ export SHELL
             // we want to check if bytes are available and then
             // read them in, if no bytes are there, we should suspend the
             // coroutine
-            int bytes = bytes_available_in_stdin();
+            int bytes = 0;
 
-            if (bytes > 0) {
+            // check if there are any bytes in stdin
+            if (ioctl(STDIN_FILENO, FIONREAD, &bytes) == -1) {
+                co_return 1;
+                //perror("ioctl");
+            }
+
+            if (bytes > 0)
+            {
                 std::string input;
                 std::getline(std::cin, input);
 
@@ -109,8 +127,10 @@ export SHELL
                 co_await std::suspend_always{};
             }
         }
+        count--;
         co_return 0;
     };
+
 
     M.m_funcs["toCout"] = [](bl::MiniLinux::e_type control) -> bl::MiniLinux::task_type
     {
@@ -128,7 +148,6 @@ export SHELL
 
         co_return 0;
     };
-
 
 
     // Finally lets start our first process

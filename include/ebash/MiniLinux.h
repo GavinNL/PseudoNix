@@ -5,7 +5,6 @@
 #include <string>
 #include <map>
 #include <functional>
-#include <filesystem>
 #include <future>
 
 #include "ReaderWriterStream.h"
@@ -16,11 +15,9 @@ namespace bl
 
 struct MiniLinux
 {
-    using stream_type = bl::ReaderWriterStream;
-
+    using stream_type      = ReaderWriterStream_t<char>;
     using pid_type         = uint32_t;
     using return_code_type = int32_t;
-    using path_type        = std::filesystem::path;
     using task_type        = gul::Task_t<return_code_type, std::suspend_always, std::suspend_always>;
 
 
@@ -46,12 +43,6 @@ struct MiniLinux
 
         ProcessControl& operator << (std::string_view const &ss)
         {
-            if(!out)
-            {
-                std::cout << ss;
-                std::flush(std::cout);
-                return *this;
-            }
             for(auto i : ss)
             {
                 out->put(i);
@@ -60,12 +51,6 @@ struct MiniLinux
         }
         ProcessControl& operator << (char d)
         {
-            if(!out)
-            {
-                std::cout << d;
-                std::flush(std::cout);
-                return *this;
-            }
             out->put(d);
             return *this;
         }
@@ -75,9 +60,13 @@ struct MiniLinux
     struct Exec
     {
         std::vector<std::string>           args;
+        std::map<std::string, std::string> env;
         std::shared_ptr<stream_type>       in;
         std::shared_ptr<stream_type>       out;
-        std::map<std::string, std::string> env;
+
+        Exec(std::vector<std::string> const &_args = {}, std::map<std::string, std::string> const & _env = {}) : args(_args), env(_env)
+        {
+        }
     };
 
     using e_type = std::shared_ptr<ProcessControl>;
@@ -165,6 +154,9 @@ struct MiniLinux
         proc_control->in   = args.in;
         proc_control->out  = args.out;
         proc_control->env  = args.env;
+
+        assert(args.out);
+        assert(args.in);
         // run the function, it is a coroutine:
         // it will return a task}
         auto T = it->second(proc_control);
@@ -313,7 +305,7 @@ struct MiniLinux
 protected:
 
     std::map<uint32_t, Process > m_procs2;
-    uint32_t _pid_count=1;
+    pid_type _pid_count=1;
 
     void setDefaultFunctions()
     {
