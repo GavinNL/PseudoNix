@@ -55,6 +55,55 @@ struct MiniLinux
             return *this;
         }
 
+        template<typename iter_container>
+            requires std::ranges::range<iter_container>
+        ProcessControl& operator << (iter_container const & d)
+        {
+            for(auto i : d)
+            {
+                out->put(i);
+            }
+            return *this;
+        }
+
+        template<typename iter_container>
+            requires std::ranges::range<iter_container>
+        ProcessControl& operator >> (iter_container const & d)
+        {
+            while(has_data())
+                d.insert(d.end(), get());
+            return *this;
+        }
+
+        bool has_data() const
+        {
+            return in->has_data();
+        }
+
+        char get()
+        {
+            return in->get();
+        }
+        int32_t put(char c)
+        {
+            out->put(c);
+            return 1;
+        }
+        bool eof() const
+        {
+            return in->eof();
+        }
+        size_t readsome(char *c, size_t i)
+        {
+            size_t j=0;
+            while(has_data() && j<i)
+            {
+                *c = get();
+                ++c;
+                j++;
+            }
+            return j;
+        }
     };
 
     struct Exec
@@ -68,6 +117,21 @@ struct MiniLinux
         {
         }
     };
+
+    static std::vector<Exec> genPipeline( std::vector<std::vector<std::string> > array_of_args)
+    {
+        std::vector<Exec> out(array_of_args.size());
+        for(size_t i=0;i<out.size();i++)
+        {
+            out[i].args = array_of_args[i];
+            out[i].in   = make_stream();
+        }
+        for(size_t i=0;i<out.size()-1;i++)
+        {
+            out[i].out   = out[i+1].in;
+        }
+        return out;
+    }
 
     using e_type = std::shared_ptr<ProcessControl>;
     using function_type    = std::function< task_type(e_type)>;
@@ -184,6 +248,7 @@ struct MiniLinux
 
         return _pid;
     }
+
 
     /**
      * @brief getProcessFuture
@@ -374,9 +439,9 @@ protected:
 
             while(!args.is_sigkill())
             {
-                while(args.in->has_data())
+                while(args.has_data())
                 {
-                    output.push_back(args.in->get());
+                    output.push_back(args.get());
                     if(output.back() == '\n')
                     {
                         output.pop_back();
@@ -385,7 +450,7 @@ protected:
                         output.clear();
                     }
                 }
-                if(args.in->eof())
+                if(args.eof())
                     break;
                 else
                     co_await std::suspend_always{};
@@ -403,17 +468,14 @@ protected:
             auto & args = *ctrl;
             uint32_t i=0;
 
-            while(true)
+            while(!args.is_sigkill())
             {
-                while(args.in->has_data())
+                while(!args.eof() && args.has_data())
                 {
-                    args.in->get();
+                    args.get();
                     ++i;
                 }
-                if(args.in->eof())
-                    break;
-                else
-                    co_await std::suspend_always{};
+                co_await std::suspend_always{};
             }
 
             args << std::to_string(i) << '\n';
