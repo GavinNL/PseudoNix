@@ -535,6 +535,43 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                                       exev.in,
                                       stdout);
 #endif
+        for(auto it=args.begin(); it != args.end();)
+        {
+            if(*it == ")")
+            {
+                auto first_open = std::find_if(std::reverse_iterator(it), args.rend(), [](auto &dd)
+                {
+                    return dd == "(" || dd == "$(";
+                });
+                if(first_open == args.rend())
+                {
+                    // Un paired bracket, bad commadn
+                    break;
+                }
+
+                auto new_args = std::vector(first_open.base(), it);
+
+                auto stdout = MiniLinux::make_stream();
+                auto pids = execute_pipes(new_args, exev.mini, &shellEnv, exev.in, stdout);
+
+                auto f = exev.mini->getProcessFuture(pids.back());
+                // pids are running in the foreground:
+                while(!exev.mini->isAllComplete(pids))
+                {
+                    co_await std::suspend_always{};
+                }
+                std::string output;
+                *stdout >> output;
+                auto new_tokens = Tokenizer2::to_vector(output);
+
+                //auto pos =
+                it = args.erase(first_open.base()-1, it+1);
+                args.insert(it, new_tokens.begin(), new_tokens.end());
+
+            }
+            ++it;
+        }
+
         auto op_args = parse_operands(args);
 
         std::reverse(op_args.begin(), op_args.end());
@@ -567,7 +604,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                 *exev.out << *stdout;
             }
 
-            std::cerr << std::endl;
             ret_value = f.get();
 
             op_args.pop_back();
