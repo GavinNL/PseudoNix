@@ -334,8 +334,7 @@ std::string var_sub1(std::string_view str, std::map<std::string,std::string> con
 MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 {
     std::string _current;
-    //static int count = 0;
-    //count++;
+
     int ret_value = 0;
 
     auto & exev = *control;
@@ -345,10 +344,14 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 
     shellEnv = shellEnv1;
     ShellEnv::setFuncs(control->mini);
-    // Copy the rc_text into the
-    // the input stream so that
-    // it will be executed first
-    *exev.in << shellEnv.rc_text;
+
+    if(control->args.end() == std::find(control->args.begin(), control->args.end(), "--noprofile"))
+    {
+        // Copy the rc_text into the
+        // the input stream so that
+        // it will be executed first
+        *exev.in << shellEnv.rc_text;
+    }
 
     // Copy the additional environment variables
     // into our workinv variables
@@ -360,6 +363,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
     assert(shellEnv.shellPID != 0xFFFFFFFF);
 
 
+    std::string shell_name = control->args[0];
 
     while(true)
     {
@@ -400,11 +404,13 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             run_in_background = true;
         }
 
+        (void)run_in_background;
+
         auto op_args = parse_operands(args);
 
         std::reverse(op_args.begin(), op_args.end());
 
-        int ret_value = 0;
+
         while(op_args.size())
         {
             auto & _a = op_args.back();
@@ -446,12 +452,15 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                     auto stdout = MiniLinux::make_stream();
                     for(auto & a : new_args)
                     {
+                        // pipe the data into stdin, and make sure each argument
+                        // is in quotes. We may need to tinker with this
+                        // to have properly escaped characters
                         *stdin << std::format("\"{}\" ", a);
                     }
                     *stdin << std::format(";");
                     stdin->close();
 
-                    auto pids = execute_pipes( {"sh"}, exev.mini, &shellEnv, stdin, stdout);
+                    auto pids = execute_pipes( {shell_name, "--noprofile"}, exev.mini, &shellEnv, stdin, stdout);
 
                     auto f = exev.mini->getProcessFuture(pids.back());
 
@@ -459,6 +468,19 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                     while(!exev.mini->isAllComplete(pids))
                     {
                         co_await std::suspend_always{};
+                        //-------------------------------------------
+                        // we should check if sig kill has
+                        // been set AFTER we have yielded
+                        // this is because during the yield,
+                        // another process could have set the flag.
+                        if(exev.is_sigkill())
+                        {
+                            for(auto p : pids)
+                                exev.mini->kill(p);
+                        }
+                        // reset the flag
+                        exev.sig_kill = false;
+                        //-------------------------------------------
                     }
                     it = _a.erase(first_open.base()-1, it+1);
 
@@ -489,6 +511,19 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             while(!exev.mini->isAllComplete(pids))
             {
                 co_await std::suspend_always{};
+                //-------------------------------------------
+                // we should check if sig kill has
+                // been set AFTER we have yielded
+                // this is because during the yield,
+                // another process could have set the flag.
+                if(exev.is_sigkill())
+                {
+                    for(auto p : pids)
+                        exev.mini->kill(p);
+                }
+                // reset the flag
+                exev.sig_kill = false;
+                //-------------------------------------------
                 *exev.out << *stdout;
             }
 
@@ -498,7 +533,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
         }
     }
 
-    co_return 0;
+    co_return ret_value;
 }
 
 
