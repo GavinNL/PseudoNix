@@ -400,45 +400,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             run_in_background = true;
         }
 
-
-        for(auto it=args.begin(); it != args.end();)
-        {
-            if(*it == ")")
-            {
-                auto first_open = std::find_if(std::reverse_iterator(it), args.rend(), [](auto &dd)
-                {
-                    return dd == "(" || dd == "$(";
-                });
-                if(first_open == args.rend())
-                {
-                    // Un paired bracket, bad commadn
-                    break;
-                }
-
-                auto new_args = std::vector(first_open.base(), it);
-
-                auto stdout = MiniLinux::make_stream();
-                auto pids = execute_pipes(new_args, exev.mini, &shellEnv, exev.in, stdout);
-
-                auto f = exev.mini->getProcessFuture(pids.back());
-
-                // pids are running in the foreground
-                while(!exev.mini->isAllComplete(pids))
-                {
-                    co_await std::suspend_always{};
-                }
-                std::string output;
-                *stdout >> output;
-                auto new_tokens = Tokenizer2::to_vector(output);
-
-                //auto pos =
-                it = args.erase(first_open.base()-1, it+1);
-                args.insert(it, new_tokens.begin(), new_tokens.end());
-
-            }
-            ++it;
-        }
-
         auto op_args = parse_operands(args);
 
         std::reverse(op_args.begin(), op_args.end());
@@ -459,6 +420,66 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                 op_args.pop_back();
                 continue;
             }
+
+            //======================================================================
+            for(auto it=_a.begin(); it != _a.end();)
+            {
+                if(*it == ")")
+                {
+                    auto first_open = std::find_if(std::reverse_iterator(it), _a.rend(), [](auto &dd)
+                                                   {
+                                                       return dd == "(" || dd == "$(";
+                                                   });
+                    if(first_open == _a.rend())
+                    {
+                        // Un paired bracket, bad commadn
+                        break;
+                    }
+                    // is the bracket $( or (
+                    auto brk = *first_open;
+                    auto new_args = std::vector(first_open.base(), it);
+
+                    // if the command is enclosed in brackets, it means
+                    // we have to call that command in a separate sh
+                    // process
+                    auto stdin = MiniLinux::make_stream();
+                    auto stdout = MiniLinux::make_stream();
+                    for(auto & a : new_args)
+                    {
+                        *stdin << std::format("\"{}\" ", a);
+                    }
+                    *stdin << std::format(";");
+                    stdin->close();
+
+                    auto pids = execute_pipes( {"sh"}, exev.mini, &shellEnv, stdin, stdout);
+
+                    auto f = exev.mini->getProcessFuture(pids.back());
+
+                    // pids are running in the foreground
+                    while(!exev.mini->isAllComplete(pids))
+                    {
+                        co_await std::suspend_always{};
+                    }
+                    it = _a.erase(first_open.base()-1, it+1);
+
+                    if(brk == "$(")
+                    {
+                        std::string output;
+                        *stdout >> output;
+                        auto new_tokens = Tokenizer2::to_vector(output);
+                        it = _a.insert(it, new_tokens.begin(), new_tokens.end());
+                    }
+                    else if(brk == "(")
+                    {
+                        // not implemented yet
+                    }
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+            //======================================================================
 
             auto stdout = MiniLinux::make_stream();
             auto pids = execute_pipes( std::vector(_a.begin()+1, _a.end()), exev.mini, &shellEnv, exev.in, stdout);
