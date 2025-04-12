@@ -15,6 +15,20 @@
 namespace bl
 {
 
+template <typename Container>
+std::string join(const Container& c, const std::string& delimiter = ", ") {
+    std::ostringstream oss;
+    auto it = c.begin();
+    if (it != c.end()) {
+        oss << *it;
+        ++it;
+    }
+    for (; it != c.end(); ++it) {
+        oss << delimiter << *it;
+    }
+    return oss.str();
+}
+
 struct MiniLinux
 {
     using stream_type      = ReaderWriterStream_t<char>;
@@ -367,7 +381,8 @@ struct MiniLinux
     bool isRunning(pid_type pid) const
     {
         auto it = m_procs2.find(pid);
-        return it != m_procs2.end();
+        if(it == m_procs2.end()) return false;
+        return !it->second.is_complete;
     }
 
     bool isAllComplete(std::vector<pid_type> const &pid) const
@@ -417,6 +432,9 @@ struct MiniLinux
     bool execute(uint32_t pid)
     {
         auto & coro = m_procs2.at(pid);
+        if(coro.is_complete)
+            return true;
+
         if(!coro.task.done())
         {
             //std::cerr << "Resuming: " << coro.control->args[0] << std::endl;
@@ -425,15 +443,15 @@ struct MiniLinux
         if(coro.task.done())
         {
             auto exit_code = coro.task();
+            coro.is_complete = true;
+            coro.exit_code = exit_code;
             coro.control->env["?"] = std::to_string(exit_code);
             coro.control->pid = pid;
 
-           // std::cout << std::format("Finished: {}", coro.control->args[0]) << std::endl;;
             coro.return_promise.set_value(exit_code);
 
             if(coro.control->out)
             {
-                //std::cout << "Total User Count: " << coro.control->out.use_count() << std::endl;
                 coro.control->out->close();
             }
 
@@ -456,16 +474,36 @@ struct MiniLinux
             auto & pid = it->first;
             if(execute(pid))
             {
-                it = m_procs2.erase(it);
             }
-            else
-            {
-                ++it;
-            }
+            ++it;
         }
         return m_procs2.size();
     }
 
+    bool processRemove(pid_type p)
+    {
+        if(auto it = m_procs2.find(p); it!=m_procs2.end())
+        {
+            if(it->second.is_complete)
+            {
+                m_procs2.erase(it);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    return_code_type processExitCode(pid_type p)
+    {
+        if(auto it = m_procs2.find(p); it!=m_procs2.end())
+        {
+            if(it->second.is_complete)
+            {
+                return it->second.exit_code;
+            }
+        }
+        return -1;
+    }
     //std::function< std::future<int>(task_type&&) > m_scheduler;
     std::function< void(Exec&) >                 m_preExec;
     std::function< void(Exec&) >                 m_postExec;
@@ -476,6 +514,9 @@ struct MiniLinux
         std::shared_ptr<ProcessControl> control;
         task_type                       task;
         pid_type                        parent = 0xFFFFFFFF;
+
+        bool is_complete = false;
+        return_code_type exit_code = -1;
     };
 
     std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)

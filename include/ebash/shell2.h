@@ -9,19 +9,7 @@
 namespace bl
 {
 
-template <typename Container>
-std::string join(const Container& c, const std::string& delimiter = ", ") {
-    std::ostringstream oss;
-    auto it = c.begin();
-    if (it != c.end()) {
-        oss << *it;
-        ++it;
-    }
-    for (; it != c.end(); ++it) {
-        oss << delimiter << *it;
-    }
-    return oss.str();
-}
+
 
 struct Tokenizer2
 {
@@ -462,7 +450,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 
                     auto pids = execute_pipes( {shell_name, "--noprofile"}, exev.mini, &shellEnv, stdin, stdout);
 
-                    auto f = exev.mini->getProcessFuture(pids.back());
+                    //auto f = exev.mini->getProcessFuture(pids.back());
 
                     // pids are running in the foreground
                     while(!exev.mini->isAllComplete(pids))
@@ -527,7 +515,9 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                 *exev.out << *stdout;
             }
 
-            ret_value = f.get();
+            ret_value = exev.mini->processExitCode(pids.back());
+            for(auto p : pids)
+                exev.mini->processRemove(p);
 
             op_args.pop_back();
         }
