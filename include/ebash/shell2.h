@@ -547,7 +547,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 
             if(op == "&&" && ret_value != 0)
             {
-                std::cerr << std::format("Ret code: {}, not running {}", ret_value, _a[1]) << std::endl;
                 op_args.pop_back();
                 continue;
             }
@@ -557,7 +556,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                 continue;
             }
 
-            std::cerr << std::format("   Running {}", _a[1]) << std::endl;
             auto stdout = MiniLinux::make_stream();
             auto pids = execute_pipes( std::vector(_a.begin()+1, _a.end()), exev.mini, &shellEnv, exev.in, stdout);
             auto f = exev.mini->getProcessFuture(pids.back());
@@ -566,16 +564,9 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             while(!exev.mini->isAllComplete(pids))
             {
                 co_await std::suspend_always{};
-              //  *exev.out << *stdout;
+                *exev.out << *stdout;
             }
-            std::cerr << std::format("   stdout size {}   {}", stdout->size_approx(), stdout->closed()) << std::endl;
 
-            while(stdout->has_data())
-            {
-                auto c = stdout->get();
-                std::cerr << c;
-                exev.out->put(c);
-            }
             std::cerr << std::endl;
             ret_value = f.get();
 
