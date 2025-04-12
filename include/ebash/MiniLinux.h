@@ -36,6 +36,10 @@ struct MiniLinux
 
         bool is_sigkill() const
         {
+            if(sig_kill)
+            {
+                std::cerr << "Pid killed: " << pid << std::endl;
+            }
             return sig_kill;
         }
         pid_type get_pid() const
@@ -283,7 +287,7 @@ struct MiniLinux
     // register a task as a process by giving it a PID
     // and placing it in the scheduler to be run
     //
-    pid_type registerProcess(task_type && t, e_type arg)
+    pid_type registerProcess(task_type && t, e_type arg, pid_type parent = 0xFFFFFFFF)
     {
         auto _pid = _pid_count++;
         if(arg == nullptr)
@@ -291,8 +295,10 @@ struct MiniLinux
 
         Process _t = { std::promise<int>(), arg, std::move(t)};
 
+        _t.parent = parent;
         arg->pid = _pid;
         arg->mini = this;
+
         m_procs2.emplace(_pid, std::move(_t));
 
         return _pid;
@@ -360,7 +366,8 @@ struct MiniLinux
      */
     bool isRunning(pid_type pid) const
     {
-        return m_procs2.count(pid) != 0;
+        auto it = m_procs2.find(pid);
+        return it != m_procs2.end();
     }
 
     bool isAllComplete(std::vector<pid_type> const &pid) const
@@ -412,6 +419,7 @@ struct MiniLinux
         auto & coro = m_procs2.at(pid);
         if(!coro.task.done())
         {
+            //std::cerr << "Resuming: " << coro.control->args[0] << std::endl;
             coro.task.resume();
         }
         if(coro.task.done())
@@ -420,6 +428,7 @@ struct MiniLinux
             coro.control->env["?"] = std::to_string(exit_code);
             coro.control->pid = pid;
 
+           // std::cout << std::format("Finished: {}", coro.control->args[0]) << std::endl;;
             coro.return_promise.set_value(exit_code);
 
             if(coro.control->out)
@@ -466,6 +475,7 @@ struct MiniLinux
         std::promise<int>               return_promise;
         std::shared_ptr<ProcessControl> control;
         task_type                       task;
+        pid_type                        parent = 0xFFFFFFFF;
     };
 
     std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)

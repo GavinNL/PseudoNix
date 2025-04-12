@@ -112,7 +112,7 @@ struct Tokenizer2
 };
 
 struct ShellEnv;
-inline std::map<uint32_t, ShellEnv*> _shells;
+inline std::map<uint32_t, ShellEnv> _shells;
 
 struct ShellEnv
 {
@@ -127,7 +127,7 @@ struct ShellEnv
     struct Internal_
     {
         std::vector<MiniLinux::pid_type>   pids;
-        std::vector<std::future<int>>   futures;
+        //std::vector<std::future<int>>   futures;
     };
     std::shared_ptr<Internal_> internal = std::make_shared<Internal_>();
 
@@ -136,7 +136,7 @@ struct ShellEnv
     {
         #define _GET_SHELL \
                 MiniLinux::pid_type shell_pid = static_cast<MiniLinux::pid_type>(std::stoul(ex->env["SHELL_PID"]));\
-                    auto *shell = _shells[shell_pid];\
+                    auto *shell = &_shells[shell_pid];\
                     if(!shell)\
                     co_return 0;\
 
@@ -202,7 +202,7 @@ struct ShellEnv
 };
 
 
-MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
+std::vector<MiniLinux::pid_type> execute_pipes(std::vector<std::string> tokens,
                              MiniLinux* mini,
                              ShellEnv * exported_environment,
                              std::shared_ptr<MiniLinux::stream_type> in={},
@@ -253,29 +253,28 @@ MiniLinux::task_type execute_pipes(std::vector<std::string> tokens,
         }
     }
 
-    auto & _futures = exported_environment->internal->futures;
-    auto & pids     = exported_environment->internal->pids;
+    auto pids = mini->runPipeline(E);
 
-    pids = mini->runPipeline(E);
-
-    for(auto p : pids)
-    {
-        _futures.push_back(p!=0xFFFFFFFF ? mini->getProcessFuture(p) : std::future<int>());
-    }
-
-    while(!mini->isAllComplete(pids))
-    {
-        co_await std::suspend_always{};
-    }
-
-    int ret_value = 0;
-    for(auto & f : _futures)
-        ret_value = f.get();
-
-    exported_environment->internal->pids.clear();
-    exported_environment->internal->futures.clear();
-    co_return ret_value;
+    return pids;
 }
+
+
+std::vector< std::vector<std::string> > parse_operands(std::vector<std::string> tokens)
+{
+    std::vector< std::vector<std::string> > args(1);
+
+    for(auto & a : tokens)
+    {
+        args.back().push_back(a);
+        if( args.back().back() == "&&" || args.back().back() == "||" )
+        {
+            args.push_back({});
+        }
+    }
+    return args;
+}
+
+#if 0
 
 MiniLinux::task_type execute_no_brackets(std::vector<std::string> tokens,
                                          MiniLinux* mini,
@@ -346,7 +345,7 @@ MiniLinux::task_type execute_no_brackets(std::vector<std::string> tokens,
     co_return ret_value;
 }
 
-#if 1
+
 
 MiniLinux::task_type execute_brackets(std::vector<std::string> tokens,
                                       MiniLinux* mini,
@@ -459,7 +458,7 @@ std::string var_sub1(std::string_view str, std::map<std::string,std::string> con
 }
 
 
-MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
+MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 {
     std::string _current;
     //static int count = 0;
@@ -468,6 +467,10 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
 
     auto & exev = *control;
 
+    auto shellPID = control->get_pid();
+    auto & shellEnv = _shells[shellPID];
+
+    shellEnv = shellEnv1;
     ShellEnv::setFuncs(control->mini);
     // Copy the rc_text into the
     // the input stream so that
@@ -483,7 +486,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
     shellEnv.shellPID = control->get_pid();
     assert(shellEnv.shellPID != 0xFFFFFFFF);
 
-    _shells[shellEnv.shellPID] = &shellEnv;
+
 
     while(true)
     {
@@ -525,34 +528,29 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv = {})
         }
 
         auto stdout = MiniLinux::make_stream();
+#if 0
         auto _task = execute_brackets(args,
                                       exev.mini,
                                       &shellEnv,
                                       exev.in,
                                       stdout);
+#endif
+        // execute any commands that look like: cmd1 | cmd2 | cmd3
+        auto pids = execute_pipes(args, exev.mini, &shellEnv, exev.in, stdout);
 
         if(run_in_background)
         {
-            exev.mini->registerProcess(std::move(_task), std::make_shared<MiniLinux::ProcessControl>());
+            //exev.mini->registerProcess(std::move(_task), std::make_shared<MiniLinux::ProcessControl>());
         }
         else
         {
-            while(!_task.done())
+            // pids are running in the foreground:
+
+            while(!exev.mini->isAllComplete(pids))
             {
-                // make sure to check if we have a sigterm
-                // and set the flag so that the subprocess can exit as well
-                shellEnv.isSigTerm = exev.is_sigkill();
-
-                _task.resume();
-                *exev.out << *stdout;
-
                 co_await std::suspend_always{};
+                *exev.out << *stdout;
             }
-
-
-
-            ret_value = _task();
-            shellEnv.env["?"] = std::to_string(ret_value);
         }
     }
 
