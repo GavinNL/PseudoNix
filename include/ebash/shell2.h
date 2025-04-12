@@ -9,6 +9,20 @@
 namespace bl
 {
 
+template <typename Container>
+std::string join(const Container& c, const std::string& delimiter = ", ") {
+    std::ostringstream oss;
+    auto it = c.begin();
+    if (it != c.end()) {
+        oss << *it;
+        ++it;
+    }
+    for (; it != c.end(); ++it) {
+        oss << delimiter << *it;
+    }
+    return oss.str();
+}
+
 struct Tokenizer2
 {
     std::string_view input;
@@ -274,147 +288,6 @@ std::vector< std::vector<std::string> > parse_operands(std::vector<std::string> 
     return args;
 }
 
-#if 0
-
-MiniLinux::task_type execute_no_brackets(std::vector<std::string> tokens,
-                                         MiniLinux* mini,
-                                         ShellEnv * exported_environment,
-                                         std::shared_ptr<MiniLinux::stream_type> in={},
-                                         std::shared_ptr<MiniLinux::stream_type> out={})
-{
-    std::vector<std::string> args;
-
-    int ret_value = 0;
-    for(size_t i=0; i<tokens.size(); i++)
-    {
-        auto & t = tokens[i];
-
-        if(t == "&&")
-        {
-            auto _task = execute_pipes(args, mini, exported_environment, in, out);
-            args.clear();
-
-            while(!_task.done())
-            {
-                _task.resume();
-                co_await std::suspend_always{};
-            }
-            ret_value = _task();
-
-            if(ret_value != 0)
-            {
-                while(i < tokens.size() && tokens[i] != "||" )
-                    i++;
-            }
-        }
-        else if(t == "||")
-        {
-            auto _task = execute_pipes(args, mini, exported_environment, in, out);
-            args.clear();
-            while(!_task.done())
-            {
-                _task.resume();
-                co_await std::suspend_always{};
-            }
-            ret_value = _task();
-
-            if(ret_value == 0)
-            {
-                while(i < tokens.size() && tokens[i] != "&&" )
-                    i++;
-            }
-        }
-        else
-        {
-            args.push_back(t);
-        }
-
-    }
-    if(args.size())
-    {
-        auto _task = execute_pipes(args, mini, exported_environment, in, out);
-        args.clear();
-        while(!_task.done())
-        {
-            _task.resume();
-            co_await std::suspend_always{};
-        }
-        ret_value = _task();
-    }
-
-    co_return ret_value;
-}
-
-
-
-MiniLinux::task_type execute_brackets(std::vector<std::string> tokens,
-                                      MiniLinux* mini,
-                                      ShellEnv * exported_environment,
-                                      std::shared_ptr<MiniLinux::stream_type> in={},
-                                      std::shared_ptr<MiniLinux::stream_type> out={})
-{
-    std::vector<std::string> args;
-
-    int ret_value = 0;
-    for(size_t i=0; i<tokens.size(); i++)
-    {
-        auto & t = tokens[i];
-
-        if(t == ")")
-        {
-            auto rit = std::find_if(args.rbegin(), args.rend(), [](auto &&d)
-                                    {
-                                        return d=="$(" || d=="(";
-                                    });
-            if(rit != args.rend())
-            {
-
-                std::vector v(rit.base(), args.end());
-                args.erase(rit.base(), args.end());
-                if(args.back() == "$(")
-                {
-                    auto _in = MiniLinux::make_stream();
-                    auto _out = MiniLinux::make_stream();
-                    _in->close();
-
-                    auto _task = execute_no_brackets(v, mini, exported_environment, _in, _out);
-                    while(!_task.done())
-                    {
-                        _task.resume();
-                        co_await std::suspend_always{};
-                    }
-
-                    std::string out_str;
-                    *_out >> out_str;
-
-                    auto vv = Tokenizer2::to_vector(out_str);
-                    args.pop_back();
-                    for(auto & _v : vv)
-                        args.push_back(_v);
-                }
-            }
-        }
-        else
-        {
-            args.push_back(t);
-        }
-    }
-    if(args.size())
-    {
-        auto _task = execute_no_brackets(args, mini, exported_environment, in, out);
-        while(!_task.done())
-        {
-            _task.resume();
-            co_await std::suspend_always{};
-        }
-
-        ret_value = _task();
-    }
-
-    co_return ret_value;
-}
-
-#endif
 
 
 /**
@@ -528,13 +401,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
         }
 
 
-#if 0
-        auto _task = execute_brackets(args,
-                                      exev.mini,
-                                      &shellEnv,
-                                      exev.in,
-                                      stdout);
-#endif
         for(auto it=args.begin(); it != args.end();)
         {
             if(*it == ")")
@@ -555,7 +421,8 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                 auto pids = execute_pipes(new_args, exev.mini, &shellEnv, exev.in, stdout);
 
                 auto f = exev.mini->getProcessFuture(pids.back());
-                // pids are running in the foreground:
+
+                // pids are running in the foreground
                 while(!exev.mini->isAllComplete(pids))
                 {
                     co_await std::suspend_always{};
