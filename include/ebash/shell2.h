@@ -262,14 +262,14 @@ std::vector<MiniLinux::pid_type> execute_pipes(std::vector<std::string> tokens,
 std::vector< std::vector<std::string> > parse_operands(std::vector<std::string> tokens)
 {
     std::vector< std::vector<std::string> > args(1);
-
+    args.back().push_back(")(");
     for(auto & a : tokens)
     {
-        args.back().push_back(a);
-        if( args.back().back() == "&&" || args.back().back() == "||" )
+        if( a == "&&" || a == "||" )
         {
             args.push_back({});
         }
+        args.back().push_back(a);
     }
     return args;
 }
@@ -527,7 +527,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             run_in_background = true;
         }
 
-        auto stdout = MiniLinux::make_stream();
+
 #if 0
         auto _task = execute_brackets(args,
                                       exev.mini,
@@ -535,22 +535,51 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                                       exev.in,
                                       stdout);
 #endif
-        // execute any commands that look like: cmd1 | cmd2 | cmd3
-        auto pids = execute_pipes(args, exev.mini, &shellEnv, exev.in, stdout);
+        auto op_args = parse_operands(args);
 
-        if(run_in_background)
+        std::reverse(op_args.begin(), op_args.end());
+
+        int ret_value = 0;
+        while(op_args.size())
         {
-            //exev.mini->registerProcess(std::move(_task), std::make_shared<MiniLinux::ProcessControl>());
-        }
-        else
-        {
+            auto & _a = op_args.back();
+            auto op = _a.front();
+
+            if(op == "&&" && ret_value != 0)
+            {
+                std::cerr << std::format("Ret code: {}, not running {}", ret_value, _a[1]) << std::endl;
+                op_args.pop_back();
+                continue;
+            }
+            if(op == "||" && ret_value == 0)
+            {
+                op_args.pop_back();
+                continue;
+            }
+
+            std::cerr << std::format("   Running {}", _a[1]) << std::endl;
+            auto stdout = MiniLinux::make_stream();
+            auto pids = execute_pipes( std::vector(_a.begin()+1, _a.end()), exev.mini, &shellEnv, exev.in, stdout);
+            auto f = exev.mini->getProcessFuture(pids.back());
+
             // pids are running in the foreground:
-
             while(!exev.mini->isAllComplete(pids))
             {
                 co_await std::suspend_always{};
-                *exev.out << *stdout;
+              //  *exev.out << *stdout;
             }
+            std::cerr << std::format("   stdout size {}   {}", stdout->size_approx(), stdout->closed()) << std::endl;
+
+            while(stdout->has_data())
+            {
+                auto c = stdout->get();
+                std::cerr << c;
+                exev.out->put(c);
+            }
+            std::cerr << std::endl;
+            ret_value = f.get();
+
+            op_args.pop_back();
         }
     }
 

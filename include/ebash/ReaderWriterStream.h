@@ -20,6 +20,10 @@ public:
         return data.peek() != nullptr;
     }
 
+    size_t size_approx() const
+    {
+        return data.size_approx();
+    }
     bool closed() const
     {
         return _closed;
