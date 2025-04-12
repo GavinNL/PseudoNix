@@ -2,7 +2,7 @@
 #define EBASH_SHELL2_H
 
 #include <map>
-#include <future>
+
 #include "MiniLinux.h"
 
 
@@ -129,7 +129,6 @@ struct ShellEnv
     struct Internal_
     {
         std::vector<MiniLinux::pid_type>   pids;
-        //std::vector<std::future<int>>   futures;
     };
     std::shared_ptr<Internal_> internal = std::make_shared<Internal_>();
 
@@ -450,8 +449,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 
                     auto pids = execute_pipes( {shell_name, "--noprofile"}, exev.mini, &shellEnv, stdin, stdout);
 
-                    //auto f = exev.mini->getProcessFuture(pids.back());
-
                     // pids are running in the foreground
                     while(!exev.mini->isAllComplete(pids))
                     {
@@ -493,7 +490,8 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 
             auto stdout = MiniLinux::make_stream();
             auto pids = execute_pipes( std::vector(_a.begin()+1, _a.end()), exev.mini, &shellEnv, exev.in, stdout);
-            auto f = exev.mini->getProcessFuture(pids.back());
+
+            auto f_exit_code = exev.mini->processExitCode(pids.back());
 
             // pids are running in the foreground:
             while(!exev.mini->isAllComplete(pids))
@@ -515,9 +513,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                 *exev.out << *stdout;
             }
 
-            ret_value = exev.mini->processExitCode(pids.back());
-            for(auto p : pids)
-                exev.mini->processRemove(p);
+            ret_value = *f_exit_code;
 
             op_args.pop_back();
         }

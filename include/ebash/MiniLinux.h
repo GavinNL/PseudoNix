@@ -307,7 +307,7 @@ struct MiniLinux
         if(arg == nullptr)
             arg = std::make_shared<ProcessControl>();
 
-        Process _t = { std::promise<int>(), arg, std::move(t)};
+        Process _t = {arg, std::move(t)};
 
         _t.parent = parent;
         arg->pid = _pid;
@@ -353,21 +353,6 @@ struct MiniLinux
         if(it == m_procs2.end()) return false;
         it->second.control->in = stream;
         return true;
-    }
-
-    /**
-     * @brief getProcessFuture
-     * @param pid
-     * @return
-     *
-     * Return the std::future of the pid. This can only be
-     * called once. Only use this if you need a future
-     * for tracking purposes. The future will become available
-     * when the processs has finished
-     */
-    std::future<return_code_type> getProcessFuture(uint32_t pid)
-    {
-        return m_procs2.at(pid).return_promise.get_future();
     }
 
     /**
@@ -444,11 +429,9 @@ struct MiniLinux
         {
             auto exit_code = coro.task();
             coro.is_complete = true;
-            coro.exit_code = exit_code;
+            *coro.exit_code = exit_code;
             coro.control->env["?"] = std::to_string(exit_code);
             coro.control->pid = pid;
-
-            coro.return_promise.set_value(exit_code);
 
             if(coro.control->out)
             {
@@ -474,49 +457,37 @@ struct MiniLinux
             auto & pid = it->first;
             if(execute(pid))
             {
+                it = m_procs2.erase(it);
             }
-            ++it;
+            else
+            {
+                ++it;
+            }
         }
         return m_procs2.size();
     }
 
-    bool processRemove(pid_type p)
+    std::shared_ptr<return_code_type> processExitCode(pid_type p)
     {
         if(auto it = m_procs2.find(p); it!=m_procs2.end())
         {
-            if(it->second.is_complete)
-            {
-                m_procs2.erase(it);
-                return true;
-            }
+            return it->second.exit_code;
         }
-        return false;
+        return nullptr;
     }
 
-    return_code_type processExitCode(pid_type p)
-    {
-        if(auto it = m_procs2.find(p); it!=m_procs2.end())
-        {
-            if(it->second.is_complete)
-            {
-                return it->second.exit_code;
-            }
-        }
-        return -1;
-    }
     //std::function< std::future<int>(task_type&&) > m_scheduler;
     std::function< void(Exec&) >                 m_preExec;
     std::function< void(Exec&) >                 m_postExec;
 
     struct Process
     {
-        std::promise<int>               return_promise;
         std::shared_ptr<ProcessControl> control;
         task_type                       task;
         pid_type                        parent = 0xFFFFFFFF;
 
         bool is_complete = false;
-        return_code_type exit_code = -1;
+        std::shared_ptr<return_code_type> exit_code = std::make_shared<return_code_type>(-1);
     };
 
     std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)
@@ -755,9 +726,11 @@ protected:
                 // Check if the sh function is still running
                 // if not, quit.
                 if(!control->mini->isRunning(sh_pid))
+                {
                     co_return 0;
-
+                }
                 co_await std::suspend_always{};
+
             }
             count--;
             co_return 0;
