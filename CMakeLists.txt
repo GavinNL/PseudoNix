@@ -104,18 +104,27 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
                                         ${CMAKE_BINARY_DIR}/imgui_src/res/misc/cpp
                               )
 
+    add_executable(main main.cpp)
+    target_link_libraries(main ${PROJECT_NAME}::interface)
+
     if(EMSCRIPTEN)
         # Compile with SDL for termainl
         target_compile_options(terminal PRIVATE "-sUSE_SDL=2")
         target_link_options(terminal PRIVATE "-sUSE_SDL=2")
 
         set_target_properties(terminal PROPERTIES SUFFIX ".html")
-    else()
-        add_executable(main main.cpp)
+
         # compile with only wasm, so we can use
         # wasmtime
         target_compile_options(main PRIVATE "-sSTANDALONE_WASM=1" "-sWASM_BIGINT=1")
-        target_link_libraries(main ${PROJECT_NAME}::interface)
+        # Set Emscripten flags for WASI compatibility
+        target_link_options(main PRIVATE
+            "-sSTANDALONE_WASM=1"
+            #"-sEXIT_RUNTIME=1"
+            "-sERROR_ON_UNDEFINED_SYMBOLS=0"
+        )
+    else()
+
     endif()
 
 
