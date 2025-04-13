@@ -40,12 +40,12 @@ SCENARIO("Tokenizer 3")
     }
 }
 
-SCENARIO("MiniLinux: gen pipeline")
+SCENARIO("System: gen pipeline")
 {
-    MiniLinux M;
+    System M;
 
     {
-        auto E = MiniLinux::parseArguments( {"X=53", "Y=hello", "echo", "hello"});
+        auto E = System::parseArguments( {"X=53", "Y=hello", "echo", "hello"});
 
         REQUIRE(E.args[0] == "echo");
         REQUIRE(E.args[1] == "hello");
@@ -54,7 +54,7 @@ SCENARIO("MiniLinux: gen pipeline")
     }
 
     {
-        auto E = MiniLinux::parseArguments( {"X=53", "Y=hello"});
+        auto E = System::parseArguments( {"X=53", "Y=hello"});
 
         REQUIRE(E.args.size() == 0);
         REQUIRE(E.env.at("X") == "53");
@@ -62,7 +62,7 @@ SCENARIO("MiniLinux: gen pipeline")
     }
 
     {
-        auto E = MiniLinux::parseArguments( {"X=53", "Y=hello", "env", "Z=arg"});
+        auto E = System::parseArguments( {"X=53", "Y=hello", "env", "Z=arg"});
 
         REQUIRE(E.args.size() == 2);
         REQUIRE(E.args[0] == "env");
@@ -73,15 +73,15 @@ SCENARIO("MiniLinux: gen pipeline")
 }
 
 
-SCENARIO("MiniLinux: Run a single command manually")
+SCENARIO("System: Run a single command manually")
 {
-    MiniLinux M;
+    System M;
 
     // Clear any default commands
     M.m_funcs.clear();
 
     // add our command manually
-    M.m_funcs["echo"] = [](MiniLinux::e_type control) -> MiniLinux::task_type {
+    M.m_funcs["echo"] = [](System::e_type control) -> System::task_type {
         auto & args = *control;
         for (size_t i = 1; i < args.args.size(); i++) {
             *args.out << args.args[i] + (i == args.args.size() - 1 ? "" : " ");
@@ -89,14 +89,14 @@ SCENARIO("MiniLinux: Run a single command manually")
         co_return 0;
     };
 
-    MiniLinux::Exec exec;
+    System::Exec exec;
 
     exec.args = {"echo", "hello", "world"};
 
     // echo will read from this input (stdin)
-    exec.in = MiniLinux::make_stream();
+    exec.in = System::make_stream();
     // echo will write to this output stream (stdout)
-    exec.out = MiniLinux::make_stream();
+    exec.out = System::make_stream();
 
     // Make sure we close the input stream otherwise
     // Otherwise if the command reads from input, it will
@@ -117,15 +117,15 @@ SCENARIO("MiniLinux: Run a single command manually")
     REQUIRE(exec.out->str() == "hello world");
 }
 
-SCENARIO("MiniLinux: Run a single command manually read from input")
+SCENARIO("System: Run a single command manually read from input")
 {
-    MiniLinux M;
+    System M;
 
     // Clear any default commands
     M.m_funcs.clear();
 
     // add our command manually
-    M.m_funcs["echo_from_input"] = [](MiniLinux::e_type control) -> MiniLinux::task_type {
+    M.m_funcs["echo_from_input"] = [](System::e_type control) -> System::task_type {
         auto & args = *control;
         while (true)
         {
@@ -142,15 +142,15 @@ SCENARIO("MiniLinux: Run a single command manually read from input")
         co_return 0;
     };
 
-    MiniLinux::Exec exec;
+    System::Exec exec;
 
     exec.args = {"echo_from_input"};
 
     // Create the stream and put some initial data
-    exec.in = MiniLinux::make_stream("Hello world");
+    exec.in = System::make_stream("Hello world");
 
     // echo will write to this output stream
-    exec.out = MiniLinux::make_stream();
+    exec.out = System::make_stream();
 
     // Make sure we close the input stream otherwise
     // Otherwise if the command reads from input, it will
@@ -174,9 +174,9 @@ SCENARIO("MiniLinux: Run a single command manually read from input")
 }
 
 
-SCENARIO("MiniLinux: Execute two commands and have one piped into the other")
+SCENARIO("System: Execute two commands and have one piped into the other")
 {
-    MiniLinux M;
+    System M;
 
     //
     // echo and rev are two commands that are added by default
@@ -185,16 +185,16 @@ SCENARIO("MiniLinux: Execute two commands and have one piped into the other")
     //
     //    echo Hello world | rev
     //
-    std::array<MiniLinux::Exec,2> exec;
+    std::array<System::Exec,2> exec;
 
     exec[0].args = {"echo", "Hello", "world"};
-    exec[0].in = MiniLinux::make_stream();
-    exec[0].out = MiniLinux::make_stream();
+    exec[0].in = System::make_stream();
+    exec[0].out = System::make_stream();
     exec[0].in->close(); // only close the first input straem
 
     exec[1].args = {"rev"};
     exec[1].in = exec[0].out; // make the output of exec[0] the input of exec[1]
-    exec[1].out = MiniLinux::make_stream();
+    exec[1].out = System::make_stream();
 
     //=======================================================
     // This returns a coroutine that needs to be executed in
@@ -220,15 +220,15 @@ SCENARIO("MiniLinux: Execute two commands and have one piped into the other")
 
 
 
-SCENARIO("MiniLinux: sh")
+SCENARIO("System: sh")
 {
-    MiniLinux M;
+    System M;
     M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
 
-    MiniLinux::Exec sh;
+    System::Exec sh;
     sh.args = {"sh"};
-    sh.in  = std::make_shared<MiniLinux::stream_type>();
-    sh.out = std::make_shared<MiniLinux::stream_type>();
+    sh.in  = std::make_shared<System::stream_type>();
+    sh.out = std::make_shared<System::stream_type>();
 
     *sh.in << "echo hello world;";
     sh.in->close();
@@ -240,15 +240,15 @@ SCENARIO("MiniLinux: sh")
 }
 
 
-SCENARIO("MiniLinux: sh - multicommand")
+SCENARIO("System: sh - multicommand")
 {
-    MiniLinux M;
+    System M;
     M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
 
-    MiniLinux::Exec sh;
+    System::Exec sh;
     sh.args = {"sh"};
-    sh.in  = std::make_shared<MiniLinux::stream_type>();
-    sh.out = std::make_shared<MiniLinux::stream_type>();
+    sh.in  = std::make_shared<System::stream_type>();
+    sh.out = std::make_shared<System::stream_type>();
 
     *sh.in << "echo hello ; sleep 2.0 ; echo world;";
     sh.in->close();
@@ -259,15 +259,15 @@ SCENARIO("MiniLinux: sh - multicommand")
     REQUIRE(sh.out->str() == "hello\nworld\n");
 }
 
-SCENARIO("MiniLinux: sh - multicommand with newline")
+SCENARIO("System: sh - multicommand with newline")
 {
-    MiniLinux M;
+    System M;
     M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
 
-    MiniLinux::Exec sh;
+    System::Exec sh;
     sh.args = {"sh"};
-    sh.in  = std::make_shared<MiniLinux::stream_type>();
-    sh.out = std::make_shared<MiniLinux::stream_type>();
+    sh.in  = std::make_shared<System::stream_type>();
+    sh.out = std::make_shared<System::stream_type>();
 
     *sh.in << "echo hello \n sleep 2.0 \n echo world\n";
     sh.in->close();
@@ -278,16 +278,16 @@ SCENARIO("MiniLinux: sh - multicommand with newline")
     REQUIRE(sh.out->str() == "hello\nworld\n");
 }
 
-SCENARIO("MiniLinux: sh - pipe")
+SCENARIO("System: sh - pipe")
 {
-    MiniLinux M;
+    System M;
     M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
     THEN("We can wr")
     {
-        MiniLinux::Exec sh;
+        System::Exec sh;
         sh.args = {"sh"};
-        sh.in  = std::make_shared<MiniLinux::stream_type>();
-        sh.out = std::make_shared<MiniLinux::stream_type>();
+        sh.in  = std::make_shared<System::stream_type>();
+        sh.out = std::make_shared<System::stream_type>();
         *sh.in << "echo hello | wc && echo goodbye;";
         sh.in->close();
 

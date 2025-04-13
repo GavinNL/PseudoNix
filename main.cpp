@@ -11,8 +11,8 @@
 
 #include <csignal>
 
-PseudoNix::MiniLinux * _M = nullptr;
-PseudoNix::MiniLinux::pid_type launcher_pid = 0xFFFFFFFF;
+PseudoNix::System * _M = nullptr;
+PseudoNix::System::pid_type launcher_pid = 0xFFFFFFFF;
 
 void handle_sigint(int signum)
 {
@@ -27,10 +27,10 @@ int main()
     // The first thing we need to do is create
     // the instance of the mini linux system
     //
-    MiniLinux M;
+    System M;
 
     //=============================================================================
-    // Add the shell function to MiniLinux
+    // Add the shell function to System
     // This isn't added by default because it's quite a large
     // function and you might want to add your own
     //
@@ -63,7 +63,7 @@ export HOME
     // input and output streams, but we have no way write to the input stream
     // or read from its output stream.
     //
-    // This is normally fine because we'd likely want to use MiniLinux for
+    // This is normally fine because we'd likely want to use System for
     // GUI applications, where we'd pipe the data from a textwidget into
     // the shell process.  But this is a command line example, so we want
     // to get the data from std::cin, and write to std::cout
@@ -73,7 +73,7 @@ export HOME
     // it will then read the output stream of the child process and output it to
     // std::cout
     //
-    launcher_pid = M.runRawCommand(MiniLinux::parseArguments({"launcher", "sh"}));
+    launcher_pid = M.runRawCommand(System::parseArguments({"launcher", "sh"}));
 
     // We are going to use a signal handler to
     // catch ctrl-C inputs and then

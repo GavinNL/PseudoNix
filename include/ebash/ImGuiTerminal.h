@@ -8,7 +8,7 @@
 namespace PseudoNix
 {
 
-MiniLinux::task_type terminalWindow_coro(MiniLinux::e_type ctrl)
+System::task_type terminalWindow_coro(System::e_type ctrl)
 {
     // we're going to suspend on first run
     // because we are calling ImGui::Begin/End
@@ -47,7 +47,7 @@ MiniLinux::task_type terminalWindow_coro(MiniLinux::e_type ctrl)
         args.push_back("sh");
 
 
-    auto sh_pid = ctrl->executeSubProcess(MiniLinux::parseArguments(args));
+    auto sh_pid = ctrl->executeSubProcess(System::parseArguments(args));
 
     // Grab the input and output streams for the shell
     // command

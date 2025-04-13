@@ -1,5 +1,5 @@
-#ifndef EBASH_LAUNCHER_H
-#define EBASH_LAUNCHER_H
+#ifndef PSUDONIX_LAUNCHER_H
+#define PSUDONIX_LAUNCHER_H
 
 #include "MiniLinux.h"
 #include "defer.h"
@@ -7,7 +7,7 @@
 namespace PseudoNix
 {
 
-inline MiniLinux::task_type launcher_coro(MiniLinux::e_type ctrl)
+inline System::task_type launcher_coro(System::e_type ctrl)
 {
     static auto count = 0;
     if(count != 0)
@@ -25,7 +25,7 @@ inline MiniLinux::task_type launcher_coro(MiniLinux::e_type ctrl)
         co_return 1;
     }
 
-    auto E = MiniLinux::parseArguments(std::vector(ctrl->args.begin()+1, ctrl->args.end()));
+    auto E = System::parseArguments(std::vector(ctrl->args.begin()+1, ctrl->args.end()));
     // Instead of using a default provided
     // input stream for the subprocess
     // we'll use launcher's input stream
@@ -62,7 +62,7 @@ inline MiniLinux::task_type launcher_coro(MiniLinux::e_type ctrl)
 
         // We technically dont need to do this because
         // the output stream is automatically closed
-        // by MiniLinux when launcher completes
+        // by System when launcher completes
         // either by forcefully removing it, or
         // if it completes successfully. But just in case
         // we should shutdown c_in because it is passed

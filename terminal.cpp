@@ -11,7 +11,7 @@
 struct MyApplication : public ImGuiApplication
 {
 public:
-    PseudoNix::MiniLinux       m_mini;
+    PseudoNix::System       m_mini;
 
     void setupFunctions()
     {
@@ -32,7 +32,7 @@ public:
         // ImGui window to show you a terminal emulator
         m_mini.setFunction("term", PseudoNix::terminalWindow_coro);
 
-        m_mini.setFunction("theme", [](PseudoNix::MiniLinux::e_type control) -> PseudoNix::MiniLinux::task_type
+        m_mini.setFunction("theme", [](PseudoNix::System::e_type control) -> PseudoNix::System::task_type
         {
             auto & E = *control;
             if(E.args.size() > 1)
@@ -68,7 +68,7 @@ public:
         //
         // You can use it to modify the args or add new
         // data such as environment variables
-        m_mini.m_preExec = [](PseudoNix::MiniLinux::Exec & E)
+        m_mini.m_preExec = [](PseudoNix::System::Exec & E)
         {
             const char* username = std::getenv(
                 #ifdef _WIN32
@@ -83,12 +83,12 @@ public:
         };
 
         // Set up additional commands we want
-        // in our minilinux
+        // in our System
         setupFunctions();
 
         // finally, execute the term command
         // and execute the system call
-        PseudoNix::MiniLinux::Exec E;
+        PseudoNix::System::Exec E;
         E.args = {"term", "sh"};
         E.env = {
             {"SHELL", "sh"}

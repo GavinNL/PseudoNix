@@ -1,5 +1,5 @@
-#ifndef EBASH_SHELL2_H
-#define EBASH_SHELL2_H
+#ifndef PSEUDONIX_SHELL2_H
+#define PSEUDONIX_SHELL2_H
 
 #include <map>
 
@@ -232,35 +232,35 @@ struct ShellEnv
     std::map<std::string, bool>        exportedVar;
     std::map<std::string, std::string> env;
     bool                               exitShell = false;
-    MiniLinux::pid_type                shellPID = 0;
+    System::pid_type                   shellPID = 0;
     bool                               isSigTerm = false;
 
     // child PIDs
     struct Internal_
     {
-        std::vector<MiniLinux::pid_type>   pids;
+        std::vector<System::pid_type>   pids;
     };
     std::shared_ptr<Internal_> internal = std::make_shared<Internal_>();
 
 
-    static void setFuncs(MiniLinux * L)
+    static void setFuncs(System * L)
     {
         #define _GET_SHELL \
-                MiniLinux::pid_type shell_pid = static_cast<MiniLinux::pid_type>(std::stoul(ex->env["SHELL_PID"]));\
+                System::pid_type shell_pid = static_cast<System::pid_type>(std::stoul(ex->env["SHELL_PID"]));\
                     auto *shell = &_shells[shell_pid];\
                     if(!shell)\
                     co_return 0;\
 
         auto & f = L->m_funcs;
 
-        f["exit"] = [](MiniLinux::e_type ex) -> MiniLinux::task_type
+        f["exit"] = [](System::e_type ex) -> System::task_type
             {
                 _GET_SHELL
 
                 shell->exitShell = true;
                 co_return 0;
         };
-        f[""] = [](MiniLinux::e_type ex) -> MiniLinux::task_type
+        f[""] = [](System::e_type ex) -> System::task_type
         {
             _GET_SHELL
             (void)ex;
@@ -273,7 +273,7 @@ struct ShellEnv
             }
             co_return 0;
         };
-        f["export"] = [](MiniLinux::e_type ex) -> MiniLinux::task_type
+        f["export"] = [](System::e_type ex) -> System::task_type
         {
             _GET_SHELL
 
@@ -298,7 +298,7 @@ struct ShellEnv
             co_return 0;
         };
 
-        f["exported"] = [](MiniLinux::e_type ex) -> MiniLinux::task_type
+        f["exported"] = [](System::e_type ex) -> System::task_type
         {
             _GET_SHELL
             // used to export variables
@@ -313,11 +313,11 @@ struct ShellEnv
 };
 
 
-std::vector<MiniLinux::pid_type> execute_pipes(std::vector<std::string> tokens,
-                             MiniLinux::ProcessControl * proc,
+inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> tokens,
+                             System::ProcessControl * proc,
                              ShellEnv * exported_environment,
-                             std::shared_ptr<MiniLinux::stream_type> in={},
-                             std::shared_ptr<MiniLinux::stream_type> out={})
+                             std::shared_ptr<System::stream_type> in={},
+                             std::shared_ptr<System::stream_type> out={})
 {
     auto first = tokens.begin();
     auto last = std::find(first, tokens.end(), "|");
@@ -333,7 +333,7 @@ std::vector<MiniLinux::pid_type> execute_pipes(std::vector<std::string> tokens,
     list_of_args.push_back(std::vector(first, last));
 
 
-    auto E = MiniLinux::genPipeline(list_of_args);
+    auto E = System::genPipeline(list_of_args);
     E.front().in = in;
     E.back().out = out;
 
@@ -370,7 +370,7 @@ std::vector<MiniLinux::pid_type> execute_pipes(std::vector<std::string> tokens,
 }
 
 
-std::vector< std::vector<std::string> > parse_operands(std::vector<std::string> tokens)
+inline std::vector< std::vector<std::string> > parse_operands(std::vector<std::string> tokens)
 {
     std::vector< std::vector<std::string> > args(1);
     args.back().push_back(")(");
@@ -396,7 +396,7 @@ std::vector< std::vector<std::string> > parse_operands(std::vector<std::string> 
  * Given a string that contains ${VARNAME} or $VARNAME, and the env map, substitue
  * the appropriate variables and return a new string.
  */
-std::string var_sub1(std::string_view str, std::map<std::string,std::string> const & env)
+inline std::string var_sub1(std::string_view str, std::map<std::string,std::string> const & env)
 {
     (void)env;
     std::string outstr;
@@ -429,7 +429,7 @@ std::string var_sub1(std::string_view str, std::map<std::string,std::string> con
 }
 
 
-MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
+inline System::task_type shell2(System::e_type control, ShellEnv shellEnv1 = {})
 {
     std::string _current;
 
@@ -509,7 +509,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 
         if( run_in_background )
         {
-            auto stdin = MiniLinux::make_stream();
+            auto stdin = System::make_stream();
 
             for(auto & a : args)
             {
@@ -581,7 +581,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             }
             //======================================================================
 
-            auto stdout = MiniLinux::make_stream();
+            auto stdout = System::make_stream();
             auto pids = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), &exev, &shellEnv, exev.in, exev.out);
             auto f_exit_code = exev.mini->processExitCode(pids.back());
 

@@ -1,12 +1,12 @@
-#ifndef GUL_COROUTINE_TASK_H
-#define GUL_COROUTINE_TASK_H
+#ifndef PSEDUONIX_COROUTINE_TASK_H
+#define PSEDUONIX_COROUTINE_TASK_H
 
 #include <coroutine>
 #include <exception>
 #include <iostream>
 #include <utility>
 
-namespace gul
+namespace PseudoNix
 {
 
 template<typename T>

@@ -91,17 +91,17 @@ SCENARIO("TEST tokenize")
 #if 1
 SCENARIO("test shell")
 {
-    MiniLinux M;
+    System M;
 
     M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
 
 
-    MiniLinux::Exec E;
+    System::Exec E;
     E.args = {"sh"};
 
     // Here we're going to put our shell script code into the input
     // stream of the process function, similar to how linux works
-    E.in  = MiniLinux::make_stream(R"foo(
+    E.in  = System::make_stream(R"foo(
 echo hello world
 sleep 2
 echo hello world | rev
@@ -112,7 +112,7 @@ exit
     // We're going to close the stream so that the task will complete, otherwise
     // it will keep trying to read code.
     E.in->close();
-    E.out = MiniLinux::make_stream();
+    E.out = System::make_stream();
 
     // Finally execute the command and get the PID
     // The command does not do any processing until execute() is called

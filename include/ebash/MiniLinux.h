@@ -1,5 +1,5 @@
-#ifndef MINI_LINUX_H
-#define MINI_LINUX_H
+#ifndef PSEUDONIX_SYSTEM_H
+#define PSEUDONIX_SYSTEM_H
 
 #include <vector>
 #include <string>
@@ -46,12 +46,12 @@ co_await std::suspend_always{};  \
 #define SUSPEND_SIG_TERM     SUSPEND_POINT
 #define SUSPEND_SIG_INT_TERM SUSPEND_SIGTERM
 
-struct MiniLinux
+struct System
 {
     using stream_type      = ReaderWriterStream_t<char>;
     using pid_type         = uint32_t;
     using return_code_type = int32_t;
-    using task_type        = gul::Task_t<return_code_type, std::suspend_always, std::suspend_always>;
+    using task_type        = Task_t<return_code_type, std::suspend_always, std::suspend_always>;
 
 
     struct Exec
@@ -78,7 +78,7 @@ struct MiniLinux
         //bool   sig_int  = false;
 
         int32_t   sig_code = 0;
-        MiniLinux *mini = nullptr;
+        System *mini = nullptr;
 
         void setSignalHandler(std::function<void(int)> f)
         {
@@ -137,7 +137,7 @@ struct MiniLinux
 
         std::vector<pid_type> subProcesses;
 
-        pid_type executeSubProcess(MiniLinux::Exec E)
+        pid_type executeSubProcess(System::Exec E)
         {
             auto p = mini->runRawCommand(E, get_pid());
             this->subProcesses.push_back(p);
@@ -280,7 +280,7 @@ struct MiniLinux
     }
 
 
-    MiniLinux()
+    System()
     {
         setDefaultFunctions();
     }

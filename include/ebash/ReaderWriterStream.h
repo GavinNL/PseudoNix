@@ -1,12 +1,10 @@
-#ifndef READER_WRITER_STREAM_H
-#define READER_WRITER_STREAM_H
+#ifndef PSEUDONIX_READER_WRITER_STREAM_H
+#define PSEUDONIX_READER_WRITER_STREAM_H
 
 #include <readerwriterqueue/readerwriterqueue.h>
 
-
 namespace PseudoNix
 {
-
 
 template<typename T>
 struct ReaderWriterStream_t
