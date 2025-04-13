@@ -1,4 +1,4 @@
-# cpp2024
+# PseudoNix
 
 This is a sample C++ project template with the following features:
 

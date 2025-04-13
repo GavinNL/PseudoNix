@@ -1,12 +1,10 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "App.h"
-#include <iostream>
 
-#include <PseudoLinux/MiniLinux.h>
-#include <PseudoLinux/shell2.h>
-#include <PseudoLinux/ImGuiTerminal.h>
+#include <PseudoNix/MiniLinux.h>
+#include <PseudoNix/shell2.h>
+#include <PseudoNix/ImGuiTerminal.h>
 
-#include <format>
 
 struct MyApplication : public ImGuiApplication
 {

@@ -8,11 +8,11 @@ cmake_minimum_required(VERSION 3.10)
 #   myProject:
 #
 #
-#  add_subdirectory(third_party/PsuedoLinux)
-#  target_link_libraries(main PseudoLinux::PseudoLinux)
+#  add_subdirectory(third_party/PseudoNix)
+#  target_link_libraries(main PseudoNix::PseudoNix)
 #
 ################################################################################
-project( PseudoLinux
+project( PseudoNix
          VERSION 0.1.0.0
          LANGUAGES CXX)
 

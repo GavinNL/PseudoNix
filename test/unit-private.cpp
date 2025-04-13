@@ -1,8 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <PseudoLinux/MiniLinux.h>
-#include <PseudoLinux/shell2.h>
+#include <PseudoNix/MiniLinux.h>
+#include <PseudoNix/shell2.h>
 
 using namespace PseudoNix;
 
