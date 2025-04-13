@@ -25,7 +25,7 @@
 //         return;
 //     }
 // }
-namespace bl
+namespace PseudoNix
 {
 
 
@@ -50,7 +50,7 @@ Def operator << (Def::tmp, T && v)
 }
 
 #define _bl_defer(id) _bl_defer_##id
-#define bl_defer Def _bl_defer(__COUNTER__) = bl::Def::tmp() << [&]()
+#define bl_defer Def _bl_defer(__COUNTER__) = PseudoNix::Def::tmp() << [&]()
 }
 //==========================================================================
 

@@ -5,10 +5,10 @@
 #include "ImGuiConsoleWidget.h"
 #include <imgui.h>
 
-namespace bl
+namespace PseudoNix
 {
 
-bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type ctrl)
+MiniLinux::task_type terminalWindow_coro(MiniLinux::e_type ctrl)
 {
     // we're going to suspend on first run
     // because we are calling ImGui::Begin/End
@@ -47,7 +47,7 @@ bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type ctrl)
         args.push_back("sh");
 
 
-    auto sh_pid = ctrl->executeSubProcess(bl::MiniLinux::parseArguments(args));
+    auto sh_pid = ctrl->executeSubProcess(MiniLinux::parseArguments(args));
 
     // Grab the input and output streams for the shell
     // command
@@ -88,12 +88,12 @@ bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type ctrl)
             ImGui::SameLine();
             if( ImGui::Button("Sig-Int") )
             {
-                m_mini.signal(sh_pid, bl::sig_int);
+                m_mini.signal(sh_pid, PseudoNix::sig_int);
             }
             ImGui::SameLine();
             if( ImGui::Button("Sig-Term") )
             {
-                m_mini.signal(sh_pid, bl::sig_term);
+                m_mini.signal(sh_pid, PseudoNix::sig_term);
             }
             //ImGui::SameLine();
             //ImGui::Text("%s", std::format("Frame Count {}", ImGui::GetFrameCount()).c_str());

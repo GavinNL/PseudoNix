@@ -2,7 +2,7 @@
 #include <doctest/doctest.h>
 #include <ebash/shell2.h>
 
-using namespace bl;
+using namespace PseudoNix;
 
 
 SCENARIO("TEST tokenize")
@@ -93,7 +93,7 @@ SCENARIO("test shell")
 {
     MiniLinux M;
 
-    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, ShellEnv{});
+    M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
 
 
     MiniLinux::Exec E;

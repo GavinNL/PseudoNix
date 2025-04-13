@@ -4,7 +4,7 @@
 #include <ebash/MiniLinux.h>
 #include <ebash/shell2.h>
 
-using namespace bl;
+using namespace PseudoNix;
 
 
 SCENARIO("Tokenizer 3")
@@ -223,7 +223,7 @@ SCENARIO("MiniLinux: Execute two commands and have one piped into the other")
 SCENARIO("MiniLinux: sh")
 {
     MiniLinux M;
-    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, ShellEnv{});
+    M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
 
     MiniLinux::Exec sh;
     sh.args = {"sh"};
@@ -243,7 +243,7 @@ SCENARIO("MiniLinux: sh")
 SCENARIO("MiniLinux: sh - multicommand")
 {
     MiniLinux M;
-    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, ShellEnv{});
+    M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
 
     MiniLinux::Exec sh;
     sh.args = {"sh"};
@@ -262,7 +262,7 @@ SCENARIO("MiniLinux: sh - multicommand")
 SCENARIO("MiniLinux: sh - multicommand with newline")
 {
     MiniLinux M;
-    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, ShellEnv{});
+    M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
 
     MiniLinux::Exec sh;
     sh.args = {"sh"};
@@ -281,7 +281,7 @@ SCENARIO("MiniLinux: sh - multicommand with newline")
 SCENARIO("MiniLinux: sh - pipe")
 {
     MiniLinux M;
-    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, ShellEnv{});
+    M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
     THEN("We can wr")
     {
         MiniLinux::Exec sh;

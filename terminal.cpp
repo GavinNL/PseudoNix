@@ -11,7 +11,7 @@
 struct MyApplication : public ImGuiApplication
 {
 public:
-    bl::MiniLinux       m_mini;
+    PseudoNix::MiniLinux       m_mini;
 
     void setupFunctions()
     {
@@ -25,14 +25,14 @@ public:
         // cmd1 || cmd2
         // echo "Hello ${USER}"
         //
-        bl::ShellEnv shellEnv;
-        m_mini.setFunction("sh", std::bind(bl::shell2, std::placeholders::_1, shellEnv));
+        PseudoNix::ShellEnv shellEnv;
+        m_mini.setFunction("sh", std::bind(PseudoNix::shell2, std::placeholders::_1, shellEnv));
 
         // The term function is specific to this application, it will open a new
         // ImGui window to show you a terminal emulator
-        m_mini.setFunction("term", bl::terminalWindow_coro);
+        m_mini.setFunction("term", PseudoNix::terminalWindow_coro);
 
-        m_mini.setFunction("theme", [](bl::MiniLinux::e_type control) -> bl::MiniLinux::task_type
+        m_mini.setFunction("theme", [](PseudoNix::MiniLinux::e_type control) -> PseudoNix::MiniLinux::task_type
         {
             auto & E = *control;
             if(E.args.size() > 1)
@@ -68,7 +68,7 @@ public:
         //
         // You can use it to modify the args or add new
         // data such as environment variables
-        m_mini.m_preExec = [](bl::MiniLinux::Exec & E)
+        m_mini.m_preExec = [](PseudoNix::MiniLinux::Exec & E)
         {
             const char* username = std::getenv(
                 #ifdef _WIN32
@@ -88,7 +88,7 @@ public:
 
         // finally, execute the term command
         // and execute the system call
-        bl::MiniLinux::Exec E;
+        PseudoNix::MiniLinux::Exec E;
         E.args = {"term", "sh"};
         E.env = {
             {"SHELL", "sh"}

@@ -11,18 +11,18 @@
 
 #include <csignal>
 
-bl::MiniLinux * _M = nullptr;
-bl::MiniLinux::pid_type launcher_pid = 0xFFFFFFFF;
+PseudoNix::MiniLinux * _M = nullptr;
+PseudoNix::MiniLinux::pid_type launcher_pid = 0xFFFFFFFF;
 
 void handle_sigint(int signum)
 {
     if(_M)
-        _M->signal(launcher_pid, bl::sig_int);
+        _M->signal(launcher_pid, PseudoNix::sig_int);
 };
 
 int main()
 {
-    using namespace bl;
+    using namespace PseudoNix;
 
     // The first thing we need to do is create
     // the instance of the mini linux system
@@ -38,7 +38,7 @@ int main()
     // This function also allows you to customize how the shell behaves
     // by binding an initial ShellEnv
     //
-    bl::ShellEnv shellEnv;
+    PseudoNix::ShellEnv shellEnv;
     shellEnv.rc_text = R"foo(
 echo "========================================================"
 echo "Welcome to the shell"
@@ -53,9 +53,9 @@ export SHELL
 export HOME
 )foo";
     // bind the shellEnv input to the shell function
-    M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, shellEnv);
+    M.m_funcs["sh"] = std::bind(PseudoNix::shell2, std::placeholders::_1, shellEnv);
 
-    M.m_funcs["launcher"] = bl::launcher_coro;
+    M.m_funcs["launcher"] = PseudoNix::launcher_coro;
     //=============================================================================
 
 

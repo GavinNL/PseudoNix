@@ -8,7 +8,7 @@
 #include "ReaderWriterStream.h"
 #include "task.h"
 
-namespace bl
+namespace PseudoNix
 {
 
 constexpr int sig_int  = 130;
@@ -31,15 +31,15 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
 
 #define SUSPEND_POINT(C)         \
 {                                \
-if (C->sig_code == bl::sig_term)      \
+if (C->sig_code == PseudoNix::sig_term)      \
 co_return 143;                   \
 co_await std::suspend_always{};  \
 }
 
 #define SUSPEND_SIGTERM(C) \
 {\
-    if(C->sig_code == bl::sig_int )  { /*std::cout << "SIGINT" << std::endl; */ co_return 130;} \
-    if(C->sig_code == bl::sig_term ) { /*std::cout << "SIGTERM" << std::endl;*/ co_return 143;} \
+    if(C->sig_code == PseudoNix::sig_int )  { /*std::cout << "SIGINT" << std::endl; */ co_return 130;} \
+    if(C->sig_code == PseudoNix::sig_term ) { /*std::cout << "SIGTERM" << std::endl;*/ co_return 143;} \
         co_await std::suspend_always{};\
 }
 

@@ -4,10 +4,10 @@
 #include "MiniLinux.h"
 #include "defer.h"
 
-namespace bl
+namespace PseudoNix
 {
 
-inline bl::MiniLinux::task_type launcher_coro(bl::MiniLinux::e_type ctrl)
+inline MiniLinux::task_type launcher_coro(MiniLinux::e_type ctrl)
 {
     static auto count = 0;
     if(count != 0)
@@ -25,7 +25,7 @@ inline bl::MiniLinux::task_type launcher_coro(bl::MiniLinux::e_type ctrl)
         co_return 1;
     }
 
-    auto E = bl::MiniLinux::parseArguments(std::vector(ctrl->args.begin()+1, ctrl->args.end()));
+    auto E = MiniLinux::parseArguments(std::vector(ctrl->args.begin()+1, ctrl->args.end()));
     // Instead of using a default provided
     // input stream for the subprocess
     // we'll use launcher's input stream
