@@ -60,41 +60,54 @@ bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type ctrl)
     //assert(shell_stdin == E.in);
     //assert(shell_stdout == E.out);
 
-    bool exit_if_subprocess_exits = false;
+    bool exit_if_subprocess_exits = true;
 
+
+    int frameCount[2] = {ImGui::GetFrameCount()-1, ImGui::GetFrameCount()-1};
     while(true)
     {
-        //--------------------------------------------------------------
-        // The ImGui Draw section. Do not co_await
-        // between between ImGui::Begin/ImGui::End;
-        //--------------------------------------------------------------
-        ImGui::Begin(std::format("Terminal {}", terminal_name).c_str());
+        frameCount[0] = frameCount[1];
+        frameCount[1] = ImGui::GetFrameCount();
+        // its possible we could execute the
+        // coroutines multiple times per ImGui frame
+        // We dont want to draw the wiget multiple times
+        // so only do this if the frames are different
+        if(frameCount[0] != frameCount[1])
+        {
+            //--------------------------------------------------------------
+            // The ImGui Draw section. Do not co_await
+            // between between ImGui::Begin/ImGui::End;
+            //--------------------------------------------------------------
+            ImGui::Begin(std::format("Terminal {}", terminal_name).c_str());
 
-        if( ImGui::Button("New Terminal") )
-        {
-            m_mini.runRawCommand({ctrl->args});
-        }
-        ImGui::SameLine();
-        if( ImGui::Button("Sig-Int") )
-        {
-            m_mini.signal(sh_pid, SIGINT);
-        }
-        ImGui::SameLine();
-        if( ImGui::Button("Sig-Term") )
-        {
-            m_mini.signal(sh_pid, SIGTERM);
-        }
-        // Draw the console and invoke the callback if
-        // a command is entered into the input text
-        console.Draw([_in=shell_stdin](std::string const & cmd)
-                     {
-                         // place all the bytes in the cmd string into the
-                         // input stream so that sh can process it.
-                         *_in << cmd;
-                         *_in << '\n'; // this is required for the shell to execute the command
-                     });
+            if( ImGui::Button("New Terminal") )
+            {
+                m_mini.runRawCommand({ctrl->args});
+            }
+            ImGui::SameLine();
+            if( ImGui::Button("Sig-Int") )
+            {
+                m_mini.signal(sh_pid, SIGINT);
+            }
+            ImGui::SameLine();
+            if( ImGui::Button("Sig-Term") )
+            {
+                m_mini.signal(sh_pid, SIGTERM);
+            }
+            //ImGui::SameLine();
+            //ImGui::Text("%s", std::format("Frame Count {}", ImGui::GetFrameCount()).c_str());
+            // Draw the console and invoke the callback if
+            // a command is entered into the input text
+            console.Draw([_in=shell_stdin](std::string const & cmd)
+                         {
+                             // place all the bytes in the cmd string into the
+                             // input stream so that sh can process it.
+                             *_in << cmd;
+                             *_in << '\n'; // this is required for the shell to execute the command
+                         });
 
-        ImGui::End();
+            ImGui::End();
+        }
         //--------------------------------------------------------------
 
         if(exit_if_subprocess_exits && ctrl->areSubProcessesFinished()) break;
