@@ -31,6 +31,7 @@ project( eBash
 # dont want to propagate these to your project.
 # You can set them individually if you like
 option( ${PROJECT_NAME}_BUILD_UNIT_TESTS        "Build the unit tests for this library"                ${PROJECT_IS_TOP_LEVEL})
+option( ${PROJECT_NAME}_BUILD_EXAMPLES          "Build examples"                                       ${PROJECT_IS_TOP_LEVEL})
 option( ${PROJECT_NAME}_ENABLE_COVERAGE         "Enable Coverage. After build, execute: make coverage" ${PROJECT_IS_TOP_LEVEL})
 option( ${PROJECT_NAME}_ENABLE_WARNINGS         "Enable Strict Warnings"                               ${PROJECT_IS_TOP_LEVEL})
 option( ${PROJECT_NAME}_PACKAGE_INCLUDE_SOURCE  "Include source files when building the package"       ${PROJECT_IS_TOP_LEVEL})
@@ -40,37 +41,6 @@ option( ${PROJECT_NAME}_PACKAGE_INCLUDE_LIBS    "Include Library files when buil
 option( ${PROJECT_NAME}_PACKAGE_INCLUDE_BINS    "Include Executable files when building the package"   ${PROJECT_IS_TOP_LEVEL})
 
 include(cmake/extras.cmake)
-
-
-
-
-################################################################################
-get_filename_component(CC_FILE_NAME  "${CMAKE_C_COMPILER}"   NAME_WE )
-get_filename_component(CXX_FILE_NAME "${CMAKE_CXX_COMPILER}" NAME_WE )
-
-if( "${CC_FILE_NAME}" MATCHES "emcc" OR "${CXX_FILE_NAME}" MATCHES "emcc" OR EMSCRIPTEN)
-    message("Compiling with emc")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_SDL=2 -s FETCH=1")
-    set(CMAKE_EXECUTABLE_SUFFIX_CXX ".html")
-    set(SDL_TARGET "")
-else()
-
-    find_package(SDL2 REQUIRED)
-    set(SDL_TARGET SDL2::SDL2)
-endif()
-################################################################################
-
-################################################################################
-# Find all the packages we need
-#
-# Each module in the src/ folder can also define its own find_package 
-# if they are meant to be private
-#
-################################################################################
-#find_package(fmt REQUIRED)
-#find_package(stb REQUIRED)
-#find_package(glm REQUIRED)
-################################################################################
 
 
 
@@ -102,21 +72,56 @@ target_link_libraries( ${outName}  INTERFACE  ${PublicLinkedTargets})
 ################################################################################
 
 
-add_executable(main main.cpp)
-target_link_libraries(main ${PROJECT_NAME}::interface)
+if( ${PROJECT_NAME}_BUILD_EXAMPLES)
+
+    ################################################################################
+    get_filename_component(CC_FILE_NAME  "${CMAKE_C_COMPILER}"   NAME_WE )
+    get_filename_component(CXX_FILE_NAME "${CMAKE_CXX_COMPILER}" NAME_WE )
+
+    if( "${CC_FILE_NAME}" MATCHES "emcc" OR "${CXX_FILE_NAME}" MATCHES "emcc" OR EMSCRIPTEN)
+        #message("Compiling with emc")
+        #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_SDL=2")
+        #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s STANDALONE_WASM=1 -s WASM_BIGINT=1")
+        #set(CMAKE_EXECUTABLE_SUFFIX_CXX ".html")
+        set(SDL_TARGET "")
+    else()
+
+        find_package(SDL2 REQUIRED)
+        set(SDL_TARGET SDL2::SDL2)
+    endif()
+    ################################################################################
 
 
-add_executable(terminal terminal.cpp)
-target_link_libraries(terminal ${PROJECT_NAME}::interface ${SDL_TARGET})
-target_include_directories(terminal PUBLIC
-                                    # For ImGui, set them as system includes
-                                    # so the compiler doesnt warn about errors
-                                    SYSTEM
-                                    ${CMAKE_BINARY_DIR}/imgui_src/include
-                                    ${CMAKE_BINARY_DIR}/imgui_src/res/bindings
-                                    ${CMAKE_BINARY_DIR}/imgui_src/res
-                                    ${CMAKE_BINARY_DIR}/imgui_src/res/misc/cpp
-                          )
+    add_executable(terminal terminal.cpp)
+    target_link_libraries(terminal ${PROJECT_NAME}::interface ${SDL_TARGET})
+    target_include_directories(terminal PUBLIC
+                                        # For ImGui, set them as system includes
+                                        # so the compiler doesnt warn about errors
+                                        SYSTEM
+                                        ${CMAKE_BINARY_DIR}/imgui_src/include
+                                        ${CMAKE_BINARY_DIR}/imgui_src/res/bindings
+                                        ${CMAKE_BINARY_DIR}/imgui_src/res
+                                        ${CMAKE_BINARY_DIR}/imgui_src/res/misc/cpp
+                              )
+
+    if(EMSCRIPTEN)
+        # Compile with SDL for termainl
+        target_compile_options(terminal PRIVATE "-sUSE_SDL=2")
+        target_link_options(terminal PRIVATE "-sUSE_SDL=2")
+
+        set_target_properties(terminal PROPERTIES SUFFIX ".html")
+    else()
+        add_executable(main main.cpp)
+        # compile with only wasm, so we can use
+        # wasmtime
+        target_compile_options(main PRIVATE "-sSTANDALONE_WASM=1" "-sWASM_BIGINT=1")
+        target_link_libraries(main ${PROJECT_NAME}::interface)
+    endif()
+
+
+endif()
+
+
 
 # enable testing on the root folder so that we can run ctest from it,
 # otherwise we will have to CD into each sub folder to run the unit tests

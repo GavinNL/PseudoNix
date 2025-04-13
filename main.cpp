@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
-
 #include <ebash/MiniLinux.h>
 #include <ebash/shell2.h>
 

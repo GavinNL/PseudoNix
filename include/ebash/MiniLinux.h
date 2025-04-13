@@ -6,7 +6,8 @@
 #include <map>
 #include <functional>
 #include <csignal>
-
+#include <stdio.h>
+#include <unistd.h>
 #include "ReaderWriterStream.h"
 #include "task.h"
 #include "defer.h"
@@ -30,11 +31,11 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
     return oss.str();
 }
 
-#define SUSPEND_POINT(C) \
-{\
-    if(C->sig_code == SIGTERM )\
-        co_return 143;\
-    co_await std::suspend_always{};\
+#define SUSPEND_POINT(C)                                                       \
+{                                                                            \
+if (C->sig_code == SIGTERM)                                                \
+co_return 143;                                                           \
+co_await std::suspend_always{};                                            \
 }
 
 #define SUSPEND_SIGTERM(C) \
@@ -657,17 +658,17 @@ protected:
             (void)ctrl;
             co_return 0;
         };
-        m_funcs["help"] = [this](e_type ctrl) -> task_type
+        m_funcs["help"] = [](e_type ctrl) -> task_type
         {
             auto & arg = *ctrl;
             arg << "List of commands:\n\n";
-            for(auto & f : m_funcs)
+            for(auto & f : ctrl->mini->m_funcs)
             {
                 arg << f.first << '\n';
             }
             co_return 0;
         };
-        m_funcs["env"] = [this](e_type args) -> task_type
+        m_funcs["env"] = [](e_type args) -> task_type
         {
             for(auto & [var, val] : args->env)
             {

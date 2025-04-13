@@ -11,7 +11,6 @@ class EBashRecipe(ConanFile):
     preset_name = os.getenv('CONAN_PRESET_NAME')
     
     def requirements(self):
-        self.requires("catch2/3.6.0")
         self.requires("doctest/2.4.11")
         self.requires("imgui/1.91.8-docking")
 #       self.requires("fmt/10.2.1")
