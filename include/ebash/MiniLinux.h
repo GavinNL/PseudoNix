@@ -11,7 +11,7 @@
 #include "ReaderWriterStream.h"
 #include "task.h"
 #include "defer.h"
-
+#include <sys/select.h>
 #include  <sys/ioctl.h>
 
 namespace bl
@@ -885,7 +885,7 @@ protected:
 
             if(sh_pid == 0xFFFFFFFF)
             {
-                std::cout << "Invalid Command: " << ctrl->args[1] << "\n";
+                std::cout << "Invalid Command: " << ctrl->args[1] << std::endl;
                 co_return 127;
             }
 
@@ -915,36 +915,29 @@ protected:
                 c_out->close();
             };
 
-            char buffer[1024];
+
+            auto read_char_nonblocking = [](char *ch) {
+                fd_set fds;
+                FD_ZERO(&fds);
+                FD_SET(STDIN_FILENO, &fds);
+
+                struct timeval timeout = {0,0}; // non-blocking
+                int ready = select(STDIN_FILENO + 1, &fds, NULL, NULL, &timeout);
+
+                if (ready > 0 && FD_ISSET(STDIN_FILENO, &fds)) {
+                    ssize_t result = read(STDIN_FILENO, ch, 1);
+                    return result == 1;
+                }
+
+                return false;
+            };
 
             while(true)
             {
-                // std::getline blocks until data is entered, but
-                // we dont want to do that because this will block our entire
-                // process
-                // we want to check if bytes are available and then
-                // read them in, if no bytes are there, we should suspend the
-                // coroutine
-                int bytes = 0;
-                // check if there are any bytes in stdin
-                if (ioctl(STDIN_FILENO, FIONREAD, &bytes) == -1) {
-                    co_return 1;
-                }
-
-                // Read all the bytes from standard input
-                while(bytes > 0)
+                char ch=0;
+                while(read_char_nonblocking(&ch))
                 {
-                    int bytes_to_read = std::min(bytes, 1023);
-                    std::cin.read(buffer, bytes_to_read);
-
-                    // and pipe them into the
-                    // output stream
-                    for(int i=0;i<bytes_to_read;i++)
-                        E.in->put(buffer[i]);
-
-                    if (ioctl(STDIN_FILENO, FIONREAD, &bytes) == -1) {
-                        co_return 1;
-                    }
+                    E.in->put(ch);
                 }
 
                 // If there are any bytes in the output stream of
