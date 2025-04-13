@@ -503,9 +503,10 @@ struct MiniLinux
             }
         }
 
+        // Remove any processes that have been completed
+        // or have been forcefuly terminated
         for(auto it = m_procs2.begin(); it!=m_procs2.end();)
         {
-            auto & pid = it->first;
             if(it->second.force_terminate)
             {
                 it->second.control->out->close();
