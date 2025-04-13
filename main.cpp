@@ -1,10 +1,10 @@
 #include <string>
 #include <thread>
 
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
+//#include <fcntl.h>
+//#include <unistd.h>
+//#include <sys/ioctl.h>
+//#include <unistd.h>
 #include <PseudoNix/MiniLinux.h>
 #include <PseudoNix/shell2.h>
 #include <PseudoNix/Launcher.h>
@@ -53,9 +53,9 @@ export SHELL
 export HOME
 )foo";
     // bind the shellEnv input to the shell function
-    M.m_funcs["sh"] = std::bind(PseudoNix::shell2, std::placeholders::_1, shellEnv);
+    M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, shellEnv));
 
-    M.m_funcs["launcher"] = PseudoNix::launcher_coro;
+    M.setFunction("launcher", PseudoNix::launcher_coro);
     //=============================================================================
 
 

@@ -23,8 +23,7 @@ public:
         // cmd1 || cmd2
         // echo "Hello ${USER}"
         //
-        PseudoNix::ShellEnv shellEnv;
-        m_mini.setFunction("sh", std::bind(PseudoNix::shell2, std::placeholders::_1, shellEnv));
+        m_mini.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
 
         // The term function is specific to this application, it will open a new
         // ImGui window to show you a terminal emulator
