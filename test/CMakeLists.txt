@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.13)
 
 
-find_package(Catch2 REQUIRED)
+find_package(doctest REQUIRED)
 
 set(TESTCASE_PREFIX        "test-${PROJECT_NAME}")
 set(UNIT_TEST_LINK_TARGETS "${PROJECT_NAME}" )
@@ -40,7 +40,7 @@ foreach(file ${files})
 
     target_link_libraries( ${UNIT_EXE_NAME}
                                 PUBLIC
-                                    Catch2::Catch2WithMain
+                                    doctest::doctest
                                     ${PROJECT_NAME}::warnings
                                     ${PROJECT_NAME}::interface
                                 )

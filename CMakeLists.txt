@@ -43,6 +43,23 @@ include(cmake/extras.cmake)
 
 
 
+
+################################################################################
+get_filename_component(CC_FILE_NAME  "${CMAKE_C_COMPILER}"   NAME_WE )
+get_filename_component(CXX_FILE_NAME "${CMAKE_CXX_COMPILER}" NAME_WE )
+
+if( "${CC_FILE_NAME}" MATCHES "emcc" OR "${CXX_FILE_NAME}" MATCHES "emcc" OR EMSCRIPTEN)
+    message("Compiling with emc")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_SDL=2 -s FETCH=1")
+    set(CMAKE_EXECUTABLE_SUFFIX_CXX ".html")
+    set(SDL_TARGET "")
+else()
+
+    find_package(SDL2 REQUIRED)
+    set(SDL_TARGET SDL2::SDL2)
+endif()
+################################################################################
+
 ################################################################################
 # Find all the packages we need
 #
@@ -87,6 +104,19 @@ target_link_libraries( ${outName}  INTERFACE  ${PublicLinkedTargets})
 
 add_executable(main main.cpp)
 target_link_libraries(main ${PROJECT_NAME}::interface)
+
+
+add_executable(terminal terminal.cpp)
+target_link_libraries(terminal ${PROJECT_NAME}::interface ${SDL_TARGET})
+target_include_directories(terminal PUBLIC
+                                    # For ImGui, set them as system includes
+                                    # so the compiler doesnt warn about errors
+                                    SYSTEM
+                                    ${CMAKE_BINARY_DIR}/imgui_src/include
+                                    ${CMAKE_BINARY_DIR}/imgui_src/res/bindings
+                                    ${CMAKE_BINARY_DIR}/imgui_src/res
+                                    ${CMAKE_BINARY_DIR}/imgui_src/res/misc/cpp
+                          )
 
 # enable testing on the root folder so that we can run ctest from it,
 # otherwise we will have to CD into each sub folder to run the unit tests

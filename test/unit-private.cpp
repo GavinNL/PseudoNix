@@ -1,7 +1,7 @@
-#include <catch2/catch_all.hpp>
-#include <catch2/benchmark/catch_benchmark_all.hpp>
-#include <ebash/MiniLinux.h>
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest/doctest.h>
 
+#include <ebash/MiniLinux.h>
 #include <ebash/shell2.h>
 
 using namespace bl;
