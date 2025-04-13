@@ -537,7 +537,7 @@ struct MiniLinux
             coro.control->env["?"] = std::to_string(exit_code);
             coro.control->pid = pid;
 
-            if(coro.control->out)
+            if(coro.control->out && coro.control.use_count() == 2)
             {
                 coro.control->out->close();
             }

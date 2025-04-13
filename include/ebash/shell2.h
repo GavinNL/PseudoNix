@@ -482,15 +482,14 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             //======================================================================
 
             auto stdout = MiniLinux::make_stream();
-            auto pids = execute_pipes( std::vector(_a.begin()+1, _a.end()), &exev, &shellEnv, exev.in, stdout);
-
+            auto pids = execute_pipes( std::vector(_a.begin()+1, _a.end()), &exev, &shellEnv, exev.in, exev.out);
             auto f_exit_code = exev.mini->processExitCode(pids.back());
 
             // pids are running in the foreground:
             while(!exev.areSubProcessesFinished())
             {
                 SUSPEND_POINT(control);
-                *exev.out << *stdout;
+                //*exev.out << *stdout;
             }
             exev.subProcesses.clear();
 
