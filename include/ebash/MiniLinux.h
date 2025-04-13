@@ -57,7 +57,7 @@ struct MiniLinux
         {
             if(sig_kill)
             {
-                std::cerr << "Pid killed: " << pid << std::endl;
+                //std::cerr << "Pid killed: " << pid << std::endl;
             }
             return sig_kill;
         }

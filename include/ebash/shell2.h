@@ -356,12 +356,17 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
     // process so that we know which signals
     // are being sent
 
+    std::vector<MiniLinux::pid_type> pid_to_signal;
     bool sig_int=false;
     exev.setSignalHandler([&](int s)
     {
-        exev << std::format("Signal {} caught in shell {}\n", s, control->get_pid());
-        if(s==2)
+        std::cout << std::format("Signal {} caught in shell {}\n", s, control->get_pid());
+        if(s==2 && !sig_int)
+        {
             sig_int = true;
+            for(auto p : pid_to_signal)
+                control->mini->signal(s, 2);
+        }
     });
 
     #define SHOULD_QUIT sig_int || exev.in->eof()
@@ -444,13 +449,12 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                     auto brk = *first_open;
                     auto new_args = std::vector(first_open.base(), it);
 
+                    auto pids = execute_pipes( {shell_name, "--noprofile"}, exev.mini, &shellEnv);
+
+
                     // if the command is enclosed in brackets, it means
                     // we have to call that command in a separate sh
-                    // process
-                    //auto stdin = MiniLinux::make_stream();
-                    //auto stdout = MiniLinux::make_stream();
-
-                    auto pids = execute_pipes( {shell_name, "--noprofile"}, exev.mini, &shellEnv);
+                    // process, so grab the stdin stream
                     auto stdin  = exev.mini->getIO(pids.front()).first;
                     auto stdout = exev.mini->getIO(pids.back()).second;
 
@@ -463,8 +467,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                     }
                     *stdin << std::format(";");
                     stdin->close();
-
-
 
                     // pids are running in the foreground
                     while(!exev.mini->isAllComplete(pids))
@@ -507,7 +509,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 
             auto stdout = MiniLinux::make_stream();
             auto pids = execute_pipes( std::vector(_a.begin()+1, _a.end()), exev.mini, &shellEnv, exev.in, stdout);
-
+            pid_to_signal = pids;
             auto f_exit_code = exev.mini->processExitCode(pids.back());
 
             // pids are running in the foreground:
@@ -521,15 +523,16 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                 // another process could have set the flag.
                 if(sig_int)
                 {
-                    for(auto p : pids)
-                        exev.mini->kill(p);
+                    //for(auto p : pids)
+                    //    exev.mini->kill(p);
 
                     // reset the interuppt signal
-                    sig_int = false;
+                    //sig_int = false;
                 }
                 //-------------------------------------------
                 *exev.out << *stdout;
             }
+            pid_to_signal.clear();
 
             ret_value = *f_exit_code;
 
