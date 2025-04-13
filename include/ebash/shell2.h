@@ -352,16 +352,28 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 
     std::string shell_name = control->args[0];
 
+    // Set the signal handler for this
+    // process so that we know which signals
+    // are being sent
+
+    bool sig_int=false;
+    exev.setSignalHandler([&](int s)
+    {
+        exev << std::format("Signal {} caught in shell {}\n", s, control->get_pid());
+        if(s==2)
+            sig_int = true;
+    });
+
+    #define SHOULD_QUIT sig_int || exev.in->eof()
+
     while(true)
     {
-        if(exev.is_sigkill()) break;
-        if(exev.in->eof()) break;
-        if(shellEnv.exitShell) break;
-
-        while(!exev.has_data())
+        while(true)
         {
+            if(SHOULD_QUIT || shellEnv.exitShell)
+                co_return 0;
+            if(exev.has_data()) break;
             co_await std::suspend_always{};
-            if(exev.is_sigkill()) co_return 0;
         }
 
         auto c = exev.get();
@@ -398,6 +410,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
         std::reverse(op_args.begin(), op_args.end());
 
 
+
         while(op_args.size())
         {
             auto & _a = op_args.back();
@@ -413,7 +426,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                 op_args.pop_back();
                 continue;
             }
-
             //======================================================================
             for(auto it=_a.begin(); it != _a.end();)
             {
@@ -458,13 +470,13 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                         // been set AFTER we have yielded
                         // this is because during the yield,
                         // another process could have set the flag.
-                        if(exev.is_sigkill())
+                        if(sig_int)
                         {
                             for(auto p : pids)
                                 exev.mini->kill(p);
                         }
                         // reset the flag
-                        exev.sig_kill = false;
+                        sig_int = false;
                         //-------------------------------------------
                     }
                     it = _a.erase(first_open.base()-1, it+1);
@@ -502,13 +514,14 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                 // been set AFTER we have yielded
                 // this is because during the yield,
                 // another process could have set the flag.
-                if(exev.is_sigkill())
+                if(sig_int)
                 {
                     for(auto p : pids)
                         exev.mini->kill(p);
+
+                    // reset the interuppt signal
+                    sig_int = false;
                 }
-                // reset the flag
-                exev.sig_kill = false;
                 //-------------------------------------------
                 *exev.out << *stdout;
             }
