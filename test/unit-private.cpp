@@ -7,6 +7,34 @@
 using namespace bl;
 
 
+SCENARIO("Tokenizer 3")
+{
+    {
+        auto v = Tokenizer3::to_vector("echo hello $(sleep 3 && echo world)");
+        REQUIRE(v[0] == "echo");
+        REQUIRE(v[1] == "hello");
+        REQUIRE(v[2] == "$(sleep 3 && echo world)");
+    }
+    {
+        auto v = Tokenizer3::to_vector("echo $(get word) $(sleep $(get count) && echo world)");
+        REQUIRE(v[0] == "echo");
+        REQUIRE(v[1] == "$(get word)");
+        REQUIRE(v[2] == "$(sleep $(get count) && echo world)");
+    }
+
+    {
+        auto v = Tokenizer3::to_vector("echo 1 && echo 2 || echo 3");
+        REQUIRE(v[0] == "echo");
+        REQUIRE(v[1] == "1");
+        REQUIRE(v[2] == "&&");
+        REQUIRE(v[3] == "echo");
+        REQUIRE(v[4] == "2");
+        REQUIRE(v[5] == "||");
+        REQUIRE(v[6] == "echo");
+        REQUIRE(v[7] == "3");
+    }
+}
+
 SCENARIO("MiniLinux: gen pipeline")
 {
     MiniLinux M;

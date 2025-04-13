@@ -9,6 +9,111 @@
 namespace bl
 {
 
+struct Tokenizer3
+{
+    std::string_view input;
+    Tokenizer3(std::string_view v) : input(v)
+    {
+    }
+
+    static std::vector<std::string> to_vector(std::string_view st)
+    {
+        std::vector<std::string> tokens;
+        Tokenizer3 T2(st);
+        auto t2=T2.next();
+        while(!t2.empty())
+        {
+            tokens.push_back(t2);
+            t2 = T2.next();
+        }
+        return tokens;
+    }
+
+    size_t pos=0;
+    std::string next()
+    {
+        std::string current;
+        bool quoted = false;
+
+        while(pos < input.size())
+        {
+            char c = input[pos];
+            auto sub = input.substr(pos, 2);
+
+            if(!quoted)
+            {
+                if(sub == "$(")
+                {
+                    size_t i=pos+2;
+                    size_t b_count=1;
+                    current += sub;
+                    while(i<input.size())
+                    {
+                        if(input[i] == '(') b_count++;
+                        if(input[i] == ')') b_count--;
+                        current += input[i];
+                        i++;
+                        if(b_count==0)
+                            break;
+                    }
+                    pos = i+1;
+                    return current;
+                }
+                else if(sub == "&&" || sub == "||")
+                {
+                    if(!current.empty())
+                        return current;
+                    pos+=2;
+                    return std::string(sub);
+                }
+                else if(c==')' || c == '|' || c=='(')
+                {
+                    if(!current.empty())
+                        return current;
+                    pos+=1;
+                    return std::string(1,c);
+                }
+                else if( c == '"')
+                {
+                    quoted = !quoted;
+                    pos += 1;
+                }
+                else
+                {
+                    if( !std::isspace(c) )
+                    {
+                        current += c;
+                        pos += 1;
+                    }
+                    else
+                    {
+                        if(!current.empty())
+                            return current;
+                        else
+                            pos += 1;
+                    }
+                }
+            }
+            else
+            {
+                if( c == '"')
+                    quoted = !quoted;
+                else
+                {
+                    current += c;
+                }
+                pos += 1;
+            }
+
+        }
+        if(!current.empty())
+        {
+            auto s = std::move(current);
+            return s;
+        }
+        return {};
+    }
+};
 
 
 struct Tokenizer2
@@ -381,7 +486,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
         if(_current.empty())
             continue;
 
-        auto args = Tokenizer2::to_vector(var_sub1(_current, shellEnv.env));
+        auto args = Tokenizer3::to_vector(var_sub1(_current, shellEnv.env));
         _current.clear();
 
         bool run_in_background = false;
@@ -421,73 +526,48 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 
         while(op_args.size())
         {
-            auto & _a = op_args.back();
-            auto op = _a.front();
+            auto & cmd = op_args.back();
+            auto _operator = cmd.front();
 
-            if(op == "&&" && ret_value != 0)
+            if(_operator == "&&" && ret_value != 0)
             {
                 op_args.pop_back();
                 continue;
             }
-            if(op == "||" && ret_value == 0)
+            if(_operator == "||" && ret_value == 0)
             {
                 op_args.pop_back();
                 continue;
             }
             //======================================================================
-            for(auto it=_a.begin(); it != _a.end();)
+            // Loop through all the arguments in the
+            // cmd and see if any of them look like: $(cmdname arg1 arg2)
+            //
+            // If so, execute a new shell and pipe the "cmdname arg1 arg2" into
+            // the input stream so that it can be executed
+            for(auto it=cmd.begin(); it != cmd.end();)
             {
-                if(*it == ")")
+                if(it->size() >= 3 && it->substr(0,2) == "$(" && it->back() == ')')
                 {
-                    auto first_open = std::find_if(std::reverse_iterator(it), _a.rend(), [](auto &dd)
-                                                   {
-                                                       return dd == "(" || dd == "$(";
-                                                   });
-                    if(first_open == _a.rend())
-                    {
-                        // Un paired bracket, bad commadn
-                        break;
-                    }
-                    // is the bracket $( or (
-                    auto brk = *first_open;
-                    auto new_args = std::vector(first_open.base(), it);
-
+                    // we have a $(cmd arg1 arg2 arg3) situtation going on here
+                    // so execute this as a new shell
                     auto pids = execute_pipes( {shell_name, "--noprofile"}, &exev, &shellEnv);
-
-                    // if the command is enclosed in brackets, it means
-                    // we have to call that command in a separate sh
-                    // process, so grab the stdin stream
-                    auto stdin  = exev.mini->getIO(pids.front()).first;
-                    auto stdout = exev.mini->getIO(pids.back()).second;
-
-                    for(auto & a : new_args)
-                    {
-                        // pipe the data into stdin, and make sure each argument
-                        // is in quotes. We may need to tinker with this
-                        // to have properly escaped characters
-                        *stdin << std::format("\"{}\" ", a);
-                    }
-                    *stdin << std::format(";");
-                    stdin->close();
-
-                    // pids are running in the foreground
-                    while(!exev.mini->isAllComplete(pids))
+                    auto [stdin, stdout]  = exev.mini->getIO(pids.front());
+                    *stdin << it->substr(2, it->size()-3);
+                    *stdin << ';';
+                    stdin->close(); // make sure to close the output stream otherwise
+                                    // sh will block waiting for bytes
+                    while(!control->areSubProcessesFinished())
                     {
                         SUSPEND_POINT(control);
                     }
-                    it = _a.erase(first_open.base()-1, it+1);
+                    exev.subProcesses.clear();
 
-                    if(brk == "$(")
-                    {
-                        std::string output;
-                        *stdout >> output;
-                        auto new_tokens = Tokenizer2::to_vector(output);
-                        it = _a.insert(it, new_tokens.begin(), new_tokens.end());
-                    }
-                    else if(brk == "(")
-                    {
-                        // not implemented yet
-                    }
+                    std::string out;
+                    *stdout >> out;
+                    auto new_args = Tokenizer3::to_vector(out);
+                    it = cmd.erase(it);
+                    it = cmd.insert(it, new_args.begin(), new_args.end());
                 }
                 else
                 {
@@ -497,20 +577,19 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             //======================================================================
 
             auto stdout = MiniLinux::make_stream();
-            auto pids = execute_pipes( std::vector(_a.begin()+1, _a.end()), &exev, &shellEnv, exev.in, exev.out);
+            auto pids = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), &exev, &shellEnv, exev.in, exev.out);
             auto f_exit_code = exev.mini->processExitCode(pids.back());
 
             // pids are running in the foreground:
             while(!exev.areSubProcessesFinished())
             {
                 SUSPEND_POINT(control);
-                //*exev.out << *stdout;
             }
             exev.subProcesses.clear();
 
             if(!f_exit_code)
             {
-                *exev.out << "Command not found: " << _a[1] << "\n";
+                *exev.out << "Command not found: " << cmd[1] << "\n";
                 ret_value = 127;
             }
             else
