@@ -5,7 +5,7 @@
 #include <string>
 #include <map>
 #include <functional>
-#include <future>
+#include <csignal>
 
 #include "ReaderWriterStream.h"
 #include "task.h"
@@ -407,22 +407,24 @@ struct MiniLinux
         }
         return false;
     }
+
     /**
      * @brief kill
      * @param pid
+     * @return
      *
-     * Kill a running pid
+     * Forcefully kill the running processs. The
+     * process's output streams will be closed and
+     * its coroutine will be removed from the scheduler.
+     * Your process will not be able to clean up any
+     * resources.
      */
-    bool kill(pid_type pid, bool dash_9=false)
+    bool kill(pid_type pid)
     {
         if(isRunning(pid))
         {
-            if(dash_9)
-            {
-                m_procs2.erase(pid);
-            }
-            signal(pid, 2);
-            m_procs2.at(pid).control->sig_kill=true;
+            auto & proc = m_procs2.at(pid);
+            proc.force_terminate = true;
             return true;
         }
         return false;
@@ -491,11 +493,22 @@ struct MiniLinux
      */
     size_t executeAll()
     {
-        for(auto it = m_procs2.begin(); it!=m_procs2.end();)
+        for(auto it = m_procs2.begin(); it!=m_procs2.end();it++)
         {
             auto & pid = it->first;
             if(execute(pid))
             {
+                it->second.force_terminate = true;
+                it->second.is_complete = true;
+            }
+        }
+
+        for(auto it = m_procs2.begin(); it!=m_procs2.end();)
+        {
+            auto & pid = it->first;
+            if(it->second.force_terminate)
+            {
+                it->second.control->out->close();
                 it = m_procs2.erase(it);
             }
             else
@@ -538,6 +551,8 @@ struct MiniLinux
         std::shared_ptr<return_code_type> exit_code = std::make_shared<return_code_type>(-1);
         std::function<void(int)>        signal = {};
         std::chrono::nanoseconds        processTime = std::chrono::nanoseconds(0);
+
+        bool force_terminate = false;
     };
 
     std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)
@@ -782,7 +797,21 @@ protected:
             });
             char buffer[1024];
 
-            while (!exev.is_sigkill())
+            // The signal handler
+            bool _alreadyHandled = false;
+            exev.setSignalHandler([&](int s)
+            {
+                if(s==2 && !_alreadyHandled)
+                {
+                    _alreadyHandled = true;
+                    std::cout << "launcher signal caught" << std::endl;
+                    // Pass the signal to the shell pid
+                    control->mini->signal(sh_pid, s);
+                    _alreadyHandled = false;;
+                }
+            });
+
+            while(true)
             {
                 // std::getline blocks until data is entered, but
                 // we dont want to do that because this will block our entire
@@ -826,12 +855,9 @@ protected:
                 co_await std::suspend_always{};
             }
 
-            if(exev.is_sigkill())
-            {
-                exev.mini->kill(sh_pid);
-            }
             count--;
 
+            std::cout << "Launcher exiting" << std::endl;
             co_return 0;
         };
     }

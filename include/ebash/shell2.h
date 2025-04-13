@@ -357,19 +357,25 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
     // are being sent
 
     std::vector<MiniLinux::pid_type> pid_to_signal;
-    bool sig_int=false;
+    bool _alreadyHandled = false;
     exev.setSignalHandler([&](int s)
     {
-        std::cout << std::format("Signal {} caught in shell {}\n", s, control->get_pid());
-        if(s==2 && !sig_int)
+        //std::cout << std::format("Signal {} caught in shell {}\n", s, control->get_pid());
+        if(s==2 && !_alreadyHandled)
         {
-            sig_int = true;
+            _alreadyHandled = true;
             for(auto p : pid_to_signal)
                 control->mini->signal(p, s);
+            _alreadyHandled = false;
         }
     });
 
-    #define SHOULD_QUIT sig_int || exev.in->eof()
+    auto f = std::shared_ptr<void>(nullptr, [](auto)
+    {
+        std::cout << "Shell exit" << std::endl;
+    });
+
+    #define SHOULD_QUIT exev.in->eof()
 
     while(true)
     {
@@ -472,19 +478,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                     while(!exev.mini->isAllComplete(pids))
                     {
                         co_await std::suspend_always{};
-                        //-------------------------------------------
-                        // we should check if sig kill has
-                        // been set AFTER we have yielded
-                        // this is because during the yield,
-                        // another process could have set the flag.
-                        if(sig_int)
-                        {
-                            for(auto p : pids)
-                                exev.mini->kill(p);
-                        }
-                        // reset the flag
-                        sig_int = false;
-                        //-------------------------------------------
                     }
                     it = _a.erase(first_open.base()-1, it+1);
 
@@ -516,20 +509,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             while(!exev.mini->isAllComplete(pids))
             {
                 co_await std::suspend_always{};
-                //-------------------------------------------
-                // we should check if sig kill has
-                // been set AFTER we have yielded
-                // this is because during the yield,
-                // another process could have set the flag.
-                if(sig_int)
-                {
-                    //for(auto p : pids)
-                    //    exev.mini->kill(p);
-
-                    // reset the interuppt signal
-                    //sig_int = false;
-                }
-                //-------------------------------------------
                 *exev.out << *stdout;
             }
             pid_to_signal.clear();

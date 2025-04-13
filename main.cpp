@@ -1,7 +1,6 @@
 #include <iostream>
 #include <string>
-#include <memory>
-#include <chrono>
+#include <thread>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -11,39 +10,21 @@
 #include <ebash/MiniLinux.h>
 #include <ebash/shell2.h>
 
-bool is_cin_ready() {
-    // Get the current flags of stdin
-    int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
-    // Set stdin to non-blocking
-    fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
 
-    char c;
-    bool ready = (read(STDIN_FILENO, &c, 1) > 0);
+bl::MiniLinux * _M = nullptr;
+bl::MiniLinux::pid_type launcher_pid = 0xFFFFFFFF;
 
-    // Restore original flags
-    fcntl(STDIN_FILENO, F_SETFL, flags);
+void handle_sigint(int signum)
+{
+    if(_M)
+        _M->signal(launcher_pid, SIGINT);
+};
 
-    if (ready) {
-        // Push the character back into the stream
-        ungetc(c, stdin);
-    }
-
-    return ready;
-}
-
-int bytes_available_in_stdin() {
-    int count = 0;
-    // Query stdin (file descriptor 0)
-    if (ioctl(STDIN_FILENO, FIONREAD, &count) == -1) {
-        perror("ioctl");
-        return -1;
-    }
-    return count;
-}
 
 int main()
 {
     using namespace bl;
+
 
     // The first thing we need to do is create
     // the instance of the mini linux system
@@ -93,6 +74,18 @@ export HOME
     // std::cout
     //
     auto pids = M.runRawCommand(MiniLinux::parseArguments({"launcher", "sh"}));
+
+    // since we are writing a command line shell
+    // we want to make sure that we catch the SIGINT signal when we press
+    // ctrl-C on the terminal. We can then signal
+    // the launcher to SIGINT as well
+    //
+    // If we didn't do this, we wouldn't be able to stop
+    // long running processes, instead pressing CTRL-C would exit
+    // the program
+    std::signal(SIGINT, handle_sigint);
+    _M = &M;
+    launcher_pid = pids;
 
     while(M.executeAll())
     {
