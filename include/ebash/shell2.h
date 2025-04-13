@@ -294,7 +294,8 @@ std::string var_sub1(std::string_view str, std::map<std::string,std::string> con
     for(size_t i=0;i<str.size();i++)
     {
         auto sub = str.substr(i,2);
-        if(sub == "${" || (sub[0]=='$' && std::isalpha(sub[1])) )
+
+        if(sub == "$?" || sub == "${" || (sub[0]=='$' && std::isalpha(sub[1])) )
         {
             std::string var_name;
             for(i=i+1; i<str.size(); i++)
