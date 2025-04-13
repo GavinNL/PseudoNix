@@ -128,7 +128,6 @@ bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type ctrl)
         }
     }
 
-
     co_return 0;
 }
 

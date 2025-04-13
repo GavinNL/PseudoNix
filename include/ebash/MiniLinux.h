@@ -586,6 +586,19 @@ struct MiniLinux
         return m_procs2.size();
     }
 
+    size_t executeAllFor(std::chrono::nanoseconds d, size_t maxIterations)
+    {
+        auto t0 = std::chrono::high_resolution_clock::now();
+        size_t ret=0;
+        size_t i=0;
+        while(true)
+        {
+            ret = executeAll();
+            if(std::chrono::high_resolution_clock::now()-t0 > d || i++ > maxIterations)
+                break;
+        }
+        return ret;
+    }
     /**
      * @brief processExitCode
      * @param p

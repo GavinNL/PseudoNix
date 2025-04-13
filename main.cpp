@@ -82,13 +82,13 @@ export HOME
     // executeAllFor( ) will keep calling executeAll()
     // until the total time elapsed is more than the
     // given input value
-    while(M.executeAll())
+    while(M.executeAllFor(std::chrono::milliseconds(1), 10))
     {
         // sleep for 1 millisecond so we're not
         // doing a busy loop
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-
+    _M = nullptr;
     return 0;
 }
 
