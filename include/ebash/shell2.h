@@ -4,7 +4,7 @@
 #include <map>
 
 #include "MiniLinux.h"
-
+#include "defer.h"
 
 namespace bl
 {
@@ -494,7 +494,15 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             }
             exev.subProcesses.clear();
 
-            ret_value = f_exit_code ? *f_exit_code : 127;
+            if(!f_exit_code)
+            {
+                *exev.out << "Command not found: " << _a[1] << "\n";
+                ret_value = 127;
+            }
+            else
+            {
+                ret_value = *f_exit_code;
+            }
 
             shellEnv.env["?"] = std::to_string(ret_value);
 

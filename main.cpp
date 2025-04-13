@@ -7,6 +7,9 @@
 #include <unistd.h>
 #include <ebash/MiniLinux.h>
 #include <ebash/shell2.h>
+#include <ebash/Launcher.h>
+
+#include <csignal>
 
 bl::MiniLinux * _M = nullptr;
 bl::MiniLinux::pid_type launcher_pid = 0xFFFFFFFF;
@@ -14,13 +17,12 @@ bl::MiniLinux::pid_type launcher_pid = 0xFFFFFFFF;
 void handle_sigint(int signum)
 {
     if(_M)
-        _M->signal(launcher_pid, SIGINT);
+        _M->signal(launcher_pid, bl::sig_int);
 };
 
 int main()
 {
     using namespace bl;
-
 
     // The first thing we need to do is create
     // the instance of the mini linux system
@@ -52,6 +54,8 @@ export HOME
 )foo";
     // bind the shellEnv input to the shell function
     M.m_funcs["sh"] = std::bind(bl::shell2, std::placeholders::_1, shellEnv);
+
+    M.m_funcs["launcher"] = bl::launcher_coro;
     //=============================================================================
 
 
@@ -69,7 +73,7 @@ export HOME
     // it will then read the output stream of the child process and output it to
     // std::cout
     //
-    launcher_pid = M.runRawCommand(MiniLinux::parseArguments({"launcher2", "sh"}));
+    launcher_pid = M.runRawCommand(MiniLinux::parseArguments({"launcher", "sh"}));
 
     // We are going to use a signal handler to
     // catch ctrl-C inputs and then

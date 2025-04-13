@@ -5,17 +5,15 @@
 #include <string>
 #include <map>
 #include <functional>
-#include <csignal>
-#include <stdio.h>
-#include <unistd.h>
 #include "ReaderWriterStream.h"
 #include "task.h"
-#include "defer.h"
-#include <sys/select.h>
-#include <sys/ioctl.h>
 
 namespace bl
 {
+
+constexpr int sig_int  = 130;
+constexpr int sig_term = 143;
+
 
 template <typename Container>
 std::string join(const Container& c, const std::string& delimiter = ", ") {
@@ -33,15 +31,15 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
 
 #define SUSPEND_POINT(C)         \
 {                                \
-if (C->sig_code == SIGTERM)      \
+if (C->sig_code == bl::sig_term)      \
 co_return 143;                   \
 co_await std::suspend_always{};  \
 }
 
 #define SUSPEND_SIGTERM(C) \
 {\
-    if(C->sig_code == SIGINT )  { /*std::cout << "SIGINT" << std::endl; */ co_return 130;} \
-    if(C->sig_code == SIGTERM ) { /*std::cout << "SIGTERM" << std::endl;*/ co_return 143;} \
+    if(C->sig_code == bl::sig_int )  { /*std::cout << "SIGINT" << std::endl; */ co_return 130;} \
+    if(C->sig_code == bl::sig_term ) { /*std::cout << "SIGTERM" << std::endl;*/ co_return 143;} \
         co_await std::suspend_always{};\
 }
 
@@ -850,240 +848,7 @@ protected:
             }
             co_return 0;
         };
-
-        m_funcs["launcher2"] = [](e_type ctrl) -> bl::MiniLinux::task_type
-        {
-            static auto count = 0;
-            if(count != 0)
-            {
-                *ctrl << "Only one instance of fromCin can exist\n";
-                co_return 1;
-            }
-
-            count++;
-
-            if(ctrl->args.size() < 2)
-            {
-                std::cout << "Requires a command to be called\n\n";
-                std::cout << "   launcher sh";
-                co_return 1;
-            }
-
-            auto E = bl::MiniLinux::parseArguments(std::vector(ctrl->args.begin()+1, ctrl->args.end()));
-            // Instead of using a default provided
-            // input stream for the subprocess
-            // we'll use launcher's input stream
-            // since it is not connected to anything
-            E.in = ctrl->in;
-            E.out = ctrl->out;
-
-            // Execute the sub process and get the
-            // PID. Executing as a subprocess
-            // will allow passthrough of signals
-            // to the sub process
-            auto sh_pid = ctrl->executeSubProcess(E);
-
-            if(sh_pid == 0xFFFFFFFF)
-            {
-                std::cout << "Invalid Command: " << ctrl->args[1] << std::endl;
-                co_return 127;
-            }
-
-            // Get the input and output streams for the
-            // shell process
-            auto [c_in, c_out] = ctrl->mini->getIO(sh_pid);
-            assert(c_in == E.in);
-            assert(c_out == E.out);
-
-            bl_defer
-            {
-                // count was decremented at the
-                // end of the function, but we might not actually
-                // get there if this process was forcefully killed
-                // so to ensure it gets decremnted properly
-                // we'll put it in a defer block
-                if(count) count--;
-
-                // We technically dont need to do this because
-                // the output stream is automatically closed
-                // by MiniLinux when launcher completes
-                // either by forcefully removing it, or
-                // if it completes successfully. But just in case
-                // we should shutdown c_in because it is passed
-                // into the subprocess as a input stream
-                c_in->close();
-                c_out->close();
-            };
-
-
-            auto read_char_nonblocking = [](char *ch) {
-                fd_set fds;
-                FD_ZERO(&fds);
-                FD_SET(STDIN_FILENO, &fds);
-
-                struct timeval timeout = {0,0}; // non-blocking
-                int ready = select(STDIN_FILENO + 1, &fds, NULL, NULL, &timeout);
-
-                if (ready > 0 && FD_ISSET(STDIN_FILENO, &fds)) {
-                    ssize_t result = read(STDIN_FILENO, ch, 1);
-                    return result == 1;
-                }
-
-                return false;
-            };
-
-            while(true)
-            {
-                char ch=0;
-                while(read_char_nonblocking(&ch))
-                {
-                    E.in->put(ch);
-                }
-
-                // If there are any bytes in the output stream of
-                // sh, read them and write them to std::cout
-                while(c_out->has_data())
-                    std::cout.put( c_out->get());
-
-                // Check if the sh function is still running
-                // if not, quit.
-                if(ctrl->areSubProcessesFinished())
-                {
-                    break;
-                }
-
-                // Suspend this coroutine here but quit
-                // if we recieve a SIGTERM signal
-                //
-                // If we were creating a process that didn't
-                // spawn a subprocess, we'd use SUSPEND_SIG_INT_TERM(ctrl)
-                // The reason we are not doing that is because
-                // SUSPEND_SIG_INT_TERM(ctrl) will exit the
-                // coroutine if we recieved a SIGINT (interrupt)
-                // We dont want to do this because SIGINT will be
-                // passed into the subprocess by default
-                SUSPEND_SIG_TERM(ctrl)
-            }
-
-            count--;
-
-            std::cout << std::format("{} exiting", ctrl->args[0]) << std::endl;
-            co_return 0;
-        };
-
-        m_funcs["launcher"] = [](e_type ctrl) -> bl::MiniLinux::task_type
-        {
-            // This is launcher process.
-            // You don't need to use this if you are building a GUI application
-            // but if you are building a commandline app, then you'll need a way
-            // to read stdin and direct it to to the sh process
-            //
-            auto & exev = *ctrl;
-
-            static auto count = 0;
-            if(count != 0)
-            {
-                *exev.out << "Only one instance of fromCin can exist\n";
-                co_return 1;
-            }
-
-            count++;
-
-            if(exev.args.size() < 2)
-            {
-                std::cout << "Requires a command to be called\\nn";
-                std::cout << "   launcher sh";
-                co_return 1;
-            }
-
-            // Execute a raw command
-            auto sh_pid = ctrl->mini->runRawCommand(bl::MiniLinux::parseArguments({exev.args[1]}));
-            if(sh_pid == 0xFFFFFFFF)
-            {
-                std::cout << "Invalid Command: " << exev.args[1] << "\n";
-                co_return 1;
-            }
-
-            // Get the input and output streams for the
-            // shell process
-            auto [c_in, c_out] = ctrl->mini->getIO(sh_pid);
-
-            bl_defer
-            {
-                // Manually close the input and output streams for
-                // the subprocess otherwise
-                // the subprocess will continuiously wait on new
-                // data
-                c_in->close();
-            };
-
-            char buffer[1024];
-
-            // The signal handler
-            bool _alreadyHandled = false;
-            exev.setSignalHandler([&](int s)
-            {
-                if(s==2 && !_alreadyHandled)
-                {
-                    _alreadyHandled = true;
-                    std::cout << "launcher signal caught" << std::endl;
-                    // Pass the signal to the shell pid
-                    ctrl->mini->signal(sh_pid, s);
-                    _alreadyHandled = false;
-                }
-            });
-
-            while(true)
-            {
-                // std::getline blocks until data is entered, but
-                // we dont want to do that because this will block our entire
-                // process
-                // we want to check if bytes are available and then
-                // read them in, if no bytes are there, we should suspend the
-                // coroutine
-                int bytes = 0;
-                // check if there are any bytes in stdin
-                if (ioctl(STDIN_FILENO, FIONREAD, &bytes) == -1) {
-                    co_return 1;
-                }
-
-                // Read all the bytes from standard input
-                while(bytes > 0)
-                {
-                    int bytes_to_read = std::min(bytes, 1023);
-                    std::cin.read(buffer, bytes_to_read);
-
-                    // and pipe them into the
-                    // output stream
-                    for(int i=0;i<bytes_to_read;i++)
-                        c_in->put(buffer[i]);
-
-                    if (ioctl(STDIN_FILENO, FIONREAD, &bytes) == -1) {
-                        co_return 1;
-                    }
-                }
-
-                // If there are any bytes in the output stream of
-                // sh, read them and write them to std::cout
-                while(c_out->has_data())
-                    std::cout.put( c_out->get());
-
-                // Check if the sh function is still running
-                // if not, quit.
-                if(!ctrl->mini->isRunning(sh_pid))
-                {
-                    co_return 0;
-                }
-                SUSPEND_POINT(ctrl)
-            }
-
-            count--;
-
-            std::cout << "Launcher exiting" << std::endl;
-            co_return 0;
-        };
     }
-
 };
 
 

@@ -88,12 +88,12 @@ bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type ctrl)
             ImGui::SameLine();
             if( ImGui::Button("Sig-Int") )
             {
-                m_mini.signal(sh_pid, SIGINT);
+                m_mini.signal(sh_pid, bl::sig_int);
             }
             ImGui::SameLine();
             if( ImGui::Button("Sig-Term") )
             {
-                m_mini.signal(sh_pid, SIGTERM);
+                m_mini.signal(sh_pid, bl::sig_term);
             }
             //ImGui::SameLine();
             //ImGui::Text("%s", std::format("Frame Count {}", ImGui::GetFrameCount()).c_str());
