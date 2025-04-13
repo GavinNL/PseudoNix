@@ -397,12 +397,27 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             run_in_background = true;
         }
 
-        (void)run_in_background;
+        if( run_in_background )
+        {
+            auto stdin = MiniLinux::make_stream();
+
+            for(auto & a : args)
+            {
+                // pipe the data into stdin, and make sure each argument
+                // is in quotes. We may need to tinker with this
+                // to have properly escaped characters
+                *stdin << std::format("\"{}\" ", a);
+            }
+            *stdin << std::format(";");
+            stdin->close();
+            auto pids = execute_pipes( {shell_name, "--noprofile"}, &exev, &shellEnv, stdin, exev.out);
+            exev.subProcesses.clear();
+            continue;
+        }
 
         auto op_args = parse_operands(args);
 
         std::reverse(op_args.begin(), op_args.end());
-
 
         while(op_args.size())
         {
