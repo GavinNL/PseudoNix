@@ -365,7 +365,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
         {
             sig_int = true;
             for(auto p : pid_to_signal)
-                control->mini->signal(s, 2);
+                control->mini->signal(p, s);
         }
     });
 

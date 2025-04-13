@@ -293,7 +293,6 @@ struct MiniLinux
         proc_control->out  = args.out;
         proc_control->env  = args.env;
 
-
         // run the function, it is a coroutine:
         // it will return a task}
         auto T = it->second(proc_control);
@@ -318,6 +317,15 @@ struct MiniLinux
         arg->pid = _pid;
         arg->mini = this;
 
+        std::weak_ptr<ProcessControl> p = arg;
+        _t.signal = [p](int s)
+        {
+            if(auto aa = p.lock(); aa)
+            {
+                if(s == 2)
+                    aa->sig_kill = true;
+            }
+        };
         m_procs2.emplace(_pid, std::move(_t));
 
         return _pid;
@@ -529,7 +537,7 @@ struct MiniLinux
         bool is_complete = false;
         std::shared_ptr<return_code_type> exit_code = std::make_shared<return_code_type>(-1);
         std::function<void(int)>        signal = {};
-        std::chrono::nanoseconds        processTime;
+        std::chrono::nanoseconds        processTime = std::chrono::nanoseconds(0);
     };
 
     std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)
