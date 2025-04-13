@@ -42,7 +42,12 @@ struct Tokenizer3
 
             if(!quoted)
             {
-                if(sub == "$(")
+                if(sub[0] == '\\')
+                {
+                    current += sub[1];
+                    pos += 2;
+                }
+                else if(sub == "$(" )
                 {
                     size_t i=pos+2;
                     size_t b_count=1;

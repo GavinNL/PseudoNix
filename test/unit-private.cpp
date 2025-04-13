@@ -10,6 +10,11 @@ using namespace bl;
 SCENARIO("Tokenizer 3")
 {
     {
+        auto v = Tokenizer3::to_vector("\\$\\(sleep");
+        REQUIRE(v[0] == "$(sleep");
+    }
+
+    {
         auto v = Tokenizer3::to_vector("echo hello $(sleep 3 && echo world)");
         REQUIRE(v[0] == "echo");
         REQUIRE(v[1] == "hello");
