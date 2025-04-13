@@ -1,26 +1,20 @@
 cmake_minimum_required(VERSION 3.10)
 
-
-################################################################################
-# This Top-level project is for a single Top-level library
-#
-# A single library
-# Unit tests for the library
-# A set of executables which use this library
-################################################################################
-
-
-
 ################################################################################
 # Project name
 #
 #  many targets will be created:
 #   myProject::warnings
 #   myProject:
+#
+#
+#  add_subdirectory(third_party/PsuedoLinux)
+#  target_link_libraries(main PseudoLinux::PseudoLinux)
+#
 ################################################################################
-project( eBash
-        VERSION 1.0.0.0
-        LANGUAGES CXX)
+project( PseudoLinux
+         VERSION 0.1.0.0
+         LANGUAGES CXX)
 
 ################################################################################
 
@@ -46,28 +40,23 @@ include(cmake/extras.cmake)
 
 ################################################################################
 # Top level INTERFACE library which can be used to provide all the
-# information for all targets built with this t
+# information for all targets built with this to
 ################################################################################
-set(outName              interface)   # name of the library within the proje
-                                            # Will create the target ${PROJECT_NAME}::${outName}
+add_library( ${PROJECT_NAME} INTERFACE )
+add_library( ${PROJECT_NAME}::${PROJECT_NAME}  ALIAS ${PROJECT_NAME})
 
-set(PublicLinkedTargets  "" )               # Any additional public targets you want to include
-#-------------------------------------------------------------------------------
-add_library( ${outName} INTERFACE )
-add_library( ${PROJECT_NAME}::${outName}  ALIAS ${outName})
-
-target_compile_features( ${outName}
+target_compile_features( ${PROJECT_NAME}
                           INTERFACE
                               cxx_std_20)
 
-target_compile_definitions( ${outName}
+target_compile_definitions( ${PROJECT_NAME}
                               INTERFACE
                                 CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
                                 CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
                                 )
 
-target_include_directories(${outName} INTERFACE include)
-target_link_libraries( ${outName}  INTERFACE  ${PublicLinkedTargets})
+target_include_directories(${PROJECT_NAME} INTERFACE include)
+target_link_libraries( ${PROJECT_NAME}  INTERFACE  ${PublicLinkedTargets})
 
 ################################################################################
 
@@ -92,7 +81,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
 
 
     add_executable(terminal terminal.cpp)
-    target_link_libraries(terminal ${PROJECT_NAME}::interface ${SDL_TARGET})
+    target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET})
     target_include_directories(terminal PUBLIC
                                         # For ImGui, set them as system includes
                                         # so the compiler doesnt warn about errors
@@ -109,7 +98,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
         set_target_properties( terminal PROPERTIES SUFFIX ".html")
     else()
         add_executable(main main.cpp)
-        target_link_libraries(main ${PROJECT_NAME}::interface)
+        target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME})
     endif()
 
 
