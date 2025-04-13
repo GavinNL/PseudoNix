@@ -85,7 +85,6 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
         #set(CMAKE_EXECUTABLE_SUFFIX_CXX ".html")
         set(SDL_TARGET "")
     else()
-
         find_package(SDL2 REQUIRED)
         set(SDL_TARGET SDL2::SDL2)
     endif()
@@ -104,37 +103,25 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
                                         ${CMAKE_BINARY_DIR}/imgui_src/res/misc/cpp
                               )
 
-    add_executable(main main.cpp)
-    target_link_libraries(main ${PROJECT_NAME}::interface)
-
     if(EMSCRIPTEN)
-        # Compile with SDL for termainl
         target_compile_options(terminal PRIVATE "-sUSE_SDL=2")
-        target_link_options(terminal PRIVATE "-sUSE_SDL=2")
-
-        set_target_properties(terminal PROPERTIES SUFFIX ".html")
-
-        # compile with only wasm, so we can use
-        # wasmtime
-        target_compile_options(main PRIVATE "-sSTANDALONE_WASM=1" "-sWASM_BIGINT=1")
-        # Set Emscripten flags for WASI compatibility
-        target_link_options(main PRIVATE
-            "-sSTANDALONE_WASM=1"
-            #"-sEXIT_RUNTIME=1"
-            "-sERROR_ON_UNDEFINED_SYMBOLS=0"
-        )
+        target_link_options(   terminal PRIVATE "-sUSE_SDL=2")
+        set_target_properties( terminal PROPERTIES SUFFIX ".html")
     else()
-
+        add_executable(main main.cpp)
+        target_link_libraries(main ${PROJECT_NAME}::interface)
     endif()
 
 
 endif()
 
 
-
+if(NOT EMSCRIPTEN)
 # enable testing on the root folder so that we can run ctest from it,
 # otherwise we will have to CD into each sub folder to run the unit tests
 if( ${PROJECT_NAME}_BUILD_UNIT_TESTS)
     enable_testing()
     add_subdirectory(test)
+endif()
+
 endif()

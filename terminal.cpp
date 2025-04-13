@@ -104,7 +104,7 @@ public:
         // all coroutines once. Some coroutines can draw to the
         // screen
         m_mini.executeAllFor(std::chrono::milliseconds(1), 10);
-        ImGui::ShowDemoWindow(nullptr);
+        //ImGui::ShowDemoWindow(nullptr);
     }
 
 };

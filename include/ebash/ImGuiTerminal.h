@@ -78,6 +78,7 @@ bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type ctrl)
             // The ImGui Draw section. Do not co_await
             // between between ImGui::Begin/ImGui::End;
             //--------------------------------------------------------------
+            ImGui::SetNextWindowSize(ImVec2(500, 500), ImGuiCond_Once);
             ImGui::Begin(std::format("Terminal {}", terminal_name).c_str());
 
             if( ImGui::Button("New Terminal") )

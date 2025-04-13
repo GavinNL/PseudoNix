@@ -12,7 +12,7 @@
 #include "task.h"
 #include "defer.h"
 #include <sys/select.h>
-#include  <sys/ioctl.h>
+#include <sys/ioctl.h>
 
 namespace bl
 {
@@ -31,11 +31,11 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
     return oss.str();
 }
 
-#define SUSPEND_POINT(C)                                                       \
-{                                                                            \
-if (C->sig_code == SIGTERM)                                                \
-co_return 143;                                                           \
-co_await std::suspend_always{};                                            \
+#define SUSPEND_POINT(C)         \
+{                                \
+if (C->sig_code == SIGTERM)      \
+co_return 143;                   \
+co_await std::suspend_always{};  \
 }
 
 #define SUSPEND_SIGTERM(C) \
