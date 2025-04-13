@@ -9,6 +9,7 @@
 
 #include "ReaderWriterStream.h"
 #include "task.h"
+#include "defer.h"
 
 #include  <sys/ioctl.h>
 
@@ -510,6 +511,7 @@ struct MiniLinux
             if(it->second.force_terminate)
             {
                 it->second.control->out->close();
+
                 it = m_procs2.erase(it);
             }
             else

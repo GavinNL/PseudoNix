@@ -51,11 +51,12 @@ bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type control)
     // Grab the input and output streams for the shell
     // command
     auto [shell_stdin, shell_stdout] = m_mini.getIO(sh_pid);
-    auto v = std::shared_ptr<void>(nullptr, [&](auto)
-                                   {
-                                       //std::cout << "destructor" << std::endl;
-                                       shell_stdin->close();
-                                   });
+    bl_defer
+    {
+        //std::cout << "destructor" << std::endl;
+        shell_stdin->close();
+    };
+
     bool alreadyHandled = false;
     control->setSignalHandler([&](int s)
                               {

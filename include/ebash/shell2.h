@@ -4,7 +4,7 @@
 #include <map>
 
 #include "MiniLinux.h"
-
+#include "defer.h"
 
 namespace bl
 {
@@ -370,11 +370,10 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
         }
     });
 
-    auto f = std::shared_ptr<void>(nullptr, [](auto)
-    {
-        std::cout << "Shell exit" << std::endl;
-    });
 
+    bl_defer {
+        std::cout << "Shell exit" << std::endl;
+    };
     #define SHOULD_QUIT exev.in->eof()
 
     while(true)
