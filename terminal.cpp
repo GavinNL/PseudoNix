@@ -2,9 +2,9 @@
 #include "App.h"
 #include <iostream>
 
-#include <ebash/MiniLinux.h>
-#include <ebash/shell2.h>
-#include <ebash/ImGuiTerminal.h>
+#include <PseudoLinux/MiniLinux.h>
+#include <PseudoLinux/shell2.h>
+#include <PseudoLinux/ImGuiTerminal.h>
 
 #include <format>
 

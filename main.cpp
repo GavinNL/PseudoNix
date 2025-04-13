@@ -5,9 +5,9 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
-#include <ebash/MiniLinux.h>
-#include <ebash/shell2.h>
-#include <ebash/Launcher.h>
+#include <PseudoLinux/MiniLinux.h>
+#include <PseudoLinux/shell2.h>
+#include <PseudoLinux/Launcher.h>
 
 #include <csignal>
 
