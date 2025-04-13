@@ -4,7 +4,7 @@
 #include <map>
 
 #include "MiniLinux.h"
-#include "defer.h"
+
 
 namespace bl
 {
@@ -204,7 +204,7 @@ struct ShellEnv
 
 
 std::vector<MiniLinux::pid_type> execute_pipes(std::vector<std::string> tokens,
-                             MiniLinux* mini,
+                             MiniLinux::ProcessControl * proc,
                              ShellEnv * exported_environment,
                              std::shared_ptr<MiniLinux::stream_type> in={},
                              std::shared_ptr<MiniLinux::stream_type> out={})
@@ -254,7 +254,7 @@ std::vector<MiniLinux::pid_type> execute_pipes(std::vector<std::string> tokens,
         }
     }
 
-    auto pids = mini->runPipeline(E);
+    auto pids = proc->executeSubPipeline(E);
 
     return pids;
 }
@@ -353,29 +353,11 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
 
     std::string shell_name = control->args[0];
 
-    // Set the signal handler for this
-    // process so that we know which signals
-    // are being sent
-
-    std::vector<MiniLinux::pid_type> pid_to_signal;
-    bool _alreadyHandled = false;
-    exev.setSignalHandler([&](int s)
-    {
-        //std::cout << std::format("Signal {} caught in shell {}\n", s, control->get_pid());
-        if(s==2 && !_alreadyHandled)
-        {
-            _alreadyHandled = true;
-            for(auto p : pid_to_signal)
-                control->mini->signal(p, s);
-            _alreadyHandled = false;
-        }
-    });
-
-
     bl_defer {
         std::cout << "Shell exit" << std::endl;
     };
     #define SHOULD_QUIT exev.in->eof()
+
 
     while(true)
     {
@@ -384,7 +366,8 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             if(SHOULD_QUIT || shellEnv.exitShell)
                 co_return 0;
             if(exev.has_data()) break;
-            co_await std::suspend_always{};
+
+            SUSPEND_POINT(control);
         }
 
         auto c = exev.get();
@@ -421,7 +404,6 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
         std::reverse(op_args.begin(), op_args.end());
 
 
-
         while(op_args.size())
         {
             auto & _a = op_args.back();
@@ -455,8 +437,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                     auto brk = *first_open;
                     auto new_args = std::vector(first_open.base(), it);
 
-                    auto pids = execute_pipes( {shell_name, "--noprofile"}, exev.mini, &shellEnv);
-
+                    auto pids = execute_pipes( {shell_name, "--noprofile"}, &exev, &shellEnv);
 
                     // if the command is enclosed in brackets, it means
                     // we have to call that command in a separate sh
@@ -477,7 +458,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                     // pids are running in the foreground
                     while(!exev.mini->isAllComplete(pids))
                     {
-                        co_await std::suspend_always{};
+                        SUSPEND_POINT(control);
                     }
                     it = _a.erase(first_open.base()-1, it+1);
 
@@ -501,19 +482,21 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
             //======================================================================
 
             auto stdout = MiniLinux::make_stream();
-            auto pids = execute_pipes( std::vector(_a.begin()+1, _a.end()), exev.mini, &shellEnv, exev.in, stdout);
-            pid_to_signal = pids;
+            auto pids = execute_pipes( std::vector(_a.begin()+1, _a.end()), &exev, &shellEnv, exev.in, stdout);
+
             auto f_exit_code = exev.mini->processExitCode(pids.back());
 
             // pids are running in the foreground:
-            while(!exev.mini->isAllComplete(pids))
+            while(!exev.areSubProcessesFinished())
             {
-                co_await std::suspend_always{};
+                SUSPEND_POINT(control);
                 *exev.out << *stdout;
             }
-            pid_to_signal.clear();
+            exev.subProcesses.clear();
 
-            ret_value = *f_exit_code;
+            ret_value = f_exit_code ? *f_exit_code : 127;
+
+            shellEnv.env["?"] = std::to_string(ret_value);
 
             op_args.pop_back();
         }

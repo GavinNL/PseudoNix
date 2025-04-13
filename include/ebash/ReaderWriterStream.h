@@ -39,6 +39,11 @@ public:
         _closed = true;
     }
 
+    void flush()
+    {
+        while(has_data())
+            get();
+    }
     T get()
     {
         T ch = {};

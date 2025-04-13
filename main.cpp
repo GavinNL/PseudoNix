@@ -1,4 +1,3 @@
-#include <iostream>
 #include <string>
 #include <thread>
 
@@ -9,16 +8,6 @@
 
 #include <ebash/MiniLinux.h>
 #include <ebash/shell2.h>
-
-
-bl::MiniLinux * _M = nullptr;
-bl::MiniLinux::pid_type launcher_pid = 0xFFFFFFFF;
-
-void handle_sigint(int signum)
-{
-    if(_M)
-        _M->signal(launcher_pid, SIGINT);
-};
 
 
 int main()
@@ -73,19 +62,7 @@ export HOME
     // it will then read the output stream of the child process and output it to
     // std::cout
     //
-    auto pids = M.runRawCommand(MiniLinux::parseArguments({"launcher", "sh"}));
-
-    // since we are writing a command line shell
-    // we want to make sure that we catch the SIGINT signal when we press
-    // ctrl-C on the terminal. We can then signal
-    // the launcher to SIGINT as well
-    //
-    // If we didn't do this, we wouldn't be able to stop
-    // long running processes, instead pressing CTRL-C would exit
-    // the program
-    std::signal(SIGINT, handle_sigint);
-    _M = &M;
-    launcher_pid = pids;
+    auto pid = M.runRawCommand(MiniLinux::parseArguments({"launcher2", "sh"}));
 
     while(M.executeAll())
     {

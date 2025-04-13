@@ -30,6 +30,23 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
     return oss.str();
 }
 
+#define SUSPEND_POINT(C) \
+{\
+    if(C->sig_code == SIGTERM )\
+        co_return 143;\
+    co_await std::suspend_always{};\
+}
+
+#define SUSPEND_SIGTERM(C) \
+{\
+    if(C->sig_code == SIGINT )  { /*std::cout << "SIGINT" << std::endl; */ co_return 130;} \
+    if(C->sig_code == SIGTERM ) { /*std::cout << "SIGTERM" << std::endl;*/ co_return 143;} \
+        co_await std::suspend_always{};\
+}
+
+#define SUSPEND_SIG_TERM     SUSPEND_POINT
+#define SUSPEND_SIG_INT_TERM SUSPEND_SIGTERM
+
 struct MiniLinux
 {
     using stream_type      = ReaderWriterStream_t<char>;
@@ -37,6 +54,18 @@ struct MiniLinux
     using return_code_type = int32_t;
     using task_type        = gul::Task_t<return_code_type, std::suspend_always, std::suspend_always>;
 
+
+    struct Exec
+    {
+        std::vector<std::string>           args;
+        std::map<std::string, std::string> env;
+        std::shared_ptr<stream_type>       in;
+        std::shared_ptr<stream_type>       out;
+
+        Exec(std::vector<std::string> const &_args = {}, std::map<std::string, std::string> const & _env = {}) : args(_args), env(_env)
+        {
+        }
+    };
 
     struct ProcessControl
     {
@@ -46,7 +75,10 @@ struct MiniLinux
         std::map<std::string, std::string> env;
 
         pid_type    pid = 0xFFFFFFFF;
-        bool   sig_kill = false;
+        //bool   sig_kill = false;
+        //bool   sig_int  = false;
+
+        int32_t   sig_code = 0;
         MiniLinux *mini = nullptr;
 
         void setSignalHandler(std::function<void(int)> f)
@@ -54,14 +86,6 @@ struct MiniLinux
             mini->m_procs2.at(pid).signal = f;
         }
 
-        bool is_sigkill() const
-        {
-            if(sig_kill)
-            {
-                //std::cerr << "Pid killed: " << pid << std::endl;
-            }
-            return sig_kill;
-        }
         pid_type get_pid() const
         {
             return pid;
@@ -80,6 +104,17 @@ struct MiniLinux
             out->put(d);
             return *this;
         }
+
+        ProcessControl& operator << (char const *d)
+        {
+            while(*d != 0)
+            {
+                out->put(*d);
+                ++d;
+            }
+            return *this;
+        }
+
 
         template<typename iter_container>
             requires std::ranges::range<iter_container>
@@ -101,6 +136,36 @@ struct MiniLinux
             return *this;
         }
 
+        std::vector<pid_type> subProcesses;
+
+        pid_type executeSubProcess(MiniLinux::Exec E)
+        {
+            auto p = mini->runRawCommand(E, get_pid());
+            this->subProcesses.push_back(p);
+            return p;
+        }
+        std::vector<pid_type> executeSubPipeline(std::vector<Exec> E)
+        {
+            auto pids = mini->runPipeline(E, get_pid());
+            this->subProcesses.insert(this->subProcesses.end(), pids.begin(), pids.end());
+            return pids;
+        }
+
+        bool areSubProcessesFinished() const
+        {
+            for(auto p : subProcesses)
+            {
+                if( mini->isRunning(p) ) return false;
+            }
+            return true;
+        }
+        void signalSubProcesses(int32_t signal)
+        {
+            for(auto p : subProcesses)
+            {
+                mini->signal(p, signal);
+            }
+        }
         bool has_data() const
         {
             return in->has_data();
@@ -132,17 +197,7 @@ struct MiniLinux
         }
     };
 
-    struct Exec
-    {
-        std::vector<std::string>           args;
-        std::map<std::string, std::string> env;
-        std::shared_ptr<stream_type>       in;
-        std::shared_ptr<stream_type>       out;
 
-        Exec(std::vector<std::string> const &_args = {}, std::map<std::string, std::string> const & _env = {}) : args(_args), env(_env)
-        {
-        }
-    };
 
     static Exec parseArguments(std::vector<std::string> args)
     {
@@ -267,7 +322,7 @@ struct MiniLinux
      *
      *
      */
-    pid_type runRawCommand(Exec args)
+    pid_type runRawCommand(Exec args, pid_type parent = 0xFFFFFFFF)
     {
         // Try to find the name of the function to run
         auto it = m_funcs.find(args.args[0]);
@@ -298,7 +353,7 @@ struct MiniLinux
         // it will return a task}
         auto T = it->second(proc_control);
 
-        auto pid = registerProcess(std::move(T), std::move(proc_control));
+        auto pid = registerProcess(std::move(T), std::move(proc_control), parent);
 
         return pid;
     }
@@ -319,13 +374,20 @@ struct MiniLinux
         arg->mini = this;
 
         std::weak_ptr<ProcessControl> p = arg;
-        _t.signal = [p](int s)
+
+        // default signal handler
+        // is to pass all signals to child processes
+        _t.signal = [p, _signaled = std::make_shared<bool>(false)](int s)
         {
+            if(*_signaled)
+                return;
+            *_signaled = true;
             if(auto aa = p.lock(); aa)
             {
-                if(s == 2)
-                    aa->sig_kill = true;
+                std::cerr << std::format("[{}] Default Signal Handler: {}", s, join(aa->args)) << std::endl;
+                aa->signalSubProcesses(s);
             }
+            *_signaled = false;
         };
         m_procs2.emplace(_pid, std::move(_t));
 
@@ -333,7 +395,7 @@ struct MiniLinux
     }
 
 
-    std::vector<pid_type> runPipeline(std::vector<Exec> E)
+    std::vector<pid_type> runPipeline(std::vector<Exec> E, pid_type parent = 0xFFFFFFFF)
     {
         if(!E.front().in)
             E.front().in = make_stream();
@@ -348,7 +410,7 @@ struct MiniLinux
         std::vector<pid_type> out;
         for(auto & e  : E)
         {
-            out.push_back(runRawCommand(e));
+            out.push_back(runRawCommand(e,parent));
         }
         return out;
     }
@@ -401,6 +463,7 @@ struct MiniLinux
             auto & proc = m_procs2.at(pid);
             if(proc.signal)
             {
+                proc.control->sig_code = sigtype;
                 proc.signal(sigtype);
             }
 
@@ -501,6 +564,7 @@ struct MiniLinux
             {
                 it->second.force_terminate = true;
                 it->second.is_complete = true;
+                it->second.control->out->close();
             }
         }
 
@@ -607,6 +671,26 @@ protected:
             }
             co_return 0;
         };
+        m_funcs["yes"] = [](e_type ctrl) -> task_type
+        {
+            // A very basic example of a forever running
+            // process
+            while(true)
+            {
+                *ctrl << "y\n";
+
+                // This is a suspension point
+                // When the coroutine reaches this position
+                // it will check if:
+                //
+                //  1. The coroutine received a SIGTERM. If so co_return SIGTERM;
+                //  2. The coroutine received a SIGINT. If so co_return SIGINT;
+                //  3. co_yield to the next process
+                SUSPEND_SIGTERM(ctrl);
+            }
+
+            co_return 0;
+        };
         m_funcs["sleep"] = [](e_type ctrl) -> task_type
         {
             auto & args = *ctrl;
@@ -622,9 +706,9 @@ protected:
             // NOTE: do not acutally use this_thread::sleep
             // this is a coroutine, so you should suspend
             // the routine
-            while(!args.is_sigkill() && std::chrono::system_clock::now() < T1)
+            while(std::chrono::system_clock::now() < T1)
             {
-                co_await std::suspend_always{};
+                SUSPEND_SIGTERM(ctrl);
             }
             co_return 0;
         };
@@ -633,7 +717,7 @@ protected:
             auto & args = *ctrl;
             std::string output;
 
-            while(!args.is_sigkill())
+            while(true)
             {
                 while(args.has_data())
                 {
@@ -649,7 +733,7 @@ protected:
                 if(args.eof())
                     break;
                 else
-                    co_await std::suspend_always{};
+                    SUSPEND_POINT(ctrl)
             }
 
             if(!output.empty())
@@ -665,7 +749,7 @@ protected:
             auto & args = *ctrl;
             uint32_t i=0;
 
-            while(!args.is_sigkill())
+            while(true)
             {
                 while(!args.eof() && args.has_data())
                 {
@@ -753,14 +837,141 @@ protected:
             co_return 0;
         };
 
-        m_funcs["launcher"] = [](bl::MiniLinux::e_type control) -> bl::MiniLinux::task_type
+        m_funcs["launcher2"] = [](e_type ctrl) -> bl::MiniLinux::task_type
+        {
+            static auto count = 0;
+            if(count != 0)
+            {
+                *ctrl << "Only one instance of fromCin can exist\n";
+                co_return 1;
+            }
+
+            count++;
+
+            if(ctrl->args.size() < 2)
+            {
+                std::cout << "Requires a command to be called\n\n";
+                std::cout << "   launcher sh";
+                co_return 1;
+            }
+
+            auto E = bl::MiniLinux::parseArguments(std::vector(ctrl->args.begin()+1, ctrl->args.end()));
+            // Instead of using a default provided
+            // input stream for the subprocess
+            // we'll use launcher's input stream
+            // since it is not connected to anything
+            E.in = ctrl->in;
+            E.out = ctrl->out;
+
+            // Execute the sub process and get the
+            // PID. Executing as a subprocess
+            // will allow passthrough of signals
+            // to the sub process
+            auto sh_pid = ctrl->executeSubProcess(E);
+
+            if(sh_pid == 0xFFFFFFFF)
+            {
+                std::cout << "Invalid Command: " << ctrl->args[1] << "\n";
+                co_return 127;
+            }
+
+            // Get the input and output streams for the
+            // shell process
+            auto [c_in, c_out] = ctrl->mini->getIO(sh_pid);
+            assert(c_in == E.in);
+            assert(c_out == E.out);
+
+            bl_defer
+            {
+                // count was decremented at the
+                // end of the function, but we might not actually
+                // get there if this process was forcefully killed
+                // so to ensure it gets decremnted properly
+                // we'll put it in a defer block
+                if(count) count--;
+
+                // We technically dont need to do this because
+                // the output stream is automatically closed
+                // by MiniLinux when launcher completes
+                // either by forcefully removing it, or
+                // if it completes successfully. But just in case
+                // we should shutdown c_in because it is passed
+                // into the subprocess as a input stream
+                c_in->close();
+                c_out->close();
+            };
+
+            char buffer[1024];
+
+            while(true)
+            {
+                // std::getline blocks until data is entered, but
+                // we dont want to do that because this will block our entire
+                // process
+                // we want to check if bytes are available and then
+                // read them in, if no bytes are there, we should suspend the
+                // coroutine
+                int bytes = 0;
+                // check if there are any bytes in stdin
+                if (ioctl(STDIN_FILENO, FIONREAD, &bytes) == -1) {
+                    co_return 1;
+                }
+
+                // Read all the bytes from standard input
+                while(bytes > 0)
+                {
+                    int bytes_to_read = std::min(bytes, 1023);
+                    std::cin.read(buffer, bytes_to_read);
+
+                    // and pipe them into the
+                    // output stream
+                    for(int i=0;i<bytes_to_read;i++)
+                        E.in->put(buffer[i]);
+
+                    if (ioctl(STDIN_FILENO, FIONREAD, &bytes) == -1) {
+                        co_return 1;
+                    }
+                }
+
+                // If there are any bytes in the output stream of
+                // sh, read them and write them to std::cout
+                while(c_out->has_data())
+                    std::cout.put( c_out->get());
+
+                // Check if the sh function is still running
+                // if not, quit.
+                if(ctrl->areSubProcessesFinished())
+                {
+                    break;
+                }
+
+                // Suspend this coroutine here but quit
+                // if we recieve a SIGTERM signal
+                //
+                // If we were creating a process that didn't
+                // spawn a subprocess, we'd use SUSPEND_SIG_INT_TERM(ctrl)
+                // The reason we are not doing that is because
+                // SUSPEND_SIG_INT_TERM(ctrl) will exit the
+                // coroutine if we recieved a SIGINT (interrupt)
+                // We dont want to do this because SIGINT will be
+                // passed into the subprocess by default
+                SUSPEND_SIG_TERM(ctrl)
+            }
+
+            count--;
+
+            std::cout << std::format("{} exiting", ctrl->args[0]) << std::endl;
+            co_return 0;
+        };
+
+        m_funcs["launcher"] = [](e_type ctrl) -> bl::MiniLinux::task_type
         {
             // This is launcher process.
             // You don't need to use this if you are building a GUI application
             // but if you are building a commandline app, then you'll need a way
             // to read stdin and direct it to to the sh process
             //
-            auto & exev = *control;
+            auto & exev = *ctrl;
 
             static auto count = 0;
             if(count != 0)
@@ -779,7 +990,7 @@ protected:
             }
 
             // Execute a raw command
-            auto sh_pid = control->mini->runRawCommand(bl::MiniLinux::parseArguments({exev.args[1]}));
+            auto sh_pid = ctrl->mini->runRawCommand(bl::MiniLinux::parseArguments({exev.args[1]}));
             if(sh_pid == 0xFFFFFFFF)
             {
                 std::cout << "Invalid Command: " << exev.args[1] << "\n";
@@ -788,16 +999,17 @@ protected:
 
             // Get the input and output streams for the
             // shell process
-            auto [c_in, c_out] = control->mini->getIO(sh_pid);
+            auto [c_in, c_out] = ctrl->mini->getIO(sh_pid);
 
-            auto ff = std::shared_ptr<void*>(nullptr, [&](auto)
+            bl_defer
             {
                 // Manually close the input and output streams for
                 // the subprocess otherwise
                 // the subprocess will continuiously wait on new
                 // data
                 c_in->close();
-            });
+            };
+
             char buffer[1024];
 
             // The signal handler
@@ -809,8 +1021,8 @@ protected:
                     _alreadyHandled = true;
                     std::cout << "launcher signal caught" << std::endl;
                     // Pass the signal to the shell pid
-                    control->mini->signal(sh_pid, s);
-                    _alreadyHandled = false;;
+                    ctrl->mini->signal(sh_pid, s);
+                    _alreadyHandled = false;
                 }
             });
 
@@ -851,11 +1063,11 @@ protected:
 
                 // Check if the sh function is still running
                 // if not, quit.
-                if(!control->mini->isRunning(sh_pid))
+                if(!ctrl->mini->isRunning(sh_pid))
                 {
                     co_return 0;
                 }
-                co_await std::suspend_always{};
+                SUSPEND_POINT(ctrl)
             }
 
             count--;

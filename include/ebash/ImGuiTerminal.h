@@ -8,9 +8,8 @@
 namespace bl
 {
 
-bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type control)
+bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type ctrl)
 {
-    auto & E = *control;
     // we're going to suspend on first run
     // because we are calling ImGui::Begin/End
     // We need to make sure these are only called
@@ -41,12 +40,14 @@ bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type control)
     std::string _cmdline;
     std::string output;
 
-    auto & m_mini = *control->mini;
+    auto & m_mini = *ctrl->mini;
 
-    std::vector<std::string> args(control->args.begin()+1, control->args.end());
-    if(args.empty()) args.push_back("sh");
-    // Execute the system call for the shell funciton
-    auto sh_pid = m_mini.runRawCommand({ args, E.env});
+    std::vector<std::string> args(ctrl->args.begin()+1, ctrl->args.end());
+    if(args.empty())
+        args.push_back("sh");
+
+
+    auto sh_pid = ctrl->executeSubProcess(bl::MiniLinux::parseArguments(args));
 
     // Grab the input and output streams for the shell
     // command
@@ -56,83 +57,64 @@ bl::MiniLinux::task_type terminalWindow_coro(bl::MiniLinux::e_type control)
         //std::cout << "destructor" << std::endl;
         shell_stdin->close();
     };
+    //assert(shell_stdin == E.in);
+    //assert(shell_stdout == E.out);
 
-    bool alreadyHandled = false;
-    control->setSignalHandler([&](int s)
-                              {
-                                  //std::cout << std::format("Term signal. Killing {}", sh_pid) << std::endl;
-                                  if(!alreadyHandled)
-                                  {
-                                      alreadyHandled = true;
-                                      m_mini.signal(sh_pid, 2);
-                                      alreadyHandled = false;
-                                  }
-                              });
+    bool exit_if_subprocess_exits = false;
 
-    try {
-        while(true)
+    while(true)
+    {
+        //--------------------------------------------------------------
+        // The ImGui Draw section. Do not co_await
+        // between between ImGui::Begin/ImGui::End;
+        //--------------------------------------------------------------
+        ImGui::Begin(std::format("Terminal {}", terminal_name).c_str());
+
+        if( ImGui::Button("New Terminal") )
         {
-            // Did we get a kill signal to kill the process
-            // safely?
-            if(E.is_sigkill())
-            {
-                break;
-            }
+            m_mini.runRawCommand({ctrl->args});
+        }
+        ImGui::SameLine();
+        if( ImGui::Button("Sig-Int") )
+        {
+            m_mini.signal(sh_pid, SIGINT);
+        }
+        ImGui::SameLine();
+        if( ImGui::Button("Sig-Term") )
+        {
+            m_mini.signal(sh_pid, SIGTERM);
+        }
+        // Draw the console and invoke the callback if
+        // a command is entered into the input text
+        console.Draw([_in=shell_stdin](std::string const & cmd)
+                     {
+                         // place all the bytes in the cmd string into the
+                         // input stream so that sh can process it.
+                         *_in << cmd;
+                         *_in << '\n'; // this is required for the shell to execute the command
+                     });
 
-            ImGui::Begin(std::format("Terminal {}", terminal_name).c_str());
+        ImGui::End();
+        //--------------------------------------------------------------
 
-            if( ImGui::Button("New Terminal") )
-            {
-                m_mini.runRawCommand({control->args});
-            }
-            ImGui::SameLine();
-            if( ImGui::Button("Sig-Term") )
-            {
-                m_mini.signal(sh_pid, 2);
-            }
-            // Draw the console and invoke the callback if
-            // a command is entered into the input text
-            console.Draw([_in=shell_stdin](std::string const & cmd)
-                         {
-                             // place all the bytes in the cmd string into the
-                             // input stream so that sh can process it.
-                             *_in << cmd;
-                             *_in << '\n'; // this is required for the shell to execute the command
-                         });
+        if(exit_if_subprocess_exits && ctrl->areSubProcessesFinished()) break;
 
-            ImGui::End();
+        // Suspend
+        SUSPEND_SIG_TERM(ctrl)
 
-            // check if the future (return value of sh) has been set
-            // if it has, that means the shell process exited
-            // so we can close this window
-            if(E.mini->isRunning(sh_pid))
+        while(shell_stdout->has_data())
+        {
+            auto c = shell_stdout->get();
+            if(c == '\n')
             {
-                co_await std::suspend_always{};
-                // Grab any characters from the output stream and
-                // add it to the console log
-
-                while(shell_stdout->has_data())
-                {
-                    auto c = shell_stdout->get();
-                    if(c == '\n')
-                    {
-                        console.AddLog(output);
-                        output.clear();
-                    } else {
-                        output+= c;
-                    }
-                }
-            }
-            else
-            {
-                break;
+                console.AddLog(output);
+                output.clear();
+            } else {
+                output+= c;
             }
         }
     }
-    catch ( std::exception & e)
-    {
-        console.AddLog(e.what());
-    }
+
 
     co_return 0;
 }
