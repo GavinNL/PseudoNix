@@ -50,7 +50,7 @@ include(cmake/extras.cmake)
 # if they are meant to be private
 #
 ################################################################################
-find_package(fmt REQUIRED)
+#find_package(fmt REQUIRED)
 #find_package(stb REQUIRED)
 #find_package(glm REQUIRED)
 ################################################################################
@@ -64,7 +64,7 @@ find_package(fmt REQUIRED)
 set(outName              interface)   # name of the library within the proje
                                             # Will create the target ${PROJECT_NAME}::${outName}
 
-set(PublicLinkedTargets  "fmt::fmt" )               # Any additional public targets you want to include
+set(PublicLinkedTargets  "" )               # Any additional public targets you want to include
 #-------------------------------------------------------------------------------
 add_library( ${outName} INTERFACE )
 add_library( ${PROJECT_NAME}::${outName}  ALIAS ${outName})

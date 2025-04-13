@@ -1,6 +1,5 @@
 #include <catch2/catch_all.hpp>
 #include <catch2/benchmark/catch_benchmark_all.hpp>
-#include <fmt/format.h>
 #include <ebash/MiniLinux.h>
 
 #include <ebash/shell2.h>
