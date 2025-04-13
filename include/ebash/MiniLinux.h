@@ -48,6 +48,11 @@ struct MiniLinux
         bool   sig_kill = false;
         MiniLinux *mini = nullptr;
 
+        void setSignalHandler(std::function<void(int)> f)
+        {
+            mini->m_procs2.at(pid).signal = f;
+        }
+
         bool is_sigkill() const
         {
             if(sig_kill)
@@ -379,6 +384,21 @@ struct MiniLinux
         return true;
     }
 
+
+    bool signal(pid_type pid, int sigtype)
+    {
+        if(isRunning(pid))
+        {
+            auto & proc = m_procs2.at(pid);
+            if(proc.signal)
+            {
+                proc.signal(sigtype);
+            }
+
+            return true;
+        }
+        return false;
+    }
     /**
      * @brief kill
      * @param pid
@@ -393,12 +413,20 @@ struct MiniLinux
             {
                 m_procs2.erase(pid);
             }
+            signal(pid, 2);
             m_procs2.at(pid).control->sig_kill=true;
             return true;
         }
         return false;
     }
 
+    /**
+     * @brief getIO
+     * @param pid
+     * @return
+     *
+     * Returns the input and output streams for a process
+     */
     std::pair<std::shared_ptr<stream_type>, std::shared_ptr<stream_type>> getIO(pid_type pid)
     {
         if(isRunning(pid))
@@ -423,7 +451,10 @@ struct MiniLinux
         if(!coro.task.done())
         {
             //std::cerr << "Resuming: " << coro.control->args[0] << std::endl;
+            auto t0 = std::chrono::high_resolution_clock::now();
             coro.task.resume();
+            auto t1 = std::chrono::high_resolution_clock::now();
+            coro.processTime += std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0);
         }
         if(coro.task.done())
         {
@@ -467,7 +498,16 @@ struct MiniLinux
         return m_procs2.size();
     }
 
-    std::shared_ptr<return_code_type> processExitCode(pid_type p)
+    /**
+     * @brief processExitCode
+     * @param p
+     * @return
+     *
+     * Get a pointer to the exit code for the pid. This value
+     * will be set to -1 if the process has not completed
+     * Or will be nullptr if the process doesn't exist
+     */
+    std::shared_ptr<return_code_type> processExitCode(pid_type p) const
     {
         if(auto it = m_procs2.find(p); it!=m_procs2.end())
         {
@@ -488,6 +528,8 @@ struct MiniLinux
 
         bool is_complete = false;
         std::shared_ptr<return_code_type> exit_code = std::make_shared<return_code_type>(-1);
+        std::function<void(int)>        signal = {};
+        std::chrono::nanoseconds        processTime;
     };
 
     std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)
@@ -495,9 +537,9 @@ struct MiniLinux
         return m_procs2.at(pid).control;
     }
     std::map<std::string, std::function< task_type(e_type) >> m_funcs;
+    std::map<uint32_t, Process > m_procs2;
 protected:
 
-    std::map<uint32_t, Process > m_procs2;
     pid_type _pid_count=1;
 
     void setDefaultFunctions()
@@ -649,6 +691,42 @@ protected:
             }
             co_return 1;
         };
+        m_funcs["signal"] = [](e_type ctrl) -> task_type
+        {
+            auto & args = *ctrl;
+            if(args.args.size() < 3)
+                co_return 1;
+
+            pid_type pid = 0;
+            int sig=2;
+            {
+                auto [ptr, ec] = std::from_chars(args.args[1].data(), args.args[1].data() + args.args[1].size(), pid);
+                (void)ec;
+                (void)ptr;
+            }
+            {
+                auto [ptr, ec] = std::from_chars(args.args[2].data(), args.args[2].data() + args.args[2].size(), sig);
+                (void)ec;
+                (void)ptr;
+            }
+            auto & M = *args.mini;
+            if(!M.signal(pid, sig))
+            {
+                args << std::format("Could not find process ID: {}\n", pid);
+                co_return 0;
+            }
+            co_return 1;
+        };
+        m_funcs["io_info"] = [](e_type ctrl) -> task_type
+        {
+            auto & args = *ctrl;
+            for(auto & [pid, proc] : ctrl->mini->m_procs2)
+            {
+                args << std::format("{}[{}]->{}->{}[{}]\n", static_cast<void*>(proc.control->in.get()), proc.control->in.use_count(), proc.control->args[0], static_cast<void*>(proc.control->out.get()), proc.control->out.use_count() );
+            }
+            co_return 0;
+        };
+
         m_funcs["launcher"] = [](bl::MiniLinux::e_type control) -> bl::MiniLinux::task_type
         {
             // This is launcher process.
@@ -686,6 +764,14 @@ protected:
             // shell process
             auto [c_in, c_out] = control->mini->getIO(sh_pid);
 
+            auto ff = std::shared_ptr<void*>(nullptr, [&](auto)
+            {
+                // Manually close the input and output streams for
+                // the subprocess otherwise
+                // the subprocess will continuiously wait on new
+                // data
+                c_in->close();
+            });
             char buffer[1024];
 
             while (!exev.is_sigkill())
@@ -730,9 +816,14 @@ protected:
                     co_return 0;
                 }
                 co_await std::suspend_always{};
+            }
 
+            if(exev.is_sigkill())
+            {
+                exev.mini->kill(sh_pid);
             }
             count--;
+
             co_return 0;
         };
     }
