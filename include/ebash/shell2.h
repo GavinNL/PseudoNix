@@ -447,8 +447,13 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                     // if the command is enclosed in brackets, it means
                     // we have to call that command in a separate sh
                     // process
-                    auto stdin = MiniLinux::make_stream();
-                    auto stdout = MiniLinux::make_stream();
+                    //auto stdin = MiniLinux::make_stream();
+                    //auto stdout = MiniLinux::make_stream();
+
+                    auto pids = execute_pipes( {shell_name, "--noprofile"}, exev.mini, &shellEnv);
+                    auto stdin  = exev.mini->getIO(pids.front()).first;
+                    auto stdout = exev.mini->getIO(pids.back()).second;
+
                     for(auto & a : new_args)
                     {
                         // pipe the data into stdin, and make sure each argument
@@ -459,7 +464,7 @@ MiniLinux::task_type shell2(MiniLinux::e_type control, ShellEnv shellEnv1 = {})
                     *stdin << std::format(";");
                     stdin->close();
 
-                    auto pids = execute_pipes( {shell_name, "--noprofile"}, exev.mini, &shellEnv, stdin, stdout);
+
 
                     // pids are running in the foreground
                     while(!exev.mini->isAllComplete(pids))
