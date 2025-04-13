@@ -9,6 +9,14 @@
 #include <ebash/MiniLinux.h>
 #include <ebash/shell2.h>
 
+bl::MiniLinux * _M = nullptr;
+bl::MiniLinux::pid_type launcher_pid = 0xFFFFFFFF;
+
+void handle_sigint(int signum)
+{
+    if(_M)
+        _M->signal(launcher_pid, SIGINT);
+};
 
 int main()
 {
@@ -62,8 +70,18 @@ export HOME
     // it will then read the output stream of the child process and output it to
     // std::cout
     //
-    auto pid = M.runRawCommand(MiniLinux::parseArguments({"launcher2", "sh"}));
+    launcher_pid = M.runRawCommand(MiniLinux::parseArguments({"launcher2", "sh"}));
 
+    // We are going to use a signal handler to
+    // catch ctrl-C inputs and then
+    // pass them into the launcher
+    // process
+    std::signal(SIGINT, handle_sigint);
+    _M = &M;
+
+    // executeAllFor( ) will keep calling executeAll()
+    // until the total time elapsed is more than the
+    // given input value
     while(M.executeAll())
     {
         // sleep for 1 millisecond so we're not
