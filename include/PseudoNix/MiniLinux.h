@@ -168,6 +168,25 @@ struct System
                         }};
         }
 
+        System::Awaiter await_read_line(System::stream_type *d, std::string & line)
+        {
+            return System::Awaiter{get_pid(),
+                                   mini,
+                                   [d, l = &line]()
+                                   {
+                                       if(!d->has_data()) return false;
+                                       while(!d->eof())
+                                       {
+                                           auto c = d->get();
+                                           if(c == '\n')
+                                               return true;
+                                           l->push_back(c);
+                                           return false;
+                                       }
+                                       return true;
+                                   }};
+        }
+
         System::Awaiter await_data(System::stream_type *d)
         {
             return System::Awaiter{get_pid(),
@@ -771,6 +790,13 @@ protected:
 
     void setDefaultFunctions()
     {
+#define HANDLE_AWAIT(returned_signal)\
+        switch(returned_signal)\
+                {\
+                    case PseudoNix::sig_interrupt: { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
+    case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
+}
+
         m_funcs["false"] = [](e_type ctrl) -> task_type
         {
             (void)ctrl;

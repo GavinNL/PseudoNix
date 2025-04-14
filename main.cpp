@@ -17,7 +17,7 @@ PseudoNix::System::pid_type launcher_pid = 0xFFFFFFFF;
 void handle_sigint(int signum)
 {
     if(_M)
-        _M->signal(launcher_pid, PseudoNix::sig_int);
+        _M->signal(launcher_pid, PseudoNix::sig_interrupt);
 };
 
 int main()
@@ -51,6 +51,7 @@ echo Hello ${USER}. Welcome to ${SHELL}
 export USER
 export SHELL
 export HOME
+
 )foo";
     // bind the shellEnv input to the shell function
     M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, shellEnv));
@@ -58,6 +59,48 @@ export HOME
     M.setFunction("launcher", PseudoNix::launcher_coro);
     //=============================================================================
 
+    M.setFunction("guess", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+    {
+        std::string input;
+        uint32_t x = std::rand() % 100 + 1;
+        *ctrl << std::format("I have chosen a number between 1-100. Can you guess what it is?\n");
+
+        while(true)
+        {
+            std::string line;
+
+            // HANDLE_AWAIT is a macro that looks at the return type of the
+            // Awaiter (a signal code), and co_returns the appropriate
+            // exit code.
+            HANDLE_AWAIT(co_await ctrl->await_read_line(ctrl->in.get(), line))
+
+            uint32_t guess = 0;
+            auto [ptr, ec] = std::from_chars(line.data(), line.data() + line.size(), guess);
+            if(ec != std::errc())
+            {
+                *ctrl->out << std::format("invalid entry: {}\n", line);
+                *ctrl->out << std::format("Guess Aagain: \n");
+                continue;
+            }
+
+            if(guess > x)
+            {
+                *ctrl->out << std::format("Too High!\n");
+            }
+            else if(guess < x)
+            {
+                *ctrl->out << std::format("Too Low!\n");
+            }
+            else
+            {
+                *ctrl->out << std::format("Awesome! You guessed the correct number: {}!\n", x);
+                *ctrl->out << std::format("Exiting\n");
+                co_return 0;
+            }
+        }
+
+        co_return 0;
+    });
 
     // If we start our main process, "sh", then it will create its own
     // input and output streams, but we have no way write to the input stream
