@@ -724,6 +724,13 @@ protected:
             }
             co_return 0;
         };
+
+        m_funcs["uptime"] = [T0=std::chrono::system_clock::now()](e_type ctrl) -> task_type
+        {
+            auto & args = *ctrl;
+            args << std::format("{}\n", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()-T0).count());
+            co_return 0;
+        };
         m_funcs["rev"] = [](e_type ctrl) -> task_type
         {
             auto & args = *ctrl;
