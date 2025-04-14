@@ -1,0 +1,117 @@
+stages:
+#- analysis
+- build
+#- test
+
+.build_template: &job_definition
+    stage: build
+    before_script:
+      - env
+      - apt update
+      - apt install -y wget curl tar
+      - wget https://github.com/Kitware/CMake/releases/download/v3.29.6/cmake-3.29.6-linux-x86_64.sh
+      - chmod +x cmake-3.29.6-linux-x86_64.sh
+
+      - ./cmake-3.29.6-linux-x86_64.sh --skip-license --prefix=/usr/local
+
+    script:
+      - echo $USER    ---   $HOME
+      - SOURCE_DIR=$PWD
+      - cmake --version
+      - echo Working directory $PWD
+
+      - apt install -y python3-pip python3-setuptools rpm ${ADDITIONAL_PACKAGES}
+
+      - pip3 install conan ${ADDITIONAL_PYTHON_PACKAGES} ${ADDITIONAL_PIP3_ARGS}
+ 
+      - conan profile detect --force
+
+      - conan install . --build missing  -s:h "&:build_type=${BUILD_TYPE}" -s "compiler.cppstd=20" -c:h "user:preset_name=ci"
+      #- conan install --build missing -s:h "&:build_type=${BUILD_TYPE}" -s "compiler.cppstd=20" -s compiler.libcxx=libstdc++11 -of=$PWD ../conanfile.py 
+
+      - PRESET_NAME=conan-ci-$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
+      - cmake --preset ${PRESET_NAME}
+
+      - cmake --build --preset ${PRESET_NAME}
+
+      - ctest --preset ${PRESET_NAME}
+
+      # We'll need to add ths otherwise installation of gcovr will block
+      - export TZ="America/New_York"
+      - ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+    
+      - if [[ ${BUILD_TYPE} == "Debug" ]]; then apt install -y gcovr; fi
+      - if [[ ${BUILD_TYPE} == "Debug" ]]; then cmake --build --preset ${PRESET_NAME} --target coverage;  fi
+
+      # Build a debian Package
+      - cd build/ci/${BUILD_TYPE}
+      - cpack -G DEB
+
+      # Build an RPM package
+      - cpack -G RPM
+
+      - mkdir -p ${SOURCE_DIR}/artifacts
+      - mv *.deb *.rpm ${SOURCE_DIR}/artifacts
+  
+    artifacts:
+      paths:
+        - artifacts/*
+      expire_in: 1 week
+
+
+build-jammy-gcc11:
+    <<: *job_definition           # Merge the contents of the 'job_definition' alias
+    image: ubuntu:jammy
+    variables:
+        ADDITIONAL_PACKAGES: 'gcc g++'
+        CC: '/usr/bin/gcc-11'
+        CXX: '/usr/bin/g++-11'
+        BUILD_TYPE: 'Debug'
+        ADDITIONAL_PYTHON_PACKAGES: ''
+        ADDITIONAL_CMAKE_FLAGS: ''
+        ADDITIONAL_CONAN_FLAGS: '-s compiler.libcxx=libstdc++11'
+    artifacts:
+      paths:
+        - build/coverage/
+    coverage: '/^TOTAL.*\s+(\d+\%)$/'
+
+build-jammy-clang14:
+    <<: *job_definition           # Merge the contents of the 'job_definition' alias
+    image: ubuntu:jammy
+    variables:
+        ADDITIONAL_PACKAGES: 'clang'
+        CC: '/usr/bin/clang'
+        CXX: '/usr/bin/clang++'
+        BUILD_TYPE: 'Release'
+        ADDITIONAL_PYTHON_PACKAGES: ''
+        ADDITIONAL_CMAKE_FLAGS: ''
+        ADDITIONAL_CONAN_FLAGS: '-s compiler.libcxx=libstdc++11'
+
+build-noble-gcc13:
+    <<: *job_definition           # Merge the contents of the 'job_definition' alias
+    image: ubuntu:noble
+    variables:
+        ADDITIONAL_PACKAGES: 'gcc g++'
+        CC: '/usr/bin/gcc-13'
+        CXX: '/usr/bin/g++-13'
+        BUILD_TYPE: 'Release'
+        ADDITIONAL_PYTHON_PACKAGES: ''
+        ADDITIONAL_CMAKE_FLAGS: ''
+        ADDITIONAL_CONAN_FLAGS: '-s compiler.libcxx=libstdc++11'
+        ADDITIONAL_PIP3_ARGS: '--break-system-packages'
+
+
+build-noble-clang18:
+    <<: *job_definition           # Merge the contents of the 'job_definition' alias
+    image: ubuntu:noble
+    variables:
+        ADDITIONAL_PACKAGES: 'clang'
+        CC: '/usr/bin/clang'
+        CXX: '/usr/bin/clang++'
+        BUILD_TYPE: 'Release'
+        ADDITIONAL_PYTHON_PACKAGES: ''
+        ADDITIONAL_CMAKE_FLAGS: ''
+        ADDITIONAL_CONAN_FLAGS: '-s compiler.libcxx=libstdc++11'
+        ADDITIONAL_PIP3_ARGS: '--break-system-packages'
+
+
