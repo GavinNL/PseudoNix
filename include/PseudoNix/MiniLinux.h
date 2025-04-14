@@ -147,6 +147,43 @@ struct System
             return pid;
         }
 
+        System::Awaiter await_yield()
+        {
+            return System::Awaiter{pid,
+                    mini,
+                    [x=false]() mutable {
+                        if(!x)
+                        {
+                            x = true;
+                            // retun false the first time
+                            // so that it will immediately suspend
+                            return false;
+                        }
+                        // subsequent times, return true
+                        // so that we know it
+                        return true;
+                        }};
+        }
+
+        System::Awaiter await_data(System::stream_type *d)
+        {
+            return System::Awaiter{get_pid(),
+                                   mini,
+                                   [d](){
+                                       return d->has_data();
+                                   }};
+        }
+
+        System::Awaiter await_yield_for(std::chrono::nanoseconds time)
+        {
+            auto T1 = std::chrono::system_clock::now() + time;
+            return System::Awaiter{get_pid(),
+                                   mini,
+                                   [T=T1](){
+                                       return std::chrono::system_clock::now() > T;
+                                   }};
+        }
+
         ProcessControl& operator << (std::string_view const &ss)
         {
             for(auto i : ss)
