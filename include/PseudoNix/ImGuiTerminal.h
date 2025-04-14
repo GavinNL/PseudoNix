@@ -88,12 +88,12 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
             ImGui::SameLine();
             if( ImGui::Button("Sig-Int") )
             {
-                m_mini.signal(sh_pid, PseudoNix::sig_int);
+                m_mini.signal(sh_pid, PseudoNix::sig_interrupt);
             }
             ImGui::SameLine();
             if( ImGui::Button("Sig-Term") )
             {
-                m_mini.signal(sh_pid, PseudoNix::sig_term);
+                m_mini.signal(sh_pid, PseudoNix::sig_terminate);
             }
             //ImGui::SameLine();
             //ImGui::Text("%s", std::format("Frame Count {}", ImGui::GetFrameCount()).c_str());
