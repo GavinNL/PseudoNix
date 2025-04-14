@@ -36,7 +36,6 @@ struct Task_t
 {
     struct promise_type : public std::conditional_t< std::is_same_v<void,T>, promise_void, promise_value<T> >
     {
-        bool _done = false;
         // must have a default consturctor
         promise_type() = default;
 
@@ -59,7 +58,6 @@ struct Task_t
         // in this case we are not-suspending when
         // we first start the coroutine
         initial_suspend_t initial_suspend() {
-            _done = false;
             //std::cout << "initial suspend\n";
             return {};
         }
@@ -67,8 +65,6 @@ struct Task_t
         // executes when the coroutine finishes
         // executing.
         final_suspend_t final_suspend() noexcept {
-            _done = true;
-            //std::cout << "final suspend\n";
             return {};
         }
 
@@ -91,8 +87,12 @@ struct Task_t
 
     ~Task_t()
     {
-        if(handle)
-            handle.destroy();
+        if constexpr ( std::is_same_v<final_suspend_t, std::suspend_never> )
+        {
+            if(handle)
+                handle.destroy();
+            handle = nullptr;
+        }
     }
     Task_t(Task_t<T, initial_suspend_t, final_suspend_t> &&V) : handle(std::exchange(V.handle, nullptr))
     {
@@ -131,7 +131,7 @@ struct Task_t
     {
         return handle.done();
     }
-
+private:
     std::coroutine_handle<promise_type> handle;
 };
 
