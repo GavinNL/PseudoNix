@@ -66,6 +66,63 @@ struct System
         }
     };
 
+    class Awaiter {
+    public:
+        explicit Awaiter(pid_type p, System* S,std::function<bool(void)> f)
+            : m_pid(p), m_system(S), m_pred(f)
+        {
+            // std::cerr << "Sleep Awaiter Created: " << this << std::endl;
+        }
+
+        ~Awaiter()
+        {
+            // std::cerr << "Sleep Awaiter Destroyed: " << this << std::endl;
+        }
+
+        // called to check if
+        bool await_ready() const noexcept {
+            auto b = m_pred();
+            //std::cerr << "await_ready called: " << this << "  " << b << std::endl;
+            return b;
+        }
+
+        void await_suspend(std::coroutine_handle<> handle) noexcept {
+            handle_ = handle;
+
+            // this is where we need to place
+            // the handle for executing on another
+            // scheduler
+            assert(m_system->m_procs2.at(m_pid).awaiter == nullptr);
+            m_system->m_procs2.at(m_pid).awaiter = this;
+        }
+
+        int32_t await_resume() const noexcept {
+            return m_signal_type;
+        }
+
+        void resume()
+        {
+            //std::cerr << "Awaiter resuming handle: " << handle_.address() << std::endl;
+            if(handle_)
+            {
+                handle_.resume();
+                handle_ = {};
+            }
+        }
+
+        void set_signal_code(int32_t d)
+        {
+            m_signal_type = d;
+        }
+    protected:
+        pid_type m_pid;
+        System * m_system;
+        std::function<bool()> m_pred;
+        std::coroutine_handle<> handle_;
+        int32_t m_signal_type = 0;
+    };
+
+
     struct ProcessControl
     {
         std::vector<std::string>           args;
