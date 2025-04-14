@@ -480,6 +480,7 @@ struct System
             *_signaled = true;
             if(auto aa = p.lock(); aa)
             {
+                aa->sig_code = s;
                 std::cerr << std::format("[{}] Default Signal Handler: {}", s, join(aa->args)) << std::endl;
                 aa->signalSubProcesses(s);
             }
