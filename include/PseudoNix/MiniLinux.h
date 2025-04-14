@@ -842,9 +842,7 @@ protected:
             {
                 *ctrl << "y\n";
 
-                auto sig = co_await ctrl->await_yield();
-                if(sig == PseudoNix::sig_interrupt ) { co_return static_cast<int>(PseudoNix::exit_interrupt);}
-                if(sig == PseudoNix::sig_terminate ) { co_return static_cast<int>(PseudoNix::exit_terminated);}
+                HANDLE_AWAIT(co_await ctrl->await_yield());
             }
 
             co_return 0;
@@ -862,9 +860,8 @@ protected:
             // NOTE: do not acutally use this_thread::sleep
             // this is a coroutine, so you should suspend
             // the routine
-            auto sig = co_await ctrl->await_yield_for(std::chrono::milliseconds( static_cast<uint64_t>(t*1000)));
-            if(sig == PseudoNix::sig_interrupt ) { co_return static_cast<int>(PseudoNix::exit_interrupt);}
-            if(sig == PseudoNix::sig_terminate ) { co_return static_cast<int>(PseudoNix::exit_terminated);}
+            HANDLE_AWAIT(co_await ctrl->await_yield_for(std::chrono::milliseconds( static_cast<uint64_t>(t*1000))));
+
             co_return 0;
         };
 
@@ -913,9 +910,8 @@ protected:
 
             while(true)
             {
-                auto sig = co_await ctrl->await_data(args.in.get());
-                if(sig == PseudoNix::sig_interrupt ) { co_return static_cast<int>(PseudoNix::exit_interrupt);}
-                if(sig == PseudoNix::sig_terminate ) { co_return static_cast<int>(PseudoNix::exit_terminated);}
+                HANDLE_AWAIT(co_await ctrl->await_data(args.in.get()));
+
                 while(!args.eof())
                 {
                     args.get();
@@ -954,7 +950,11 @@ protected:
 
             pid_type pid = 0;
             auto [ptr, ec] = std::from_chars(args.args[1].data(), args.args[1].data() + args.args[1].size(), pid);
-            (void)ec;
+            if(ec != std::errc())
+            {
+                args << std::format("Must be a Process ID. Recieved {}\n", args.args[1]);
+                co_return 1;
+            }
             (void)ptr;
             auto & M = *args.mini;
             if(!M.kill(pid))
@@ -973,14 +973,18 @@ protected:
             pid_type pid = 0;
             int sig=2;
             {
-                auto [ptr, ec] = std::from_chars(args.args[1].data(), args.args[1].data() + args.args[1].size(), pid);
-                (void)ec;
-                (void)ptr;
+                if(std::errc() != std::from_chars(args.args[1].data(), args.args[1].data() + args.args[1].size(), pid).ec)
+                {
+                    args << std::format("Arg 1 must be a Process ID. Recieved {}\n", args.args[1]);
+                    co_return 1;
+                }
             }
             {
-                auto [ptr, ec] = std::from_chars(args.args[2].data(), args.args[2].data() + args.args[2].size(), sig);
-                (void)ec;
-                (void)ptr;
+                if(std::errc() != std::from_chars(args.args[2].data(), args.args[2].data() + args.args[2].size(), sig).ec)
+                {
+                    args << std::format("Arg 2 must be a integer signal code. Recieved {}\n", args.args[1]);
+                    co_return 1;
+                }
             }
             auto & M = *args.mini;
             if(!M.signal(pid, sig))
