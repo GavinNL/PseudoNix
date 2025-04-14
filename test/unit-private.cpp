@@ -223,7 +223,7 @@ SCENARIO("System: Execute two commands and have one piped into the other")
 SCENARIO("System: sh")
 {
     System M;
-    M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
+    M.m_funcs["sh"] = std::bind(shell_coro, std::placeholders::_1, ShellEnv{});
 
     System::Exec sh;
     sh.args = {"sh"};
@@ -243,7 +243,7 @@ SCENARIO("System: sh")
 SCENARIO("System: sh - multicommand")
 {
     System M;
-    M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
+    M.m_funcs["sh"] = std::bind(shell_coro, std::placeholders::_1, ShellEnv{});
 
     System::Exec sh;
     sh.args = {"sh"};
@@ -262,7 +262,7 @@ SCENARIO("System: sh - multicommand")
 SCENARIO("System: sh - multicommand with newline")
 {
     System M;
-    M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
+    M.m_funcs["sh"] = std::bind(shell_coro, std::placeholders::_1, ShellEnv{});
 
     System::Exec sh;
     sh.args = {"sh"};
@@ -281,7 +281,7 @@ SCENARIO("System: sh - multicommand with newline")
 SCENARIO("System: sh - pipe")
 {
     System M;
-    M.m_funcs["sh"] = std::bind(shell2, std::placeholders::_1, ShellEnv{});
+    M.m_funcs["sh"] = std::bind(shell_coro, std::placeholders::_1, ShellEnv{});
     THEN("We can wr")
     {
         System::Exec sh;
