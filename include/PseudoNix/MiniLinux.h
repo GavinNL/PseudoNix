@@ -11,8 +11,11 @@
 namespace PseudoNix
 {
 
-constexpr int sig_int  = 130;
-constexpr int sig_term = 143;
+constexpr const int exit_interrupt  = 130;
+constexpr const int exit_terminated = 143;
+
+constexpr const int sig_interrupt  = 2;
+constexpr const int sig_terminate = 15;
 
 
 template <typename Container>
@@ -31,15 +34,15 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
 
 #define SUSPEND_POINT(C)         \
 {                                \
-if (C->sig_code == PseudoNix::sig_term)      \
-co_return 143;                   \
+if (C->sig_code == PseudoNix::sig_terminate)      \
+co_return static_cast<int>(PseudoNix::exit_terminated);                   \
 co_await std::suspend_always{};  \
 }
 
 #define SUSPEND_SIGTERM(C) \
 {\
-    if(C->sig_code == PseudoNix::sig_int )  { /*std::cout << "SIGINT" << std::endl; */ co_return 130;} \
-    if(C->sig_code == PseudoNix::sig_term ) { /*std::cout << "SIGTERM" << std::endl;*/ co_return 143;} \
+    if(C->sig_code == PseudoNix::sig_int )  { /*std::cout << "SIGINT" << std::endl; */ co_return static_cast<int>(exit_interrupt);} \
+    if(C->sig_code == PseudoNix::sig_term ) { /*std::cout << "SIGTERM" << std::endl;*/ co_return static_cast<int>(exit_terminated);} \
         co_await std::suspend_always{};\
 }
 
@@ -617,11 +620,34 @@ struct System
 
         if(!coro.task.done())
         {
-            //std::cerr << "Resuming: " << coro.control->args[0] << std::endl;
-            auto t0 = std::chrono::high_resolution_clock::now();
-            coro.task.resume();
-            auto t1 = std::chrono::high_resolution_clock::now();
-            coro.processTime += std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0);
+            // check if the coroutine has an awaiter
+            // that needs to be processed
+            if(coro.awaiter)
+            {
+                // Process the awaiter. The awaiter has
+                // an internal function object that can executed
+                if(coro.control->sig_code != 0 || coro.awaiter->await_ready())
+                {
+                    //if(coro.control->sig_code!=0) std::cerr << "Forcing resume due to signal: " << pid << std::endl;
+                    auto a = coro.awaiter;
+                    a->set_signal_code(coro.control->sig_code);
+                    // if the coroutine is ready to be resumed
+                    // null out the awaiter, because it is possible
+                    // that resuming the coroutine will produce another
+                    // awaiter
+                    coro.awaiter = nullptr;
+                    //std::cerr << "Scheduler resuming awaiter: " << a-> << std::endl;
+                    //std::cerr << "Scheduler resuming awaiter: " << a << std::endl;
+                    a->resume();
+                }
+            }
+            else
+            {
+                auto t0 = std::chrono::high_resolution_clock::now();
+                coro.task.resume();
+                auto t1 = std::chrono::high_resolution_clock::now();
+                coro.processTime += std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0);
+            }
         }
         if(coro.task.done())
         {
@@ -630,6 +656,7 @@ struct System
             *coro.exit_code = exit_code;
             coro.control->env["?"] = std::to_string(exit_code);
             coro.control->pid = pid;
+            coro.awaiter = nullptr;
 
             if(coro.control->out && coro.control.use_count() == 2)
             {
@@ -714,16 +741,19 @@ struct System
     std::function< void(Exec&) >                 m_preExec;
     std::function< void(Exec&) >                 m_postExec;
 
+
     struct Process
     {
         std::shared_ptr<ProcessControl> control;
         task_type                       task;
         pid_type                        parent = 0xFFFFFFFF;
 
+        Awaiter                       * awaiter = nullptr;
+
         bool is_complete = false;
         std::shared_ptr<return_code_type> exit_code = std::make_shared<return_code_type>(-1);
-        std::function<void(int)>        signal = {};
-        std::chrono::nanoseconds        processTime = std::chrono::nanoseconds(0);
+        std::function<void(int)>          signal = {};
+        std::chrono::nanoseconds          processTime = std::chrono::nanoseconds(0);
 
         bool force_terminate = false;
     };
@@ -785,14 +815,9 @@ protected:
             {
                 *ctrl << "y\n";
 
-                // This is a suspension point
-                // When the coroutine reaches this position
-                // it will check if:
-                //
-                //  1. The coroutine received a SIGTERM. If so co_return SIGTERM;
-                //  2. The coroutine received a SIGINT. If so co_return SIGINT;
-                //  3. co_yield to the next process
-                SUSPEND_SIGTERM(ctrl);
+                auto sig = co_await ctrl->await_yield();
+                if(sig == PseudoNix::sig_interrupt ) { co_return static_cast<int>(PseudoNix::exit_interrupt);}
+                if(sig == PseudoNix::sig_terminate ) { co_return static_cast<int>(PseudoNix::exit_terminated);}
             }
 
             co_return 0;
@@ -807,15 +832,12 @@ protected:
             std::istringstream in(args.args[1]);
             in >> t;
 
-            auto T1 = std::chrono::system_clock::now() +
-                        std::chrono::milliseconds( static_cast<uint64_t>(t*1000));
             // NOTE: do not acutally use this_thread::sleep
             // this is a coroutine, so you should suspend
             // the routine
-            while(std::chrono::system_clock::now() < T1)
-            {
-                SUSPEND_SIGTERM(ctrl);
-            }
+            auto sig = co_await ctrl->await_yield_for(std::chrono::milliseconds( static_cast<uint64_t>(t*1000)));
+            if(sig == PseudoNix::sig_interrupt ) { co_return static_cast<int>(PseudoNix::exit_interrupt);}
+            if(sig == PseudoNix::sig_terminate ) { co_return static_cast<int>(PseudoNix::exit_terminated);}
             co_return 0;
         };
 
@@ -864,19 +886,20 @@ protected:
 
             while(true)
             {
-                while(!args.eof() && args.has_data())
+                auto sig = co_await ctrl->await_data(args.in.get());
+                if(sig == PseudoNix::sig_interrupt ) { co_return static_cast<int>(PseudoNix::exit_interrupt);}
+                if(sig == PseudoNix::sig_terminate ) { co_return static_cast<int>(PseudoNix::exit_terminated);}
+                while(!args.eof())
                 {
                     args.get();
                     ++i;
                 }
                 if(args.eof())
                     break;
-                else
-                    co_await std::suspend_always{};
             }
 
             args << std::to_string(i) << '\n';
-            //std::cout << std::to_string(i);
+
             co_return 0;
         };
         m_funcs["ps"] = [](e_type ctrl) -> task_type
