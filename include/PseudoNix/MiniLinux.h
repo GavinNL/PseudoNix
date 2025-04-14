@@ -168,6 +168,17 @@ struct System
                         }};
         }
 
+        System::Awaiter await_subprocesses()
+        {
+            return System::Awaiter{get_pid(),
+                                     mini,
+                                     [this]()
+                                     {
+                                         return areSubProcessesFinished();
+                                     }};
+        }
+
+
         System::Awaiter await_read_line(System::stream_type *d, std::string & line)
         {
             return System::Awaiter{get_pid(),
@@ -790,12 +801,13 @@ protected:
 
     void setDefaultFunctions()
     {
-#define HANDLE_AWAIT(returned_signal)\
+        #define HANDLE_AWAIT(returned_signal)\
         switch(returned_signal)\
-                {\
-                    case PseudoNix::sig_interrupt: { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
-    case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
-}
+        {\
+            case PseudoNix::sig_interrupt: { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
+            case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
+            default: break;\
+        }
 
         m_funcs["false"] = [](e_type ctrl) -> task_type
         {
