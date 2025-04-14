@@ -81,7 +81,7 @@ export HOME
             if(std::errc() != std::from_chars(line.data(), line.data() + line.size(), guess).ec)
             {
                 *ctrl->out << std::format("invalid entry: {}\n", line);
-                *ctrl->out << std::format("Guess Aagain: \n");
+                *ctrl->out << std::format("Guess Again: \n");
                 continue;
             }
 

@@ -1,150 +1,177 @@
 # PseudoNix
 
-This is a sample C++ project template with the following features:
+PseudoNix is an embeddable, Linux-like environment you can integrate directly into your project to provide an interactive shell interface. 
+It supports custom command registration and mimics familiar shell behavior including environment variables, 
+command substitution, logical operators (&&, ||), and output redirection (|). 
+Perfect for building scriptable, extensible CLI experiences right into your application.
 
-* Conan 2.4 for third party packages
-* CMake for build 
-* Sub libraries and executables
-* Unit testing via Catch2
-* Coverage Reports [![coverage report](https://gitlab.com/GavinNL/cpp2024/badges/master/coverage.svg)](https://gitlab.com/GavinNL/cpp2024/-/commits/master)
-* Packaging (DEB, RPM)
-* Continuous Integration for Linux and Windows builds
-  * Gitlab-CI [![pipeline status](https://gitlab.com/GavinNL/cpp2024/badges/master/pipeline.svg)](https://gitlab.com/GavinNL/cpp2024/-/commits/master)
-  * Github Workflows ![example workflow](https://github.com/GavinNL/cpp2024/actions/workflows/cmake-multi-platform.yml/badge.svg)
+Although PseudoNix can be used for command line applications, 
+it was intended to be used for interactive applications, like games, to provide a debugging interface for 
+your system.
 
-## Usage
+PseudoNix provides a default `shell` that behaves similar to bash. 
+Through this interactive shell, you have access to a number of bash-like features:
+
+* Execute a process: 
+  * `echo hello world`
+* Execute a compound process: 
+  * `sleep 5 && echo hello world`
+  * `true && echo true || echo false`
+  * `false && echo true || echo false`
+* Run a process with additional variables: 
+  * `VAR=value env`
+* Set variables for the shell 
+  * `VAR=VALUE`
+* Use variables in the shell:
+  * `echo hello ${VAR}`
+* Export variables to child processes: 
+  * `export VAR`
+* Execute a process in the background: 
+  * `sleep 10 && echo hello world &`
+* Use Command Substituion
+  * `echo Running for: $(uptime) ms`
+
+
+
+PseudoNix allows you to register your own coroutine functions so that they can be called within the system.
+
+## Compiling the Examples
 
 Edit the top level `CMakeLists.txt` and change the project name. 
 
 ```bash
 cd SRC_FOLDER
-mkdir build && cd build
-
-# Optional: Set which compiler you want to use (ie: clang/clang++)
-export CXX=$(which g++)
-export CC=$(which gcc)
-
-# Set up your conan profile based on the current
-# environment variables
-conan profile detect --force 
 
 # execute conan to install the packages you need
-conan install --build missing \
-              -s "compiler.cppstd=20" \
-              -s:h "&:build_type=Debug" \ 
-              -of=$PWD ../conanfile.txt 
-
-# Note; the -s:h "&:build_type=Debug" is required if you want
-# to use the packages in Release mode, but build your project in Debug mode
+conan install conanfile.py --build missing -of=build
 
 # Run cmake
-cmake --preset conan-debug ..
+cmake --preset conan-release .
 
-# Build
-cmake --build . --parallel
-
-# Test
-ctest
-
-# Run coverage report (linux/gcc only. Requires gcovr)
-cmake --build . --target coverage 
-
-
-# Build packages
-cpack -G DEB
-
-cpack -G RPM
 ```
 
-# Structure
+## Usage
 
-This project is modeled after how Rust handles it packages. 
-All modules (libraries/executables) that are to be built are in the `src` folder.
+This is a slightly stripped down version of the `main.cpp` example.
 
-Each folder is a separate target whose name is the name of the folder
+```c++
+#include <PseudoNix/MiniLinux.h>
+#include <PseudoNix/shell2.h>
+#include <PseudoNix/Launcher.h>
 
+int main()
+{
+    // Create a default PseudoNix system which comes
+    // with a few standard functions
+    PseudoNix::System M;
 
-## Modules
+    // Set the default shell. See main.cpp for
+    // a more detailed explaination
+    M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
 
-A top level project can have multiple modules. These are executables, libraries, or header-only libraries.
+    // Set the launcher function which reads data from
+    // standard input and redirects it to a sub process
+    M.setFunction("launcher", PseudoNix::launcher_coro);
 
-There are three sample modules created in the `src` folder. Copy the one you want and rename the folder.
+    // Execute the launcher proces
+    auto pid = M.runRawCommand(System::parseArguments({"launcher", "sh"}));
 
-The module will be built according to the folder name.
+    // Execute all the processes
+    // keep looping until all processes have completed
+    while(M.executeAllFor(std::chrono::milliseconds(1), 10))
+    {
+        // sleep for 1 millisecond so we're not
+        // doing a busy loop
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 
-The `CMakeLists.txt` file that is used for the module has the following:
+    return 0;
 
+}
 
-```cmake
-find_package(stb REQUIRED)
-
-MakeMod(
-        # NAME               # Optional
-        #     libA           #   Default is name of folder
-        # SRC_FILES          # OPTIONAL
-        #    src/lib.cpp     #   Default is all files in src
-        # OUTPUT_TARGET_TYPE # OPTIONAL
-        #     "LIBRARY"      #   "LIBRARY"    if src/lib.cpp exists, 
-                             #   "EXECUTABLE" if src/main.cpp exists
-                             #   "INTERFACE " if not LIBRARY and not EXECUTABLE
-
-        # Targets you want to link to
-        PUBLIC_TARGETS
-            ${PROJECT_NAME}::interface
-            stb::stb
-        PRIVATE_TARGETS
-            ${PROJECT_NAME}::coverage # add coverage
-            ${PROJECT_NAME}::warnings
-
-        # Compile time definitions
-        PUBLIC_DEFINITIONS
-            "HELLO=32"
-        PRIVATE_DEFINITIONS
-            "PRIVATE_HELLO=32"
-    )
-
-
-# Use this command to generate unit tests
-# All src files in the test folder will be
-# compiled into an executable and executed as a 
-# test
-MakeTests(PUBLIC_TARGETS
-            ${PROJECT_NAME}::libA
-            fmt::fmt
-            ${PROJECT_NAME}::warnings
-          PRIVATE_DEFINITIONS
-             MY_UNIT_TEST_DEF="Hello world"
-
-)
 ```
 
-# CMake Targets
+## Default Function Processes
 
-There are a few cmake build targets that are created
+| name     | Description                                                       |
+| -------- | ----------------------------------------------------------------- |
+| echo     | echos arguments to output: `echo hello world`                     |
+| env      | Shows all current env variables                                   |
+| exit     | Exits the shell                                                   |
+| export   | Exports env variables to children                                 |
+| exported | Lists all exported variables                                      |
+| false    | Returns immediately with exit code 1                              |
+| true     | Returns immediately with exit code 0                              |
+| help     | Lists all commands available                                      |
+| kill     | Kill a process: `kill <PID>`                                      |
+| launcher | Launches another process and redirects stdin/out to the process   |
+| ps       | Lists all processes                                               |
+| rev      | Reverses the input characters                                     |
+| sh       | The main shell process                                            |
+| signal   | Signal a process `signal <pid> <signal>`                          |
+| sleep    | Pause for a few seconds                                           |
+| uptime   | Prints milliseconds since start up                                |
+| wc       | Counts the characters in input                                    |
+| yes      | Outputs 'y' to the output                                         |
 
-## Coverage (Linux/gcc only)
+## Example Custom Function
 
-You can run coverage reports if `-D[PROJECT_NAME]_ENABLE_COVER=True` is set.
+Here's an example of creating a simple guessing game within the PsuedoNix system. 
+Remember that all the process functions happen concurrently,  so the
 
-```bash
-cmake --build . --target coverage
+ * All process functions happen concurrently, but on the main thread.
+ * Long running processes will block your entire application
+ * Make sure to use awaiters to yield the process flow to the next scheduled process
+
+```c++
+
+int main()
+{
+    PseudoNix::System M;
+
+    M.setFunction("guess", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+    {
+        std::string input;
+        uint32_t random_number = std::rand() % 100 + 1;
+        *ctrl->out << std::format("I have chosen a number between 1-100. Can you guess what it is?\n");
+
+        while(true)
+        {
+            std::string line;
+
+            // HANDLE_AWAIT is a macro that looks at the return type of the
+            // Awaiter (a signal code), and co_returns the appropriate
+            // exit code.
+            //
+            // This is where Ctrl-C and Sig-kills are handled
+            HANDLE_AWAIT(co_await ctrl->await_read_line(ctrl->in.get(), line))
+
+            uint32_t guess = 0;
+
+            if(std::errc() != std::from_chars(line.data(), line.data() + line.size(), guess).ec)
+            {
+                *ctrl->out << std::format("invalid entry: {}\n", line);
+                *ctrl->out << std::format("Guess Again: \n");
+                continue;
+            }
+
+            if(guess > random_number)
+            {
+                *ctrl->out << std::format("Too High!\n");
+            }
+            else if(guess < random_number)
+            {
+                *ctrl->out << std::format("Too Low!\n");
+            }
+            else
+            {
+                *ctrl->out << std::format("Awesome! You guessed the correct number: {}!\n", random_number);
+                *ctrl->out << std::format("Exiting\n");
+                co_return 0;
+            }
+        }
+
+        co_return 0;
+    });
+}
 ```
-
-This will generate the `coverage/report.xml` file as well as print the report to the terminal.
-
-# Continuous Integration
-
-CI pipelines for Gitlab-CI and Github Workflows are created for you. 
-
-## Gitlab-CI
-
-* ubuntu-22.04-gcc-11
-* ubuntu-22.04-clang-14
-* ubuntu-24.04-gcc-13
-* ubuntu-24.04-clang-18
-
-## Github Workflows
-
-* ubuntu-22.04-gcc-11
-* ubuntu-22.04-clang-14
-* Windows-latest [Visual Studios 17]
