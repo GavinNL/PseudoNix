@@ -460,7 +460,6 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
     shellEnv.shellPID = control->get_pid();
     assert(shellEnv.shellPID != 0xFFFFFFFF);
 
-
     std::string shell_name = control->args[0];
 
     bl_defer {
@@ -474,6 +473,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
     {
 
 #if defined USE_AWAITERS && 0
+        // Not sure why this isn't working correctly
         if(SHOULD_QUIT || shellEnv.exitShell) co_return 0;
         switch(co_await control->await_data(control->in.get()))
         {
@@ -492,7 +492,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
         }
 #endif
 
-        auto c = exev.get();
+        auto c = control->in->get();
         _current += c;
         if(c != ';' && c != '\n')
         {
@@ -501,7 +501,9 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
         _current.pop_back();
 
         if(_current.empty())
+        {
             continue;
+        }
 
         //std::cerr << std::format("{}", _current) << std::endl;
         auto args = Tokenizer3::to_vector(var_sub1(_current, shellEnv.env));
@@ -579,7 +581,10 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
 #if defined USE_AWAITERS
                     switch(co_await control->await_subprocesses())
                     {
-                        //case PseudoNix::sig_interrupt: { co_return static_cast<int>(PseudoNix::exit_interrupt);}
+                        case PseudoNix::sig_interrupt: {
+                            //std::cout << std::format("OUT: {} {}", control->in.use_count(), control->out.use_count());
+                            break;
+                        }
                         case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}
                         default: break;
                     }
@@ -611,7 +616,10 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
 #if defined USE_AWAITERS
             switch(co_await control->await_subprocesses())
             {
-                //case PseudoNix::sig_interrupt: { co_return static_cast<int>(PseudoNix::exit_interrupt);}
+                case PseudoNix::sig_interrupt: {
+                    //std::cout << std::format("OUT: {} {}", control->in.use_count(), control->out.use_count()) << std::endl;;
+                    break;
+                }
                 case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}
                 default: break;
             }

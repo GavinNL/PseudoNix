@@ -659,7 +659,6 @@ struct System
                 // an internal function object that can executed
                 if(coro.control->sig_code != 0 || coro.awaiter->await_ready())
                 {
-                    //if(coro.control->sig_code!=0) std::cerr << "Forcing resume due to signal: " << pid << std::endl;
                     auto a = coro.awaiter;
                     a->set_signal_code(coro.control->sig_code);
                     // if the coroutine is ready to be resumed
@@ -667,8 +666,7 @@ struct System
                     // that resuming the coroutine will produce another
                     // awaiter
                     coro.awaiter = nullptr;
-                    //std::cerr << "Scheduler resuming awaiter: " << a-> << std::endl;
-                    //std::cerr << "Scheduler resuming awaiter: " << a << std::endl;
+
                     a->resume();
                 }
             }
