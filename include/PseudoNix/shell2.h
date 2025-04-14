@@ -464,7 +464,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
     std::string shell_name = control->args[0];
 
     bl_defer {
-        std::cout << "Shell exit" << std::endl;
+        //std::cout << "Shell exit" << std::endl;
     };
     #define SHOULD_QUIT exev.in->eof()
 
@@ -522,6 +522,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
             stdin->close();
             auto pids = execute_pipes( {shell_name, "--noprofile"}, &exev, &shellEnv, stdin, exev.out);
             exev.subProcesses.clear();
+            *exev.out << std::to_string(pids[0]) << "\n";
             continue;
         }
 
