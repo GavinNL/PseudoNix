@@ -468,9 +468,20 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
     };
     #define SHOULD_QUIT exev.in->eof()
 
+#define USE_AWAITERS
 
     while(true)
     {
+
+#if defined USE_AWAITERS && 0
+        if(SHOULD_QUIT || shellEnv.exitShell) co_return 0;
+        switch(co_await control->await_data(control->in.get()))
+        {
+            //case PseudoNix::sig_interrupt: { co_return static_cast<int>(PseudoNix::exit_interrupt);}
+            case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}
+            default: break;
+        }
+#else
         while(true)
         {
             if(SHOULD_QUIT || shellEnv.exitShell)
@@ -479,6 +490,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
 
             SUSPEND_POINT(control);
         }
+#endif
 
         auto c = exev.get();
         _current += c;
@@ -491,6 +503,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
         if(_current.empty())
             continue;
 
+        //std::cerr << std::format("{}", _current) << std::endl;
         auto args = Tokenizer3::to_vector(var_sub1(_current, shellEnv.env));
         _current.clear();
 
@@ -563,10 +576,20 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
                     *stdin << ';';
                     stdin->close(); // make sure to close the output stream otherwise
                                     // sh will block waiting for bytes
+#if defined USE_AWAITERS
+                    switch(co_await control->await_subprocesses())
+                    {
+                        //case PseudoNix::sig_interrupt: { co_return static_cast<int>(PseudoNix::exit_interrupt);}
+                        case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}
+                        default: break;
+                    }
+#else
+                    // pids are running in the foreground:
                     while(!control->areSubProcessesFinished())
                     {
                         SUSPEND_POINT(control);
                     }
+#endif
                     exev.subProcesses.clear();
 
                     std::string out;
@@ -585,17 +608,25 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
             auto stdout = System::make_stream();
             auto pids = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), &exev, &shellEnv, exev.in, exev.out);
             auto f_exit_code = exev.mini->processExitCode(pids.back());
-
+#if defined USE_AWAITERS
+            switch(co_await control->await_subprocesses())
+            {
+                //case PseudoNix::sig_interrupt: { co_return static_cast<int>(PseudoNix::exit_interrupt);}
+                case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}
+                default: break;
+            }
+#else
             // pids are running in the foreground:
-            while(!exev.areSubProcessesFinished())
+            while(!control->areSubProcessesFinished())
             {
                 SUSPEND_POINT(control);
             }
+#endif
             exev.subProcesses.clear();
 
             if(!f_exit_code)
             {
-                *exev.out << "Command not found: " << cmd[1] << "\n";
+                *exev.out << std::format("Command not found: [{}]\n", cmd[1] );
                 ret_value = 127;
             }
             else
