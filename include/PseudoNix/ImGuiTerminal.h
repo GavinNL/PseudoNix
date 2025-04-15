@@ -111,10 +111,9 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
         }
         //--------------------------------------------------------------
 
-        if(exit_if_subprocess_exits && ctrl->areSubProcessesFinished()) break;
+        if(exit_if_subprocess_exits && !ctrl->mini->isRunning(sh_pid)) break;
 
-        // Suspend
-        SUSPEND_SIG_TERM(ctrl)
+        HANDLE_AWAIT_TERM(co_await ctrl->await_yield(), ctrl);
 
         while(shell_stdout->has_data())
         {

@@ -117,22 +117,13 @@ inline System::task_type launcher_coro(System::e_type ctrl)
 
         // Check if the sh function is still running
         // if not, quit.
-        if(ctrl->areSubProcessesFinished())
+        if(!ctrl->mini->isRunning(sh_pid))
         {
             break;
         }
 
-        // Suspend this coroutine here but quit
-        // if we recieve a SIGTERM signal
-        //
-        // If we were creating a process that didn't
-        // spawn a subprocess, we'd use SUSPEND_SIG_INT_TERM(ctrl)
-        // The reason we are not doing that is because
-        // SUSPEND_SIG_INT_TERM(ctrl) will exit the
-        // coroutine if we recieved a SIGINT (interrupt)
-        // We dont want to do this because SIGINT will be
-        // passed into the subprocess by default
-        SUSPEND_SIG_TERM(ctrl)
+
+        HANDLE_AWAIT_TERM(co_await ctrl->await_yield(), ctrl)
     }
 
     count--;

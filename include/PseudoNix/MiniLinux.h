@@ -72,8 +72,9 @@ struct System
     enum class AwaiterResult
     {
         SUCCESS = 0,
-        SIG_TERM,
-        SIG_INT
+        NO_ERROR = 0,
+        SIG_INT = sig_interrupt,
+        SIG_TERM = sig_terminate
     };
 
     class Awaiter {
@@ -81,6 +82,7 @@ struct System
         explicit Awaiter(pid_type p, System* S,std::function<bool(void)> f)
             : m_pid(p), m_system(S), m_pred(f)
         {
+            m_signal = &m_system->m_procs2.at(p).lastSignal;
             // std::cerr << "Sleep Awaiter Created: " << this << std::endl;
         }
 
@@ -94,7 +96,7 @@ struct System
             // Indicate that the awaiter is ready to be
             // resumed if we have internally set the
             // result to be a non-success
-            if(m_result != AwaiterResult::SUCCESS)
+            if(static_cast<AwaiterResult>(*m_signal) != AwaiterResult::NO_ERROR)
                 return true;
             auto b = m_pred();
             //std::cerr << "await_ready called: " << this << "  " << b << std::endl;
@@ -112,7 +114,7 @@ struct System
         }
 
         AwaiterResult await_resume() const noexcept {
-            return m_result;
+            return static_cast<AwaiterResult>(*m_signal);
         }
 
         void resume()
@@ -125,16 +127,12 @@ struct System
             }
         }
 
-        void set_result(AwaiterResult d)
-        {
-            m_result = d;
-        }
     protected:
         pid_type m_pid;
         System * m_system;
         std::function<bool()> m_pred;
         std::coroutine_handle<> handle_;
-        AwaiterResult m_result = {};
+        int32_t * m_signal = nullptr;
     };
 
 
@@ -177,16 +175,16 @@ struct System
                         }};
         }
 
-        System::Awaiter await_subprocesses()
+
+        System::Awaiter await_finished(pid_type _pid)
         {
             return System::Awaiter{get_pid(),
-                                     mini,
-                                     [this]()
-                                     {
-                                         return areSubProcessesFinished();
-                                     }};
+                                   mini,
+                                   [_pid,sys=mini]()
+                                   {
+                                       return !sys->isRunning(_pid);
+                                   }};
         }
-
 
         System::Awaiter await_finished(std::vector<pid_type> pids)
         {
@@ -287,36 +285,17 @@ struct System
             return *this;
         }
 
-        std::vector<pid_type> subProcesses;
-
         pid_type executeSubProcess(System::Exec E)
         {
             auto p = mini->runRawCommand(E, get_pid());
-            this->subProcesses.push_back(p);
             return p;
         }
         std::vector<pid_type> executeSubPipeline(std::vector<Exec> E)
         {
             auto pids = mini->runPipeline(E, get_pid());
-            this->subProcesses.insert(this->subProcesses.end(), pids.begin(), pids.end());
             return pids;
         }
 
-        bool areSubProcessesFinished() const
-        {
-            for(auto p : subProcesses)
-            {
-                if( mini->isRunning(p) ) return false;
-            }
-            return true;
-        }
-        void signalSubProcesses(int32_t signal)
-        {
-            for(auto p : subProcesses)
-            {
-                mini->signal(p, signal);
-            }
-        }
         bool has_data() const
         {
             return in->has_data();
@@ -537,13 +516,14 @@ struct System
         {
             if(auto aa = p.lock(); aa)
             {
-                auto A = this->m_procs2.at(aa->pid).awaiter;
-                if(A)
-                {
-                    A->set_result(static_cast<System::AwaiterResult>(s));
-                }
+                // Default signal handler will pass through the
+                // signal to its children
                 std::cerr << std::format("[{}] Default Signal Handler: {}", s, join(aa->args)) << std::endl;
-                aa->signalSubProcesses(s);
+
+                for(auto c : this->m_procs2.at(aa->pid).child_processes)
+                {
+                    this->signal(c, s);
+                }
             }
         };
         m_procs2.emplace(_pid, std::move(_t));
@@ -621,6 +601,7 @@ struct System
             if(proc.signal && !proc.has_been_signaled)
             {
                 proc.has_been_signaled = true;
+                proc.lastSignal = sigtype;
                 proc.signal(sigtype);
                 proc.has_been_signaled = false;
             }
@@ -630,6 +611,23 @@ struct System
         return false;
     }
 
+    AwaiterResult getSignal(pid_type pid)
+    {
+        if(isRunning(pid))
+        {
+            auto & proc = m_procs2.at(pid);
+            return static_cast<AwaiterResult>(proc.lastSignal);
+        }
+    }
+
+    void clearSignal(pid_type pid)
+    {
+        if(isRunning(pid))
+        {
+            auto & proc = m_procs2.at(pid);
+            proc.lastSignal = 0;
+        }
+    }
     /**
      * @brief kill
      * @param pid
@@ -820,6 +818,8 @@ struct System
         std::function<void(int)>          signal = {};
         std::chrono::nanoseconds          processTime = std::chrono::nanoseconds(0);
 
+        // This is where the current signal is
+        int32_t lastSignal = 0;
         bool has_been_signaled = false;
         bool force_terminate = false;
 
@@ -839,13 +839,21 @@ protected:
 
     void setDefaultFunctions()
     {
-        #define HANDLE_AWAIT(returned_signal)\
+        #define HANDLE_AWAIT_INT_TERM(returned_signal, CTRL)\
         switch(returned_signal)\
         {\
-            case PseudoNix::System::AwaiterResult::SIG_INT: { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
+            case PseudoNix::System::AwaiterResult::SIG_INT:  { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
             case PseudoNix::System::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
             default: break;\
         }
+
+        #define HANDLE_AWAIT_TERM(returned_signal, CTRL)\
+        switch(returned_signal)\
+            {\
+                case PseudoNix::System::AwaiterResult::SIG_INT:   CTRL->mini->clearSignal(CTRL->get_pid()); break; \
+                case PseudoNix::System::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
+                    default: break;\
+            }
 
         m_funcs["false"] = [](e_type ctrl) -> task_type
         {
@@ -892,7 +900,7 @@ protected:
             {
                 *ctrl << "y\n";
 
-                HANDLE_AWAIT(co_await ctrl->await_yield());
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
             }
 
             co_return 0;
@@ -910,7 +918,7 @@ protected:
             // NOTE: do not acutally use this_thread::sleep
             // this is a coroutine, so you should suspend
             // the routine
-            HANDLE_AWAIT(co_await ctrl->await_yield_for(std::chrono::milliseconds( static_cast<uint64_t>(t*1000))));
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds( static_cast<uint64_t>(t*1000))), ctrl);
 
             co_return 0;
         };
@@ -960,7 +968,7 @@ protected:
 
             while(true)
             {
-                HANDLE_AWAIT(co_await ctrl->await_data(args.in.get()));
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_data(args.in.get()), ctrl);
 
                 while(!args.eof())
                 {

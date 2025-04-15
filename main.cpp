@@ -69,12 +69,12 @@ export HOME
         {
             std::string line;
 
-            // HANDLE_AWAIT is a macro that looks at the return type of the
+            // HANDLE_AWAIT_INT_TERM is a macro that looks at the return type of the
             // Awaiter (a signal code), and co_returns the appropriate
-            // exit code.
+            // exit code. It will exit if the code is SIG_TERM or SIG_INT
             //
             // This is where Ctrl-C and Sig-kills are handled
-            HANDLE_AWAIT(co_await ctrl->await_read_line(ctrl->in.get(), line))
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in.get(), line), ctrl)
 
             uint32_t guess = 0;
 

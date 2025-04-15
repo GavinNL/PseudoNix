@@ -540,7 +540,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
             *stdin << std::format(";");
             stdin->close();
             auto pids = execute_pipes( {shell_name, "--noprofile"}, &exev, &shellEnv, stdin, exev.out);
-            exev.subProcesses.clear();
+
             *exev.out << std::to_string(pids[0]) << "\n";
             continue;
         }
@@ -589,7 +589,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
                     {
                         case System::AwaiterResult::SUCCESS:   break;
                         case System::AwaiterResult::SIG_TERM:  co_return static_cast<int>(PseudoNix::exit_terminated);
-                        case System::AwaiterResult::SIG_INT:   break; // sig_ints are passthrough, no need to
+                        case System::AwaiterResult::SIG_INT:   control->mini->clearSignal(control->get_pid()); break; // sig_ints are passthrough, no need to
                         default: break;
                     }
 #else
@@ -599,7 +599,6 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
                         SUSPEND_POINT(control);
                     }
 #endif
-                    exev.subProcesses.clear();
 
                     std::string out;
                     *stdout >> out;
@@ -612,29 +611,14 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
                     ++it;
                 }
             }
+
             //======================================================================
 
             auto stdout = System::make_stream();
             subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), &exev, &shellEnv, exev.in, exev.out);
             auto f_exit_code = exev.mini->processExitCode(subProcess.back());
 
-#if defined USE_AWAITERS
-            auto sig_ = co_await control->await_finished(subProcess);
-            switch(sig_)
-            {
-                case System::AwaiterResult::SUCCESS:   break;
-                case System::AwaiterResult::SIG_TERM:  co_return static_cast<int>(PseudoNix::exit_terminated);
-                case System::AwaiterResult::SIG_INT:   break; // sig_ints are passthrough, no need to
-                default: break;
-            }
-#else
-            // pids are running in the foreground:
-            while(!control->areSubProcessesFinished())
-            {
-                SUSPEND_POINT(control);
-            }
-#endif
-            exev.subProcesses.clear();
+            HANDLE_AWAIT_TERM(co_await control->await_finished(subProcess), control)
 
             if(!f_exit_code)
             {
