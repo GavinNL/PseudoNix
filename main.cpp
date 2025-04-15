@@ -74,7 +74,7 @@ export HOME
             // exit code. It will exit if the code is SIG_TERM or SIG_INT
             //
             // This is where Ctrl-C and Sig-kills are handled
-            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in.get(), line), ctrl)
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in, line), ctrl)
 
             uint32_t guess = 0;
 

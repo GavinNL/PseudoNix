@@ -74,7 +74,8 @@ struct System
         SUCCESS = 0,
         NO_ERROR = 0,
         SIG_INT = sig_interrupt,
-        SIG_TERM = sig_terminate
+        SIG_TERM = sig_terminate,
+        INPUT_STREAM_CLOSED
     };
 
     class Awaiter {
@@ -202,13 +203,19 @@ struct System
         }
 
 
-        System::Awaiter await_read_line(System::stream_type *d, std::string & line)
+        System::Awaiter await_read_line(std::shared_ptr<System::stream_type> d, std::string & line)
         {
             return System::Awaiter{get_pid(),
                                    mini,
                                    [d, l = &line]()
                                    {
-                                       if(!d->has_data()) return false;
+                                       if(d->closed())
+                                           return true;
+                                       if(!d->has_data())
+                                       {
+                                           //std::cerr << "No data: false" << std::endl;
+                                           return false;
+                                       }
                                        while(!d->eof())
                                        {
                                            auto c = d->get();
@@ -226,6 +233,8 @@ struct System
             return System::Awaiter{get_pid(),
                                    mini,
                                    [d](){
+                                       if(d->closed())
+                                           return true;
                                        return d->has_data();
                                    }};
         }
@@ -1059,6 +1068,17 @@ protected:
             for(auto & [pid, proc] : ctrl->mini->m_procs2)
             {
                 args << std::format("{}[{}]->{}->{}[{}]\n", static_cast<void*>(proc.control->in.get()), proc.control->in.use_count(), proc.control->args[0], static_cast<void*>(proc.control->out.get()), proc.control->out.use_count() );
+            }
+            co_return 0;
+        };
+        m_funcs["to_std_cout"] = [](e_type ctrl) -> task_type
+        {
+            while(!ctrl->in->closed())
+            {
+                std::string s;
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in, s), ctrl);
+                *ctrl->in >> s;
+                std::cout << s << std::endl;
             }
             co_return 0;
         };

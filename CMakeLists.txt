@@ -101,6 +101,15 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
     else()
         add_executable(main main.cpp)
         target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
+
+        add_executable(example1 example1.cpp)
+        target_link_libraries(example1 ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
+
+        add_executable(example2 example2.cpp)
+        target_link_libraries(example2 ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
+
+        add_executable(example3 example3.cpp)
+        target_link_libraries(example3 ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
     endif()
 
 
