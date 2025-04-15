@@ -119,7 +119,10 @@ inline System::task_type launcher_coro(System::e_type ctrl)
         // If there are any bytes in the output stream of
         // sh, read them and write them to std::cout
         while(c_out->has_data())
+        {
             std::cout.put( c_out->get());
+        }
+        std::cout << std::flush;
 
         // Check if the sh function is still running
         // if not, quit.

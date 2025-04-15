@@ -961,8 +961,7 @@ protected:
             bool quit = false;
             while(!quit)
             {
-                output.clear();
-                co_await ctrl->await_has_data(args.in);
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_has_data(args.in), ctrl);
 
                 switch(args.in->read_line(output))
                 {
@@ -972,7 +971,8 @@ protected:
                     case stream_type::Result::SUCCESS:
                     {
                         std::reverse(output.begin(), output.end());
-                        args << output << '\n';
+                        *ctrl->out << std::format("{}\n", output);
+                        output.clear();
                         break;
                     }
                     case stream_type::Result::EMPTY:
