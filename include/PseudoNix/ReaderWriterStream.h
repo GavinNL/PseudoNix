@@ -42,6 +42,7 @@ public:
         while(has_data())
             get();
     }
+
     T get()
     {
         T ch = {};
@@ -49,12 +50,56 @@ public:
         return ch;
     }
 
+    enum class Result
+    {
+        SUCCESS,
+        EMPTY,
+        END_OF_STREAM
+    };
+
+    Result check()
+    {
+        if(auto front = data.peek())
+        {
+            return Result::SUCCESS;
+        }
+        else
+        {
+            if(_eof)
+            {
+                return Result::END_OF_STREAM;
+            }
+        }
+        return Result::EMPTY;
+    }
+    Result get(char *c)
+    {
+        if(auto front = data.peek())
+        {
+            *c = *front;
+            data.pop();
+            return Result::SUCCESS;
+        }
+        else
+        {
+            if(_eof)
+            {
+                _eof = false;
+                return Result::END_OF_STREAM;
+            }
+        }
+        return Result::EMPTY;
+    }
+
     void put(T c)
     {
-//        if(!_closed)
-//        {
-//        }
         data.enqueue(c);
+    }
+
+    bool _eof = false;
+    void set_eof()
+    {
+        _eof = true;
     }
 
     ReaderWriterStream_t(){}
