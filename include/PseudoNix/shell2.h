@@ -552,6 +552,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
             }
             *stdin << std::format(";");
             stdin->close();
+            stdin->set_eof();
             auto pids = execute_pipes( {shell_name, "--noprofile"}, &exev, &shellEnv, stdin, exev.out);
 
             *exev.out << std::to_string(pids[0]) << "\n";
@@ -594,6 +595,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
                     subProcess = execute_pipes( {shell_name, "--noprofile"}, &exev, &shellEnv, stdin, stdout);
                     *stdin << it->substr(2, it->size()-3);
                     *stdin << ';';
+                    stdin->set_eof();
                     stdin->close(); // make sure to close the output stream otherwise
                                     // sh will block waiting for bytes
 
