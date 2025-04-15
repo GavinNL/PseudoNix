@@ -715,12 +715,13 @@ struct System
             coro.control->pid = pid;
             coro.awaiter = nullptr;
 
-            if(coro.parent != 0xFFFFFFFF)
+            if(coro.parent != 0xFFFFFFFF && m_procs2.count(coro.parent))
             {
                 std::erase_if(m_procs2.at(coro.parent).child_processes, [pid](auto && ch)
-                {
-                  return ch==pid;
-                });
+                              {
+                                  return ch==pid;
+                              });
+                coro.parent = 0xFFFFFFFF;
             }
             if(coro.control->out && coro.control.use_count() == 2)
             {
