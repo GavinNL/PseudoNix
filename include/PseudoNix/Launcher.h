@@ -84,7 +84,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
             ssize_t result = read(STDIN_FILENO, ch, 1);
             if(result == 0)
             {
-               // std::cerr << "EOF found" << std::endl;
+               //std::cerr << "EOF found" << std::endl;
             }
             return result;
             //return result == 1;
@@ -93,21 +93,27 @@ inline System::task_type launcher_coro(System::e_type ctrl)
         //return false;
     };
 
+    std::cerr << std::format("Launcher started process: {}", ctrl->args[1]) << std::endl;
     while(true)
     {
         char ch=0;
         while(true)
         {
             auto result = read_char_nonblocking(&ch);
-            if(result == 1)
+            if(result==-1)
+            {
+                //std::cerr << "no data" << std::endl;
+                break;
+            }
+            else if(result == 1)
+            {
                 E.in->put(ch);
+            }
             else if(result == 0)
             {
-                ctrl->mini->signal(sh_pid, 900);
-                std::cerr << "EOF" << std::endl;
+                //std::cerr << "EOF" << std::endl;
+                c_in->set_eof();
             }
-            if(result==-1)
-                break;
         }
 
         // If there are any bytes in the output stream of
@@ -121,7 +127,6 @@ inline System::task_type launcher_coro(System::e_type ctrl)
         {
             break;
         }
-
 
         HANDLE_AWAIT_TERM(co_await ctrl->await_yield(), ctrl)
     }

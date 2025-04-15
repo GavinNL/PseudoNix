@@ -7,6 +7,7 @@
 #include <functional>
 #include "ReaderWriterStream.h"
 #include "task.h"
+#include "defer.h"
 
 namespace PseudoNix
 {
@@ -34,15 +35,15 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
 
 #define SUSPEND_POINT(C)         \
 {                                \
-/*if (C->sig_code == PseudoNix::sig_terminate)*/      \
-/*co_return static_cast<int>(PseudoNix::exit_terminated);*/                   \
-co_await std::suspend_always{};  \
+        /*if (C->sig_code == PseudoNix::sig_terminate)*/      \
+        /*co_return static_cast<int>(PseudoNix::exit_terminated);*/                   \
+        co_await std::suspend_always{};  \
 }
 
 #define SUSPEND_SIGTERM(C) \
 {\
-    if(C->sig_code == PseudoNix::sig_int )  { /*std::cout << "SIGINT" << std::endl; */ co_return static_cast<int>(exit_interrupt);} \
-    if(C->sig_code == PseudoNix::sig_term ) { /*std::cout << "SIGTERM" << std::endl;*/ co_return static_cast<int>(exit_terminated);} \
+        if(C->sig_code == PseudoNix::sig_int )  { /*std::cout << "SIGINT" << std::endl; */ co_return static_cast<int>(exit_interrupt);} \
+        if(C->sig_code == PseudoNix::sig_term ) { /*std::cout << "SIGTERM" << std::endl;*/ co_return static_cast<int>(exit_terminated);} \
         co_await std::suspend_always{};\
 }
 
@@ -161,19 +162,19 @@ struct System
         System::Awaiter await_yield()
         {
             return System::Awaiter{pid,
-                    mini,
-                    [x=false]() mutable {
-                        if(!x)
-                        {
-                            x = true;
-                            // retun false the first time
-                            // so that it will immediately suspend
-                            return false;
-                        }
-                        // subsequent times, return true
-                        // so that we know it
-                        return true;
-                        }};
+                                   mini,
+                                   [x=false]() mutable {
+                                       if(!x)
+                                       {
+                                           x = true;
+                                           // retun false the first time
+                                           // so that it will immediately suspend
+                                           return false;
+                                       }
+                                       // subsequent times, return true
+                                       // so that we know it
+                                       return true;
+                                   }};
         }
 
 
@@ -228,7 +229,7 @@ struct System
                                    }};
         }
 
-        System::Awaiter await_data(System::stream_type *d)
+        System::Awaiter await_data(std::shared_ptr<System::stream_type> d)
         {
             return System::Awaiter{get_pid(),
                                    mini,
@@ -236,6 +237,17 @@ struct System
                                        if(d->closed())
                                            return true;
                                        return d->has_data();
+                                   }};
+        }
+
+        System::Awaiter await_has_data(std::shared_ptr<System::stream_type> d)
+        {
+            return System::Awaiter{get_pid(),
+                                   mini,
+                                   [d](){
+                                       if(d->check() == System::stream_type::Result::EMPTY)
+                                           return false;
+                                       return true;
                                    }};
         }
 
@@ -350,15 +362,15 @@ struct System
         // As the patterns are found, remove them and place
         // them in the environment map
         auto it = std::find_if(e.args.begin(), e.args.end(), [&e](auto & arg)
-                                    {
-                                        auto [var,val] = splitVar(arg);
-                                        if(!var.empty())
-                                        {
-                                            e.env[std::string(var)] = val;
-                                            return false;
-                                        }
-                                        return true;
-        });
+                               {
+                                   auto [var,val] = splitVar(arg);
+                                   if(!var.empty())
+                                   {
+                                       e.env[std::string(var)] = val;
+                                       return false;
+                                   }
+                                   return true;
+                               });
         e.args.erase(e.args.begin(), it);
 
         return e;
@@ -849,15 +861,15 @@ protected:
 
     void setDefaultFunctions()
     {
-        #define HANDLE_AWAIT_INT_TERM(returned_signal, CTRL)\
+#define HANDLE_AWAIT_INT_TERM(returned_signal, CTRL)\
         switch(returned_signal)\
-        {\
-            case PseudoNix::System::AwaiterResult::SIG_INT:  { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
-            case PseudoNix::System::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
-            default: break;\
-        }
+            {\
+                case PseudoNix::System::AwaiterResult::SIG_INT:  { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
+                case PseudoNix::System::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
+                    default: break;\
+            }
 
-        #define HANDLE_AWAIT_TERM(returned_signal, CTRL)\
+#define HANDLE_AWAIT_TERM(returned_signal, CTRL)\
         switch(returned_signal)\
             {\
                 case PseudoNix::System::AwaiterResult::SIG_INT:   CTRL->mini->clearSignal(CTRL->get_pid()); break; \
@@ -976,17 +988,26 @@ protected:
             auto & args = *ctrl;
             uint32_t i=0;
 
-            while(true)
+            bool quit = false;
+            while(!quit)
             {
-                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_data(args.in.get()), ctrl);
+                char c;
+                co_await ctrl->await_has_data(args.in);
 
-                while(!args.eof())
+                while(true)
                 {
-                    args.get();
+                    auto r = args.in->get(&c);
+                    if(r == stream_type::Result::EMPTY)
+                    {
+                        break;
+                    }
+                    if(r == stream_type::Result::END_OF_STREAM)
+                    {
+                        quit = true;
+                        break;
+                    }
                     ++i;
                 }
-                if(args.eof())
-                    break;
             }
 
             args << std::to_string(i) << '\n';

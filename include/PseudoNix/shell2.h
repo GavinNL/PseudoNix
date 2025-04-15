@@ -462,9 +462,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
 
     std::string shell_name = control->args[0];
 
-    bl_defer {
-        //std::cout << "Shell exit" << std::endl;
-    };
+
     #define SHOULD_QUIT exev.in->eof()
 
     std::vector<System::pid_type> subProcess;
@@ -476,27 +474,43 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
     while(!shellEnv.exitShell)
     {
 
-#if defined USE_AWAITERS && 0
-        // Not sure why this isn't working correctly
-        if(SHOULD_QUIT || shellEnv.exitShell) co_return 0;
-        switch(co_await control->await_data(control->in.get()))
+#if defined USE_AWAITERS
+        HANDLE_AWAIT_TERM(co_await control->await_has_data(control->in), control);
+
+        char c;
+
+        auto r = control->in->get(&c);
+
+        if(r == System::stream_type::Result::END_OF_STREAM)
         {
-            //case PseudoNix::sig_interrupt: { co_return static_cast<int>(PseudoNix::exit_interrupt);}
-            case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}
-            default: break;
+            shellEnv.exitShell = true;
+            break;
+        }
+        else if(r == System::stream_type::Result::EMPTY)
+        {
+            // unlikely this would happen because of
+            // the await
+            break;
         }
 #else
+        //if(SHOULD_QUIT || shellEnv.exitShell) co_return 0;
         while(!shellEnv.exitShell)
         {
             if(SHOULD_QUIT)
                 co_return 0;
-            if(exev.has_data()) break;
+
+            if(exev.eof())
+            {
+                //std::cerr << "Shell: EOF on input" << std::endl;
+            }
+            if(exev.has_data())
+                break;
 
             SUSPEND_POINT(control);
         }
+        auto c = control->in->get();
 #endif
 
-        auto c = control->in->get();
         _current += c;
         if(c != ';' && c != '\n')
         {
@@ -509,7 +523,6 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
             continue;
         }
 
-        //std::cerr << std::format("{}", _current) << std::endl;
         auto args = Tokenizer3::to_vector(var_sub1(_current, shellEnv.env));
         _current.clear();
 
@@ -583,22 +596,8 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
                     *stdin << ';';
                     stdin->close(); // make sure to close the output stream otherwise
                                     // sh will block waiting for bytes
-#if defined USE_AWAITERS
-                    auto sig_ = co_await control->await_finished(subProcess);
-                    switch(sig_)
-                    {
-                        case System::AwaiterResult::SUCCESS:   break;
-                        case System::AwaiterResult::SIG_TERM:  co_return static_cast<int>(PseudoNix::exit_terminated);
-                        case System::AwaiterResult::SIG_INT:   control->mini->clearSignal(control->get_pid()); break; // sig_ints are passthrough, no need to
-                        default: break;
-                    }
-#else
-                    // pids are running in the foreground:
-                    while(!control->areSubProcessesFinished())
-                    {
-                        SUSPEND_POINT(control);
-                    }
-#endif
+
+                    HANDLE_AWAIT_TERM(co_await control->await_finished(subProcess), control)
 
                     std::string out;
                     *stdout >> out;
@@ -636,6 +635,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
         }
     }
 
+    *control->out << std::format("exit");
     co_return ret_value;
 }
 

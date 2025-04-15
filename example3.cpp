@@ -18,6 +18,7 @@ PseudoNix::System::task_type my_custom_function(PseudoNix::System::e_type ctrl)
 
         co_await ctrl->await_yield_for(sleep_time);
     }
+    std::cerr << "Exit" << std::endl;
     co_return 0;
 }
 
