@@ -91,6 +91,29 @@ public:
         return Result::EMPTY;
     }
 
+    Result read_line(std::string & line)
+    {
+        char c;
+        auto r = get(&c);
+        while(true)
+        {
+            switch(r)
+            {
+                case Result::SUCCESS:
+                    line.push_back(c);
+                    if(line.back()=='\n')
+                    {
+                        line.pop_back();
+                        return Result::SUCCESS;
+                    }
+                    break;
+                case Result::END_OF_STREAM: return r;
+                case Result::EMPTY: return Result::SUCCESS;
+            }
+            r = get(&c);
+        }
+    }
+
     void put(T c)
     {
         data.enqueue(c);

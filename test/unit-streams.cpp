@@ -34,3 +34,36 @@ SCENARIO("Tokenizer 3")
 
 
 }
+
+
+SCENARIO("Tokenizer 3")
+{
+    auto stream = System::make_stream();
+    using Stream = System::stream_type;
+
+    WHEN("We put some characters into the stream")
+    {
+        std::string line;
+        stream->put('a');
+        stream->put('a');
+        stream->put('\n');
+        stream->put('b');
+        stream->put('b');
+        stream->put('\n');
+        stream->put('c');
+        stream->put('c');
+        stream->set_eof();
+
+        REQUIRE(Stream::Result::SUCCESS == stream->read_line(line));
+        REQUIRE(line == "aa");
+        line.clear();
+        REQUIRE(Stream::Result::SUCCESS == stream->read_line(line));
+        REQUIRE(line == "bb");
+
+        line.clear();
+        REQUIRE(Stream::Result::END_OF_STREAM == stream->read_line(line));
+        REQUIRE(line == "cc");
+    }
+
+
+}
