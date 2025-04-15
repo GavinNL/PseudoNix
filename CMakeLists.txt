@@ -80,8 +80,10 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
     ################################################################################
 
 
+    find_package(readerwriterqueue)
+
     add_executable(terminal terminal.cpp)
-    target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET})
+    target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET}  readerwriterqueue::readerwriterqueue)
     target_include_directories(terminal PUBLIC
                                         # For ImGui, set them as system includes
                                         # so the compiler doesnt warn about errors
@@ -98,7 +100,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
         set_target_properties( terminal PROPERTIES SUFFIX ".html")
     else()
         add_executable(main main.cpp)
-        target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME})
+        target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
     endif()
 
 

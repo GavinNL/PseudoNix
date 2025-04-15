@@ -41,6 +41,7 @@ foreach(file ${files})
     target_link_libraries( ${UNIT_EXE_NAME}
                                 PUBLIC
                                     doctest::doctest
+                                    readerwriterqueue::readerwriterqueue
                                     ${PROJECT_NAME}::warnings
                                     ${PROJECT_NAME}::${PROJECT_NAME}
                                 )
