@@ -86,9 +86,14 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
                 m_mini.runRawCommand({ctrl->args});
             }
             ImGui::SameLine();
-            if( ImGui::Button("Sig-Int") )
+            if( ImGui::Button("Sig-Int (Ctrl+C)") )
             {
                 m_mini.signal(sh_pid, PseudoNix::sig_interrupt);
+            }
+            ImGui::SameLine();
+            if( ImGui::Button("End Stream (Ctrl+D)") )
+            {
+                shell_stdin->set_eof();
             }
             ImGui::SameLine();
             if( ImGui::Button("Sig-Term") )
