@@ -12,7 +12,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
     static auto count = 0;
     if(count != 0)
     {
-        *ctrl << "Only one instance of fromCin can exist\n";
+        *ctrl << std::format("Only one instance of {} can exist\n", ctrl->args[0]);
         co_return 1;
     }
 
@@ -21,7 +21,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
     if(ctrl->args.size() < 2)
     {
         std::cout << "Requires a command to be called\n\n";
-        std::cout << "   launcher sh";
+        std::cout << std::format("   {} sh\n", ctrl->args[0]);
         co_return 1;
     }
 
@@ -82,18 +82,32 @@ inline System::task_type launcher_coro(System::e_type ctrl)
 
         if (ready > 0 && FD_ISSET(STDIN_FILENO, &fds)) {
             ssize_t result = read(STDIN_FILENO, ch, 1);
-            return result == 1;
+            if(result == 0)
+            {
+               // std::cerr << "EOF found" << std::endl;
+            }
+            return result;
+            //return result == 1;
         }
-
-        return false;
+        return ssize_t{-1};
+        //return false;
     };
 
     while(true)
     {
         char ch=0;
-        while(read_char_nonblocking(&ch))
+        while(true)
         {
-            E.in->put(ch);
+            auto result = read_char_nonblocking(&ch);
+            if(result == 1)
+                E.in->put(ch);
+            else if(result == 0)
+            {
+                ctrl->mini->signal(sh_pid, 900);
+                std::cerr << "EOF" << std::endl;
+            }
+            if(result==-1)
+                break;
         }
 
         // If there are any bytes in the output stream of

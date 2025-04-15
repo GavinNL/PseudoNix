@@ -467,9 +467,13 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
     };
     #define SHOULD_QUIT exev.in->eof()
 
+    std::vector<System::pid_type> subProcess;
 #define USE_AWAITERS
-
-    while(true)
+    // control->setSignalHandler([](int s)
+    // {
+    //     std::cerr << std::format("Custom signal recieved: {}", s) << std::endl;;
+    // });
+    while(!shellEnv.exitShell)
     {
 
 #if defined USE_AWAITERS && 0
@@ -482,9 +486,9 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
             default: break;
         }
 #else
-        while(true)
+        while(!shellEnv.exitShell)
         {
-            if(SHOULD_QUIT || shellEnv.exitShell)
+            if(SHOULD_QUIT)
                 co_return 0;
             if(exev.has_data()) break;
 
@@ -572,20 +576,20 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
                 {
                     // we have a $(cmd arg1 arg2 arg3) situtation going on here
                     // so execute this as a new shell
-                    auto pids = execute_pipes( {shell_name, "--noprofile"}, &exev, &shellEnv);
-                    auto [stdin, stdout]  = exev.mini->getIO(pids.front());
+                    auto stdin  = System::make_stream();
+                    auto stdout = System::make_stream();
+                    subProcess = execute_pipes( {shell_name, "--noprofile"}, &exev, &shellEnv, stdin, stdout);
                     *stdin << it->substr(2, it->size()-3);
                     *stdin << ';';
                     stdin->close(); // make sure to close the output stream otherwise
                                     // sh will block waiting for bytes
 #if defined USE_AWAITERS
-                    switch(co_await control->await_subprocesses())
+                    auto sig_ = co_await control->await_finished(subProcess);
+                    switch(sig_)
                     {
-                        case PseudoNix::sig_interrupt: {
-                            //std::cout << std::format("OUT: {} {}", control->in.use_count(), control->out.use_count());
-                            break;
-                        }
-                        case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}
+                        case System::AwaiterResult::SUCCESS:   break;
+                        case System::AwaiterResult::SIG_TERM:  co_return static_cast<int>(PseudoNix::exit_terminated);
+                        case System::AwaiterResult::SIG_INT:   break; // sig_ints are passthrough, no need to
                         default: break;
                     }
 #else
@@ -611,16 +615,16 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
             //======================================================================
 
             auto stdout = System::make_stream();
-            auto pids = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), &exev, &shellEnv, exev.in, exev.out);
-            auto f_exit_code = exev.mini->processExitCode(pids.back());
+            subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), &exev, &shellEnv, exev.in, exev.out);
+            auto f_exit_code = exev.mini->processExitCode(subProcess.back());
+
 #if defined USE_AWAITERS
-            switch(co_await control->await_subprocesses())
+            auto sig_ = co_await control->await_finished(subProcess);
+            switch(sig_)
             {
-                case PseudoNix::sig_interrupt: {
-                    //std::cout << std::format("OUT: {} {}", control->in.use_count(), control->out.use_count()) << std::endl;;
-                    break;
-                }
-                case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}
+                case System::AwaiterResult::SUCCESS:   break;
+                case System::AwaiterResult::SIG_TERM:  co_return static_cast<int>(PseudoNix::exit_terminated);
+                case System::AwaiterResult::SIG_INT:   break; // sig_ints are passthrough, no need to
                 default: break;
             }
 #else

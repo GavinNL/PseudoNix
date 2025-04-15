@@ -34,8 +34,8 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
 
 #define SUSPEND_POINT(C)         \
 {                                \
-if (C->sig_code == PseudoNix::sig_terminate)      \
-co_return static_cast<int>(PseudoNix::exit_terminated);                   \
+/*if (C->sig_code == PseudoNix::sig_terminate)*/      \
+/*co_return static_cast<int>(PseudoNix::exit_terminated);*/                   \
 co_await std::suspend_always{};  \
 }
 
@@ -69,6 +69,13 @@ struct System
         }
     };
 
+    enum class AwaiterResult
+    {
+        SUCCESS = 0,
+        SIG_TERM,
+        SIG_INT
+    };
+
     class Awaiter {
     public:
         explicit Awaiter(pid_type p, System* S,std::function<bool(void)> f)
@@ -84,6 +91,11 @@ struct System
 
         // called to check if
         bool await_ready() const noexcept {
+            // Indicate that the awaiter is ready to be
+            // resumed if we have internally set the
+            // result to be a non-success
+            if(m_result != AwaiterResult::SUCCESS)
+                return true;
             auto b = m_pred();
             //std::cerr << "await_ready called: " << this << "  " << b << std::endl;
             return b;
@@ -99,8 +111,8 @@ struct System
             m_system->m_procs2.at(m_pid).awaiter = this;
         }
 
-        int32_t await_resume() const noexcept {
-            return m_signal_type;
+        AwaiterResult await_resume() const noexcept {
+            return m_result;
         }
 
         void resume()
@@ -113,16 +125,16 @@ struct System
             }
         }
 
-        void set_signal_code(int32_t d)
+        void set_result(AwaiterResult d)
         {
-            m_signal_type = d;
+            m_result = d;
         }
     protected:
         pid_type m_pid;
         System * m_system;
         std::function<bool()> m_pred;
         std::coroutine_handle<> handle_;
-        int32_t m_signal_type = 0;
+        AwaiterResult m_result = {};
     };
 
 
@@ -134,10 +146,7 @@ struct System
         std::map<std::string, std::string> env;
 
         pid_type    pid = 0xFFFFFFFF;
-        //bool   sig_kill = false;
-        //bool   sig_int  = false;
 
-        int32_t   sig_code = 0;
         System *mini = nullptr;
 
         void setSignalHandler(std::function<void(int)> f)
@@ -176,6 +185,22 @@ struct System
                                      {
                                          return areSubProcessesFinished();
                                      }};
+        }
+
+
+        System::Awaiter await_finished(std::vector<pid_type> pids)
+        {
+            return System::Awaiter{get_pid(),
+                                   mini,
+                                   [pids,sys=mini]()
+                                   {
+                                       for(auto p : pids)
+                                       {
+                                           if( sys->isRunning(p) )
+                                               return false;
+                                       }
+                                       return true;
+                                   }};
         }
 
 
@@ -499,22 +524,27 @@ struct System
         arg->pid = _pid;
         arg->mini = this;
 
+        if(parent != 0xFFFFFFFF)
+        {
+            m_procs2.at(parent).child_processes.push_back(_pid);
+        }
+
         std::weak_ptr<ProcessControl> p = arg;
 
         // default signal handler
         // is to pass all signals to child processes
-        _t.signal = [p, _signaled = std::make_shared<bool>(false)](int s)
+        _t.signal = [p, this](int s)
         {
-            if(*_signaled)
-                return;
-            *_signaled = true;
             if(auto aa = p.lock(); aa)
             {
-                aa->sig_code = s;
+                auto A = this->m_procs2.at(aa->pid).awaiter;
+                if(A)
+                {
+                    A->set_result(static_cast<System::AwaiterResult>(s));
+                }
                 std::cerr << std::format("[{}] Default Signal Handler: {}", s, join(aa->args)) << std::endl;
                 aa->signalSubProcesses(s);
             }
-            *_signaled = false;
         };
         m_procs2.emplace(_pid, std::move(_t));
 
@@ -588,10 +618,11 @@ struct System
         if(isRunning(pid))
         {
             auto & proc = m_procs2.at(pid);
-            if(proc.signal)
+            if(proc.signal && !proc.has_been_signaled)
             {
-                proc.control->sig_code = sigtype;
+                proc.has_been_signaled = true;
                 proc.signal(sigtype);
+                proc.has_been_signaled = false;
             }
 
             return true;
@@ -657,10 +688,9 @@ struct System
             {
                 // Process the awaiter. The awaiter has
                 // an internal function object that can executed
-                if(coro.control->sig_code != 0 || coro.awaiter->await_ready())
+                if(coro.awaiter->await_ready())
                 {
                     auto a = coro.awaiter;
-                    a->set_signal_code(coro.control->sig_code);
                     // if the coroutine is ready to be resumed
                     // null out the awaiter, because it is possible
                     // that resuming the coroutine will produce another
@@ -687,6 +717,13 @@ struct System
             coro.control->pid = pid;
             coro.awaiter = nullptr;
 
+            if(coro.parent != 0xFFFFFFFF)
+            {
+                std::erase_if(m_procs2.at(coro.parent).child_processes, [pid](auto && ch)
+                {
+                  return ch==pid;
+                });
+            }
             if(coro.control->out && coro.control.use_count() == 2)
             {
                 coro.control->out->close();
@@ -775,7 +812,6 @@ struct System
     {
         std::shared_ptr<ProcessControl> control;
         task_type                       task;
-        pid_type                        parent = 0xFFFFFFFF;
 
         Awaiter                       * awaiter = nullptr;
 
@@ -784,7 +820,11 @@ struct System
         std::function<void(int)>          signal = {};
         std::chrono::nanoseconds          processTime = std::chrono::nanoseconds(0);
 
+        bool has_been_signaled = false;
         bool force_terminate = false;
+
+        pid_type                        parent = 0xFFFFFFFF;
+        std::vector<pid_type>           child_processes = {};
     };
 
     std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)
@@ -802,8 +842,8 @@ protected:
         #define HANDLE_AWAIT(returned_signal)\
         switch(returned_signal)\
         {\
-            case PseudoNix::sig_interrupt: { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
-            case PseudoNix::sig_terminate: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
+            case PseudoNix::System::AwaiterResult::SIG_INT: { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
+            case PseudoNix::System::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
             default: break;\
         }
 
