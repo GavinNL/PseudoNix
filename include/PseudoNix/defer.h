@@ -51,6 +51,8 @@ Def operator << (Def::tmp, T && v)
 
 #define _bl_defer(id) _bl_defer_##id
 #define bl_defer auto _bl_defer(__COUNTER__) = PseudoNix::Def::tmp() << [&]()
+#define PSEUDONIX_TRAP bl_defer
+
 }
 //==========================================================================
 

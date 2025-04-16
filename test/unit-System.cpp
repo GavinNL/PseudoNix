@@ -519,23 +519,23 @@ SCENARIO("Test kill")
 {
     System M;
 
-
     M.setFunction("test", [](System::e_type control) -> System::task_type {
         PSEUDONIX_PROC_START(control);
 
+        PSEUDONIX_TRAP
+        {
+            OUT << std::format("onExit\n");
+        };
+
         while(true)
         {
-            switch(co_await control->await_yield())
-            {
-                case AwaiterResult::SUCCESS: break;
-                case AwaiterResult::SIG_INT: co_return 0;
-                case AwaiterResult::SIG_TERM: break; // kill signal, do not handle
-                case AwaiterResult::UNKNOWN_ERROR:
-                    break;
-            }
+            // breaks the loop if await yields a non-success value
+            HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await control->await_yield(), control);
         }
+        OUT << "Exited gracefully\n";
         co_return 0;
     });
+
 
     auto p1 = M.spawnProcess({"test"});
     REQUIRE(p1 != 0);
@@ -548,24 +548,33 @@ SCENARIO("Test kill")
     // execute once, should yield
     REQUIRE(2 == M.executeAll() );
 
-    REQUIRE(2 == M.executeAll() );
-
     // send sig-interrupt. p1 should exit
     // after next run
-    M.signal(p1, sig_interrupt);
+    {
+        auto O1 = M.getIO(p1).second;
 
-    REQUIRE(2 == M.executeAll() ); // interrupt will be handled here
+        M.signal(p1, sig_interrupt);
+        REQUIRE(1 == M.executeAll() );
+        REQUIRE(M.isRunning(p1) == false); // p1 is no longer running
+        // The interrupt handled
+        REQUIRE(
+        O1->str() == "Exited gracefully\n"
+                     "onExit\n"
+            );
+    }
 
-    REQUIRE(1 == M.executeAll() );
-    REQUIRE(M.isRunning(p1) == false); // p1 is no longer running
 
-    // test does not handle sig_terminate, will still run
-    REQUIRE(1 == M.executeAll() );
-    REQUIRE(1 == M.executeAll() );
-    REQUIRE(1 == M.executeAll() );
+    // force kill P2
+    {
+        auto O2 = M.getIO(p2).second;
 
-    // force kill it
-    M.kill(p2);
-    REQUIRE(0 == M.executeAll() );
+        M.kill(p2);
+        REQUIRE(0 == M.executeAll() );
+        REQUIRE(M.isRunning(p2) == false); // p1 is no longer running
+        // The interrupt handled
+        // Did not exit gracefully, but defer block was called
+        REQUIRE( O2->str() == "onExit\n" );
+    }
+
 }
 

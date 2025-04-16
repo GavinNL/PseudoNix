@@ -943,6 +943,10 @@ protected:
                     default: break;\
             }
 
+#define HANDLE_AWAIT_BREAK_ON_SIGNAL(returned_signal, CTRL)\
+            if(returned_signal == PseudoNix::AwaiterResult::SIG_INT)  { break;}\
+            if(returned_signal == PseudoNix::AwaiterResult::SIG_TERM) { break;}
+
 #define HANDLE_AWAIT_TERM(returned_signal, CTRL)\
         switch(returned_signal)\
             {\
