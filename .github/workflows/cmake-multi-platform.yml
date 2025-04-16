@@ -119,7 +119,6 @@ jobs:
       run: |
         sudo apt install -y gcovr
         cmake --build ${{ steps.strings.outputs.build-output-dir }} --target coverage --config ${{ matrix.build_type }} 
-#        cmake --build --preset conan-ci-$(echo "${{ matrix.build_type }}" | tr '[:upper:]' '[:lower:]')  --target coverage
         mkdir -p ${{ github.workspace }}/build/coverage
         cp ${{ github.workspace }}/build/build/ci/${{ matrix.build_type }}/coverage/report.xml    ${{ github.workspace }}/build/coverage
 
