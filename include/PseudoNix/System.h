@@ -15,6 +15,7 @@ namespace PseudoNix
 
 constexpr const int exit_interrupt  = 130;
 constexpr const int exit_terminated = 143;
+constexpr const uint32_t invalid_pid = 0xFFFFFFFF;
 
 constexpr const int sig_interrupt  = 2;
 constexpr const int sig_terminate = 15;
@@ -150,7 +151,7 @@ struct System
         System * system = nullptr;
 
     protected:
-        pid_type    pid = 0xFFFFFFFF;
+        pid_type    pid = invalid_pid;
     public:
 
         void setSignalHandler(std::function<void(int)> f)
@@ -402,8 +403,7 @@ struct System
      * Forcefully kill the running processs. The
      * process's output streams will be closed and
      * its coroutine will be removed from the scheduler.
-     * Your process will not be able to clean up any
-     * resources.
+     * Your process will not be able to exit gracefully
      *
      * Killing the process does not happen immediately
      * the process will be killed on the next iteration
@@ -455,7 +455,7 @@ struct System
      *
      *
      */
-    pid_type runRawCommand(Exec args, pid_type parent = 0xFFFFFFFF)
+    pid_type runRawCommand(Exec args, pid_type parent = invalid_pid)
     {
         if(m_main_thread_id != std::thread::id{})
         {
@@ -467,7 +467,7 @@ struct System
         // Try to find the name of the function to run
         auto it = m_funcs.find(args.args[0]);
         if(it ==  m_funcs.end())
-            return 0xFFFFFFFF;
+            return invalid_pid;
 
         auto & exec_args = args;
 
@@ -498,7 +498,7 @@ struct System
         return pid;
     }
 
-    std::vector<pid_type> runPipeline(std::vector<Exec> E, pid_type parent = 0xFFFFFFFF)
+    std::vector<pid_type> runPipeline(std::vector<Exec> E, pid_type parent = invalid_pid)
     {
         if(!E.front().in)
             E.front().in = make_stream();
@@ -522,7 +522,7 @@ struct System
     // and placing it in the scheduler to be run
     // This is an internal function and shouldn't be used
     //
-    pid_type registerProcess(task_type && t, e_type arg, pid_type parent = 0xFFFFFFFF)
+    pid_type registerProcess(task_type && t, e_type arg, pid_type parent = invalid_pid)
     {
         auto _pid = _pid_count++;
         if(arg == nullptr)
@@ -534,7 +534,7 @@ struct System
         arg->pid = _pid;
         arg->system = this;
 
-        if(parent != 0xFFFFFFFF)
+        if(parent != invalid_pid)
         {
             m_procs2.at(parent).child_processes.push_back(_pid);
         }
@@ -701,23 +701,10 @@ struct System
         {
             auto exit_code = coro.task();
             coro.is_complete = true;
-            *coro.exit_code = exit_code;
+            *coro.exit_code = !coro.force_terminate ? exit_code : -1;
             coro.control->env["?"] = std::to_string(exit_code);
-            coro.control->pid = pid;
             coro.awaiter = nullptr;
-
-            if(coro.parent != 0xFFFFFFFF && m_procs2.count(coro.parent))
-            {
-                std::erase_if(m_procs2.at(coro.parent).child_processes, [pid](auto && ch)
-                              {
-                                  return ch==pid;
-                              });
-                coro.parent = 0xFFFFFFFF;
-            }
-            if(coro.control->out && coro.control.use_count() == 2)
-            {
-                coro.control->out->set_eof();
-            }
+            coro.force_terminate = true;
 
             return true;
         }
@@ -750,9 +737,21 @@ struct System
         // or have been forcefuly terminated
         for(auto it = m_procs2.begin(); it!=m_procs2.end();)
         {
-            if(it->second.force_terminate)
+            auto & coro = it->second;
+            if(coro.force_terminate)
             {
-                it->second.control->out->set_eof();
+                if(coro.control->out && coro.control.use_count() == 2)
+                {
+                    coro.control->out->set_eof();
+                }
+                if(coro.parent != invalid_pid && m_procs2.count(coro.parent))
+                {
+                    std::erase_if(m_procs2.at(coro.parent).child_processes, [pid=it->first](auto && ch)
+                                  {
+                                      return ch==pid;
+                                  });
+                    coro.parent = invalid_pid;
+                }
 
                 it = m_procs2.erase(it);
             }
@@ -910,7 +909,7 @@ struct System
         bool has_been_signaled = false;
         bool force_terminate = false;
 
-        pid_type                        parent = 0xFFFFFFFF;
+        pid_type                        parent = invalid_pid;
         std::vector<pid_type>           child_processes = {};
     };
 

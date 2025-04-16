@@ -436,7 +436,7 @@ SCENARIO("Test await_finished multi")
 }
 
 
-SCENARIO("Test await_has_data")
+SCENARIO("test await_data")
 {
     System M;
 
@@ -494,5 +494,78 @@ SCENARIO("Test await_has_data")
                              "test: wait 2\n"
                              "test: resume 2\n"
             );
+}
+
+
+SCENARIO("Test signal")
+{
+    System M;
+
+
+    auto pid = M.spawnProcess({"sleep", "50"});
+    REQUIRE(pid != 0);
+    REQUIRE(pid != 0xFFFFFFFF);
+
+    // Execute once until the first yield
+    REQUIRE(1 == M.executeAll() );
+
+    M.signal(pid, sig_interrupt);
+
+    REQUIRE(0 == M.executeAll() );
+}
+
+
+SCENARIO("Test kill")
+{
+    System M;
+
+
+    M.setFunction("test", [](System::e_type control) -> System::task_type {
+        PSEUDONIX_PROC_START(control);
+
+        while(true)
+        {
+            switch(co_await control->await_yield())
+            {
+                case AwaiterResult::SUCCESS: break;
+                case AwaiterResult::SIG_INT: co_return 0;
+                case AwaiterResult::SIG_TERM: break; // kill signal, do not handle
+                case AwaiterResult::UNKNOWN_ERROR:
+                    break;
+            }
+        }
+        co_return 0;
+    });
+
+    auto p1 = M.spawnProcess({"test"});
+    REQUIRE(p1 != 0);
+    REQUIRE(p1 != 0xFFFFFFFF);
+
+    auto p2 = M.spawnProcess({"test"});
+    REQUIRE(p2 != 0);
+    REQUIRE(p2 != 0xFFFFFFFF);
+
+    // execute once, should yield
+    REQUIRE(2 == M.executeAll() );
+
+    REQUIRE(2 == M.executeAll() );
+
+    // send sig-interrupt. p1 should exit
+    // after next run
+    M.signal(p1, sig_interrupt);
+
+    REQUIRE(2 == M.executeAll() ); // interrupt will be handled here
+
+    REQUIRE(1 == M.executeAll() );
+    REQUIRE(M.isRunning(p1) == false); // p1 is no longer running
+
+    // test does not handle sig_terminate, will still run
+    REQUIRE(1 == M.executeAll() );
+    REQUIRE(1 == M.executeAll() );
+    REQUIRE(1 == M.executeAll() );
+
+    // force kill it
+    M.kill(p2);
+    REQUIRE(0 == M.executeAll() );
 }
 
