@@ -89,9 +89,7 @@ struct Task_t
     {
         if constexpr ( std::is_same_v<final_suspend_t, std::suspend_never> )
         {
-            if(handle)
-                handle.destroy();
-            handle = nullptr;
+            destroy();
         }
     }
     Task_t(Task_t<T, initial_suspend_t, final_suspend_t> &&V) : handle(std::exchange(V.handle, nullptr))
@@ -108,6 +106,12 @@ struct Task_t
     Task_t(Task_t<T, initial_suspend_t, final_suspend_t> const &handle_) = delete;
     Task_t & operator=(Task_t<T, initial_suspend_t, final_suspend_t> const & V) = delete;
 
+    void destroy()
+    {
+        if(handle)
+            handle.destroy();
+        handle = nullptr;
+    }
     void resume()
     {
         try
@@ -130,6 +134,11 @@ struct Task_t
     bool done() const
     {
         return handle.done();
+    }
+
+    bool valid() const
+    {
+        return handle != nullptr;
     }
 private:
     std::coroutine_handle<promise_type> handle;

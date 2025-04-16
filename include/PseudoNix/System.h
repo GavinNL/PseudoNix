@@ -729,6 +729,13 @@ struct System
             {
                 it->second.force_terminate = true;
                 it->second.is_complete = true;
+
+                // destroy the task so that all
+                // internal data is destroyed
+                // and any defer blocks are executed
+                it->second.task.destroy();
+
+                // set the eof after destruction
                 it->second.control->out->set_eof();
             }
         }
@@ -740,19 +747,25 @@ struct System
             auto & coro = it->second;
             if(coro.force_terminate)
             {
+                if(coro.parent != invalid_pid && m_procs2.count(coro.parent))
+                {
+                    auto & cp = m_procs2.at(coro.parent).child_processes;
+                    cp.erase(std::remove_if(cp.begin(), cp.end(), [pid=it->first](auto && ch)
+                                  {
+                                      return ch==pid;
+                                  }), cp.end());
+                    coro.parent = invalid_pid;
+                }
+
+                // Destroy the task first before erasing everything
+                // this is so any defered blocks in the coroutine
+                // get run before the streams get closed
+                if(it->second.task.valid()) it->second.task.destroy();
+
                 if(coro.control->out && coro.control.use_count() == 2)
                 {
                     coro.control->out->set_eof();
                 }
-                if(coro.parent != invalid_pid && m_procs2.count(coro.parent))
-                {
-                    std::erase_if(m_procs2.at(coro.parent).child_processes, [pid=it->first](auto && ch)
-                                  {
-                                      return ch==pid;
-                                  });
-                    coro.parent = invalid_pid;
-                }
-
                 it = m_procs2.erase(it);
             }
             else
