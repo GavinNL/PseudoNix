@@ -8,6 +8,7 @@
 #include "ReaderWriterStream.h"
 #include "task.h"
 #include "defer.h"
+#include <span>
 #include <thread>
 
 namespace PseudoNix
