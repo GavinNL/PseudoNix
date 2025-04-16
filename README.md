@@ -227,6 +227,65 @@ Here is a list of commands that are provided by default
 | wc       | Counts the characters in input                                    |
 | yes      | Outputs 'y' to the output                                         |
 
+## Example 4: Signal Handlers, Exiting Gracefully and Traps
+
+In Linux, you can signal a process to interrupt, usually with Ctrl+C. This will
+tell the process that it should stop what its doing and react to the event, or
+exit the program. To be able to handle this behaviour in your coroutines, when
+you co_await, you can use a handy macro `HANDLE_AWAIT_BREAK_ON_SIGNAL` to
+read the output of the co_await and break out of the loop if it receives a
+signal. 
+
+If you call `signal <PID> 2`, or `signal <PID> 15` from the shell process (the 
+2 and the 15 are linux SIG_INT and SIG_TERM), it will tell your coroutine to
+exit its while loop. Since we reacted to an interrupt signal, it exited the loop and
+exited gracefully, printing out `This is a graceful exit`.
+
+But if we call `kill <PID>`, it will not send a signal, instead if wil flag the
+coroutine to be removed from the scheduler. You can use the `PSEUDONIX_TRAP`
+to create a deferred block that will be executed with the coroutine is destroyed.
+This is useful if your coroutine allocated any memory or needs to do some additional
+cleanup.
+
+Try running example4.cpp, in the shell process try executing `mycustomfunction` 
+in the background. Then use `ps` to find its PID, and either call `signal <PID> 2`
+or `kill <PID>`
+
+
+
+```c++
+PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
+{
+    PSEUDONIX_PROC_START(ctrl);
+    auto sleep_time = std::chrono::milliseconds(250);
+
+    PSEUDONIX_TRAP {
+        // This will be called even if you call "kill"
+        // on the pid
+        OUT << std::format("This is executed on cleanup.");
+    };
+
+    int i=0;
+    while(true)
+    {
+        OUT << std::format("Counter: {}\n", i++);
+
+        // await for the awaiter to signal
+        // if it does, break the while loop if
+        // it returned any of the known signals:
+        //  sig_terminate, sig_interrupt
+        HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await ctrl->await_yield_for(sleep_time), ctrl);
+    }
+
+    // this will only be called if the while loop exits
+    // properly by reacting to a signal, either:
+    // signal PID 2
+    // signal PID 15
+    OUT << std::format("This a graceful exit\n");
+    co_return 0;
+}
+```
+
 ## Example Custom Function
 
 Here's an example of creating a simple guessing game within the PsuedoNix system. 
@@ -254,12 +313,12 @@ int main()
         {
             std::string line;
 
-            // HANDLE_AWAIT_INT_TERM is a macro that looks at the return type of the
-            // Awaiter (a signal code), and co_returns the appropriate
+            // HANDLE_AWAIT_BREAK_ON_SIGNAL is a macro that looks at the return type of the
+            // Awaiter (a signal code), and breaks the while loop
             // exit code. It will exit if the code is SIG_TERM or SIG_INT
             //
             // This is where Ctrl-C and Sig-kills are handled
-            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in, line), ctrl)
+            HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await ctrl->await_read_line(ctrl->in, line), ctrl)
 
             uint32_t guess = 0;
 

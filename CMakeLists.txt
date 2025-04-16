@@ -110,6 +110,9 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
 
         add_executable(example3 example3.cpp)
         target_link_libraries(example3 ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
+
+        add_executable(example4 example4.cpp)
+        target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
     endif()
 
 

@@ -2,27 +2,37 @@
 #include <thread>
 
 #include <PseudoNix/System.h>
-
+#include <PseudoNix/Launcher.h>
+#include <PseudoNix/Shell.h>
 
 PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
 {
-    // Helper function to define a few
-    // easy to use variables
-    // such as IN and OUT streams
     PSEUDONIX_PROC_START(ctrl);
-
     auto sleep_time = std::chrono::milliseconds(250);
-    for(int i=0;i<10;i++)
-    {
-        // Unlike in Example1, where we wrote directly
-        // to std::cout, we are going to write
-        // to the Output Stream of the process
-        //
-        // The output stream is not connected to anything
-        OUT << std::format("[{}] Counter: {}\n", ARGS[1], i);
 
-        co_await ctrl->await_yield_for(sleep_time);
+    PSEUDONIX_TRAP {
+        // This will be called even if you call "kill"
+        // on the pid
+        OUT << std::format("This is executed on cleanup.");
+    };
+
+    int i=0;
+    while(true)
+    {
+        OUT << std::format("Counter: {}\n", i++);
+
+        // await for the awaiter to signal
+        // if it does, break the while loop if
+        // it returned any of the known signals:
+        //  sig_terminate, sig_interrupt
+        HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await ctrl->await_yield_for(sleep_time), ctrl);
     }
+
+    // this will only be called if the while loop exits
+    // properly by reacting to a signal, either:
+    // signal PID 2
+    // signal PID 15
+    OUT << std::format("This a graceful exit\n");
     co_return 0;
 }
 
@@ -38,6 +48,9 @@ int main()
 
     // add our coroutine to the list of functions to be
     // called
+    M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, ShellEnv{}));
+    M.setFunction("launcher", PseudoNix::launcher_coro);
+
     M.setFunction("mycustomfunction", mycustomfunction);
 
     // We can manually create a pipeline. This will
@@ -48,16 +61,7 @@ int main()
     // It simply takes whatever is in its input buffer
     // and writes it to std::cout
     M.spawnPipelineProcess({
-            {"mycustomfunction", "alice"},
-            {"to_std_cout"}
-    });
-    M.spawnPipelineProcess({
-        {"mycustomfunction", "bob"},
-        {"to_std_cout"}
-    });
-    M.spawnPipelineProcess({
-        {"mycustomfunction", "charlie"},
-        {"to_std_cout"}
+            {"launcher", "sh"}
     });
 
     // executeAllFor( ) will keep calling executeAll()

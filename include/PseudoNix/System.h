@@ -747,6 +747,7 @@ struct System
             auto & coro = it->second;
             if(coro.force_terminate)
             {
+
                 if(coro.parent != invalid_pid && m_procs2.count(coro.parent))
                 {
                     auto & cp = m_procs2.at(coro.parent).child_processes;
@@ -766,6 +767,7 @@ struct System
                 {
                     coro.control->out->set_eof();
                 }
+                std::cerr << "Terminating: " << std::format("{}", join(coro.control->args)) << std::endl;
                 it = m_procs2.erase(it);
             }
             else
@@ -834,6 +836,10 @@ struct System
         return m_procs2.at(pid).control;
     }
 
+    pid_type getParentProcess(pid_type pid)
+    {
+        return m_procs2.at(pid).parent;
+    }
 
     /**
      * @brief parseArguments

@@ -4,7 +4,7 @@
 #include <PseudoNix/System.h>
 
 
-PseudoNix::System::task_type my_custom_function(PseudoNix::System::e_type ctrl)
+PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
 {
     auto sleep_time = std::chrono::milliseconds(250);
     for(int i=0;i<10;i++)
@@ -30,7 +30,7 @@ int main()
 
     // add our coroutine to the list of functions to be
     // called
-    M.setFunction("mycustomfunction", my_custom_function);
+    M.setFunction("mycustomfunction", mycustomfunction);
 
     // run 3 instances of the coroutine using different input
     // arguments
