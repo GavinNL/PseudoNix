@@ -112,7 +112,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
             else if(result == 0)
             {
                 //std::cerr << "EOF" << std::endl;
-                c_in->set_eof();
+                // c_in->set_eof();
             }
         }
 
@@ -136,7 +136,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
 
     count--;
 
-    std::cout << std::format("{} exiting", ctrl->args[0]) << std::endl;
+    std::cerr << std::format("{} exiting", ctrl->args[0]) << std::endl;
     co_return 0;
 }
 
