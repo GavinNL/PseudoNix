@@ -3,7 +3,7 @@
 
 #include <map>
 
-#include "MiniLinux.h"
+#include "System.h"
 #include "defer.h"
 
 namespace PseudoNix
