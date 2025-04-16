@@ -56,7 +56,7 @@ enum class AwaiterResult
     NO_ERROR = 0,
     SIG_INT = sig_interrupt,
     SIG_TERM = sig_terminate,
-    INPUT_STREAM_CLOSED
+    UNKNOWN_ERROR
 };
 
 struct System
@@ -629,6 +629,7 @@ struct System
             auto & proc = m_procs2.at(pid);
             return static_cast<AwaiterResult>(proc.lastSignal);
         }
+        return AwaiterResult::UNKNOWN_ERROR;
     }
 
     void clearSignal(pid_type pid)
