@@ -118,10 +118,10 @@ jobs:
       if: matrix.os == 'ubuntu-latest' && matrix.c_compiler == 'gcc' && matrix.build_type == 'Debug'
       run: |
         sudo apt install -y gcovr
-        cmake --build --preset conan-ci-$(echo "${{ matrix.build_type }}" | tr '[:upper:]' '[:lower:]')  --target coverage
+        cmake --build ${{ steps.strings.outputs.build-output-dir }} --target coverage --config ${{ matrix.build_type }} 
+#        cmake --build --preset conan-ci-$(echo "${{ matrix.build_type }}" | tr '[:upper:]' '[:lower:]')  --target coverage
         mkdir -p ${{ github.workspace }}/build/coverage
         cp ${{ github.workspace }}/build/build/ci/${{ matrix.build_type }}/coverage/report.xml    ${{ github.workspace }}/build/coverage
-        #cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} --target coverage
 
     # Generate the coverage report Only run this on a Ubuntu-gcc-debug build
     - name: Code Coverage Report
