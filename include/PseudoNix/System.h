@@ -49,8 +49,8 @@ enum class AwaiterResult
 {
     SUCCESS = 0,
     NO_ERROR = 0,
-    SIG_INT = sig_interrupt,
-    SIG_TERM = sig_terminate,
+    SIGNAL_INTERRUPT = sig_interrupt,
+    SIGNAL_TERMINATE = sig_terminate,
     UNKNOWN_ERROR
 };
 
@@ -945,20 +945,20 @@ protected:
 #define HANDLE_AWAIT_INT_TERM(returned_signal, CTRL)\
         switch(returned_signal)\
             {\
-                case PseudoNix::AwaiterResult::SIG_INT:  { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
-                case PseudoNix::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
+                case PseudoNix::AwaiterResult::SIGNAL_INTERRUPT:  { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
+                case PseudoNix::AwaiterResult::SIGNAL_TERMINATE: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
                     default: break;\
             }
 
 #define HANDLE_AWAIT_BREAK_ON_SIGNAL(returned_signal, CTRL)\
-            if(returned_signal == PseudoNix::AwaiterResult::SIG_INT)  { break;}\
-            if(returned_signal == PseudoNix::AwaiterResult::SIG_TERM) { break;}
+            if(returned_signal == PseudoNix::AwaiterResult::SIGNAL_INTERRUPT)  { break;}\
+            if(returned_signal == PseudoNix::AwaiterResult::SIGNAL_TERMINATE) { break;}
 
 #define HANDLE_AWAIT_TERM(returned_signal, CTRL)\
         switch(returned_signal)\
             {\
-                case PseudoNix::AwaiterResult::SIG_INT:   CTRL->system->clearSignal(CTRL->get_pid()); break; \
-                case PseudoNix::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
+                case PseudoNix::AwaiterResult::SIGNAL_INTERRUPT:   CTRL->system->clearSignal(CTRL->get_pid()); break; \
+                case PseudoNix::AwaiterResult::SIGNAL_TERMINATE: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
                     default: break;\
             }
 
