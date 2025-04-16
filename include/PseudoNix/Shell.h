@@ -360,10 +360,8 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
     std::string shell_name = control->args[0];
 
 
-    #define SHOULD_QUIT exev.in->eof()
-
     std::vector<System::pid_type> subProcess;
-#define USE_AWAITERS
+
     // control->setSignalHandler([](int s)
     // {
     //     std::cerr << std::format("Custom signal recieved: {}", s) << std::endl;;
@@ -371,13 +369,10 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
     while(!shellEnv.exitShell)
     {
 
-#if defined USE_AWAITERS
         HANDLE_AWAIT_TERM(co_await control->await_has_data(control->in), control);
 
         char c;
-
         auto r = control->in->get(&c);
-
         if(r == System::stream_type::Result::END_OF_STREAM)
         {
             shellEnv.exitShell = true;
@@ -389,24 +384,6 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
             // the await
             break;
         }
-#else
-        //if(SHOULD_QUIT || shellEnv.exitShell) co_return 0;
-        while(!shellEnv.exitShell)
-        {
-            if(SHOULD_QUIT)
-                co_return 0;
-
-            if(exev.eof())
-            {
-                //std::cerr << "Shell: EOF on input" << std::endl;
-            }
-            if(exev.has_data())
-                break;
-
-            SUSPEND_POINT(control);
-        }
-        auto c = control->in->get();
-#endif
 
         _current += c;
         if(c != ';' && c != '\n')
