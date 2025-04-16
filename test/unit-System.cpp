@@ -252,3 +252,247 @@ SCENARIO("System: Execute two commands and have one piped into the other")
 
     REQUIRE(exec[1].out->str() == "dlrow olleH\n");
 }
+
+
+SCENARIO("Test await_yield")
+{
+    System M;
+
+    // add our command manually
+    M.setFunction("test", [](System::e_type control) -> System::task_type {
+        PSEUDONIX_PROC_START(control);
+
+        OUT << "test: wait\n";
+        co_await control->await_yield(); // yield at this point, echo will run
+        OUT << "test: resume\n";
+
+        co_return 0;
+    });
+
+    auto out = System::make_stream();
+    auto E1 = System::parseArguments({"test"});
+    E1.out = out;
+    auto E2 = System::parseArguments({"echo", "echo"});
+    E2.out = out;
+    auto pid1 = M.runRawCommand(E1);
+    auto pid2 = M.runRawCommand(E2);
+
+    REQUIRE(pid1 != 0);
+    REQUIRE(pid1 != 0xFFFFFFFF);
+
+    REQUIRE(pid2 != 0);
+    REQUIRE(pid2 != 0xFFFFFFFF);
+
+    // We dont have a scheduler, so we'll manually
+    // run this until its finished
+    while (M.executeAll());
+
+    REQUIRE(out->str() == "test: wait\n"
+                           "echo\n"
+                           "test: resume\n");
+}
+
+SCENARIO("Test await_yield_for")
+{
+    System M;
+
+    // add our command manually
+    M.setFunction("test", [](System::e_type control) -> System::task_type {
+        PSEUDONIX_PROC_START(control);
+
+        OUT << "test: wait\n";
+        co_await control->await_yield_for(std::chrono::seconds(1)); // yield at this point, echo will run
+        OUT << "test: resume\n";
+
+        co_return 0;
+    });
+
+    auto out = System::make_stream();
+    auto E1 = System::parseArguments({"test"});
+    E1.out = out;
+    auto E2 = System::parseArguments({"echo", "echo"});
+    E2.out = out;
+    auto pid1 = M.runRawCommand(E1);
+    auto pid2 = M.runRawCommand(E2);
+
+    REQUIRE(pid1 != 0);
+    REQUIRE(pid1 != 0xFFFFFFFF);
+
+    REQUIRE(pid2 != 0);
+    REQUIRE(pid2 != 0xFFFFFFFF);
+
+    // We dont have a scheduler, so we'll manually
+    // run this until its finished
+    auto T0 = std::chrono::system_clock::now();
+    while (M.executeAll());
+    auto T1 = std::chrono::system_clock::now();
+
+    //
+    REQUIRE( T1-T0 > std::chrono::seconds(1));
+    REQUIRE(out->str() == "test: wait\n"
+                          "echo\n"
+                          "test: resume\n");
+}
+
+SCENARIO("Test await_finished")
+{
+    System M;
+
+    // add our command manually
+    M.setFunction("test", [](System::e_type control) -> System::task_type {
+        PSEUDONIX_PROC_START(control);
+        System::pid_type pid;
+
+        std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pid);
+
+        OUT << "test: wait\n";
+        co_await control->await_finished(pid); // yield at this point, echo will run
+        OUT << "test: resume\n";
+
+        co_return 0;
+    });
+
+    auto out = System::make_stream();
+    auto E1 = System::parseArguments({"sleep", "2"});
+    E1.out = out;
+    auto pid1 = M.runRawCommand(E1);
+
+    auto E2 = System::parseArguments({"test", std::to_string(pid1)});
+    E2.out = out;
+    auto pid2 = M.runRawCommand(E2);
+
+    REQUIRE(pid1 != 0);
+    REQUIRE(pid1 != 0xFFFFFFFF);
+
+    REQUIRE(pid2 != 0);
+    REQUIRE(pid2 != 0xFFFFFFFF);
+
+    // We dont have a scheduler, so we'll manually
+    // run this until its finished
+    auto T0 = std::chrono::system_clock::now();
+    while (M.executeAll());
+    auto T1 = std::chrono::system_clock::now();
+
+    //
+    REQUIRE( T1-T0 > std::chrono::seconds(2));
+    REQUIRE(out->str() == "test: wait\n"
+                          "test: resume\n");
+}
+
+
+SCENARIO("Test await_finished multi")
+{
+    System M;
+
+    // add our command manually
+    M.setFunction("test", [](System::e_type control) -> System::task_type {
+        PSEUDONIX_PROC_START(control);
+        std::vector<System::pid_type> pids(2);
+
+
+        std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pids[0]);
+        std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pids[1]);
+
+        OUT << "test: wait\n";
+        co_await control->await_finished(pids); // yield at this point, echo will run
+        OUT << "test: resume\n";
+
+        co_return 0;
+    });
+
+    auto out = System::make_stream();
+
+    auto E1 = System::parseArguments({"sleep", "2"});
+    E1.out = out;
+    auto pid1 = M.runRawCommand(E1);
+    auto E2 = System::parseArguments({"sleep", "2"});
+    E2.out = out;
+    auto pid2 = M.runRawCommand(E2);
+
+    auto E3 = System::parseArguments({"test", std::to_string(pid1), std::to_string(pid2)});
+    E3.out = out;
+    auto pid3 = M.runRawCommand(E3);
+
+    REQUIRE(pid1 != 0);
+    REQUIRE(pid1 != 0xFFFFFFFF);
+
+    REQUIRE(pid2 != 0);
+    REQUIRE(pid2 != 0xFFFFFFFF);
+
+    REQUIRE(pid3 != 0);
+    REQUIRE(pid3 != 0xFFFFFFFF);
+
+    // We dont have a scheduler, so we'll manually
+    // run this until its finished
+    auto T0 = std::chrono::system_clock::now();
+    while (M.executeAll());
+    auto T1 = std::chrono::system_clock::now();
+
+    //
+    // Still only takes 2 seconds since both sleeps are in parallel
+    REQUIRE( T1-T0 > std::chrono::seconds(2));
+    REQUIRE(out->str() == "test: wait\n"
+                          "test: resume\n");
+}
+
+
+SCENARIO("Test await_has_data")
+{
+    System M;
+
+    // add our command manually
+    M.setFunction("test", [](System::e_type control) -> System::task_type {
+        PSEUDONIX_PROC_START(control);
+
+        char c;
+        OUT << "test: wait 1\n";
+        co_await control->await_has_data(control->in);
+        OUT << "test: resume 1\n";
+        REQUIRE(control->in->get(&c) == System::stream_type::Result::SUCCESS);
+        REQUIRE(c == '1');
+
+        OUT << "test: wait 2\n";
+        co_await control->await_has_data(control->in);
+        OUT << "test: resume 2\n";
+        REQUIRE(control->in->get(&c) == System::stream_type::Result::SUCCESS);
+        REQUIRE(c == '2');
+
+        REQUIRE(AwaiterResult::SUCCESS == co_await control->await_has_data(control->in));
+        REQUIRE(control->in->eof()==true);
+        //REQUIRE(control->in->get(&c) == System::stream_type::Result::SUCCESS);
+        co_return 0;
+    });
+
+    auto E1 = System::parseArguments({"test"});
+    E1.out = System::make_stream();
+    E1.in  = System::make_stream();
+
+    auto pid1 = M.runRawCommand(E1);
+    REQUIRE(pid1 != 0);
+    REQUIRE(pid1 != 0xFFFFFFFF);
+
+
+    // Execute once until the first yield
+    REQUIRE(1 == M.executeAll() );
+
+    // place something in the stream
+    // and execute again
+    E1.in->put('1');
+    REQUIRE(1 == M.executeAll() );
+
+    // place soemthing again and execute
+    E1.in->put('2');
+    REQUIRE(1 == M.executeAll() );
+
+    E1.in->set_eof();
+    REQUIRE(0 == M.executeAll() );
+
+    //
+    // Still only takes 2 seconds since both sleeps are in parallel
+    REQUIRE(E1.out->str() == "test: wait 1\n"
+                             "test: resume 1\n"
+                             "test: wait 2\n"
+                             "test: resume 2\n"
+            );
+}
+
