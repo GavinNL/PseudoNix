@@ -55,10 +55,8 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
     bl_defer
     {
         //std::cout << "destructor" << std::endl;
-        shell_stdin->close();
+        shell_stdin->set_eof();
     };
-    //assert(shell_stdin == E.in);
-    //assert(shell_stdout == E.out);
 
     bool exit_if_subprocess_exits = true;
 

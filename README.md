@@ -1,7 +1,13 @@
 # PseudoNix
 
-PseudoNix is an embeddable, Linux-like environment you can integrate directly into your project to provide
+PseudoNix is an embeddable header-only, Linux-like environment you can integrate directly into your project to provide
 concurrent process like behaviour.
+
+## Dependendices
+
+* C++20 Compiler
+* [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) by cameron314 (available on Conan)
+
 
 ## Special Shell Features
 
@@ -21,13 +27,6 @@ PseudoNix allows you to register your own coroutine functions so that they can b
  * Executing in the background: `sleep 10 && echo hello world &`
  * Command substitution: `echo Running for: $(uptime) ms`
  * Call your own coroutine functions
-
-
-
-## Dependendices
-
-* C++20 Compiler
-* [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) by cameron314 (available on Conan)
 
 
 ## Compiling the Examples
@@ -80,11 +79,12 @@ int main()
     // add our coroutine to the list of functions to be
     // called
     M.setFunction("mycustomfunction", my_custom_function);
+
     // run 3 instances of the coroutine using different input
     // arguments
-    M.runRawCommand(System::parseArguments({"mycustomfunction", "alice"}));
-    M.runRawCommand(System::parseArguments({"mycustomfunction", "bob"}));
-    M.runRawCommand(System::parseArguments({"mycustomfunction", "charlie"}));
+    M.spawnProcess({"mycustomfunction", "alice"});
+    M.spawnProcess({"mycustomfunction", "bob"});
+    M.spawnProcess({"mycustomfunction", "charlie"});
 
     // executeAllFor( ) will keep calling executeAll()
     // until the total time elapsed is more than the
@@ -140,10 +140,10 @@ int main()
     // The to_std_cout function is provided for you
     // It simply takes whatever is in its input buffer
     // and writes it to std::cout
-    M.runPipeline(M.genPipeline({
+    M.spawnPipelineProcess({
             {"mycustomfunction", "alice"},
             {"to_std_cout"}
-    }));
+    });
 
     while(M.executeAllFor(std::chrono::milliseconds(1), 10))
     {
@@ -179,7 +179,7 @@ int main()
     M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
     M.setFunction("launcher", PseudoNix::launcher_coro);
 
-    auto launcher_pid = M.runRawCommand(System::parseArguments({"launcher", "sh"}));
+    auto launcher_pid = M.spawnProcess({"launcher", "sh"});
 
     while(M.executeAllFor(std::chrono::milliseconds(1), 10))
     {

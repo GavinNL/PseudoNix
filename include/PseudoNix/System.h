@@ -981,6 +981,14 @@ protected:
                     default: break;\
             }
 
+#define PSEUDONIX_PROC_START(control) \
+        auto & OUT = *control->out; (void)OUT;\
+            auto & IN = *control->in; (void)IN;\
+            auto const PID  = control->get_pid(); (void)PID;\
+            auto & SYSTEM = *control->system; (void)SYSTEM;\
+            auto const & ARGS = control->args; (void)ARGS;\
+            auto const & ENV = control->env; (void)ENV
+
         m_funcs["false"] = [](e_type ctrl) -> task_type
         {
             (void)ctrl;
@@ -993,28 +1001,31 @@ protected:
         };
         m_funcs["help"] = [](e_type ctrl) -> task_type
         {
-            auto & arg = *ctrl;
-            arg << "List of commands:\n\n";
+            PSEUDONIX_PROC_START(ctrl);
+
+            OUT << "List of commands:\n\n";
             for(auto & f : ctrl->system->m_funcs)
             {
-                arg << f.first << '\n';
+                OUT << f.first << '\n';
             }
             co_return 0;
         };
-        m_funcs["env"] = [](e_type args) -> task_type
+        m_funcs["env"] = [](e_type ctrl) -> task_type
         {
-            for(auto & [var, val] : args->env)
+            PSEUDONIX_PROC_START(ctrl);
+
+            for(auto & [var, val] : ENV)
             {
-                *args << std::format("{}={}\n", var,val);
+                OUT << std::format("{}={}\n", var,val);
             }
             co_return 0;
         };
         m_funcs["echo"] = [](e_type ctrl) -> task_type
         {
-            auto & args = *ctrl;
-            for(size_t i=1;i<args.args.size();i++)
+            PSEUDONIX_PROC_START(ctrl);
+            for(size_t i=1;i<ARGS.size();i++)
             {
-                args << std::format("{}{}", args.args[i], (i==args.args.size()-1 ? "\n" : " "));
+                OUT << std::format("{}{}", ARGS[i], (i==ARGS.size()-1 ? "\n" : " "));
             }
             co_return 0;
         };
@@ -1022,9 +1033,11 @@ protected:
         {
             // A very basic example of a forever running
             // process
+            PSEUDONIX_PROC_START(ctrl);
+
             while(true)
             {
-                *ctrl << "y\n";
+                OUT << "y\n";
 
                 HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
             }
@@ -1033,12 +1046,13 @@ protected:
         };
         m_funcs["sleep"] = [](e_type ctrl) -> task_type
         {
-            auto & args = *ctrl;
+            PSEUDONIX_PROC_START(ctrl);
+
             std::string output;
-            if(args.args.size() < 2)
+            if(ARGS.size() < 2)
                 co_return 1;
             float t = 0.0f;
-            std::istringstream in(args.args[1]);
+            std::istringstream in(ARGS[1]);
             in >> t;
 
             // NOTE: do not acutally use this_thread::sleep
@@ -1051,20 +1065,21 @@ protected:
 
         m_funcs["uptime"] = [T0=std::chrono::system_clock::now()](e_type ctrl) -> task_type
         {
-            auto & args = *ctrl;
-            args << std::format("{}\n", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()-T0).count());
+            PSEUDONIX_PROC_START(ctrl);
+            OUT << std::format("{}\n", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()-T0).count());
             co_return 0;
         };
         m_funcs["rev"] = [](e_type ctrl) -> task_type
         {
-            auto & args = *ctrl;
+            PSEUDONIX_PROC_START(ctrl);
+
             std::string output;
             bool quit = false;
             while(!quit)
             {
-                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_has_data(args.in), ctrl);
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
 
-                switch(args.in->read_line(output))
+                switch(ctrl->in->read_line(output))
                 {
                     case stream_type::Result::END_OF_STREAM:
                         quit = true;
@@ -1086,18 +1101,19 @@ protected:
 
         m_funcs["wc"] = [](e_type ctrl) -> task_type
         {
-            auto & args = *ctrl;
+            PSEUDONIX_PROC_START(ctrl);
+
             uint32_t i=0;
 
             bool quit = false;
             while(!quit)
             {
                 char c;
-                co_await ctrl->await_has_data(args.in);
+                co_await ctrl->await_has_data(ctrl->in);
 
                 while(true)
                 {
-                    auto r = args.in->get(&c);
+                    auto r = IN.get(&c);
                     if(r == stream_type::Result::EMPTY)
                     {
                         break;
@@ -1111,22 +1127,21 @@ protected:
                 }
             }
 
-            args << std::to_string(i) << '\n';
+            OUT << std::to_string(i) << '\n';
 
             co_return 0;
         };
         m_funcs["ps"] = [](e_type ctrl) -> task_type
         {
-            auto & args = *ctrl;
-            auto & M = *args.system;
+            PSEUDONIX_PROC_START(ctrl);
 
-            args << std::format("PID   CMD\n");
-            for(auto & [pid, P] : M.m_procs2)
+            OUT << std::format("PID   CMD\n");
+            for(auto & [pid, P] : SYSTEM.m_procs2)
             {
                 std::string cmd;
                 for(auto & c : P.control->args)
                     cmd += c + " ";
-                args << std::format("{}     {}\n", pid, cmd);
+                OUT<< std::format("{}     {}\n", pid, cmd);
             }
 
             //std::cout << std::to_string(i);
@@ -1134,72 +1149,74 @@ protected:
         };
         m_funcs["kill"] = [](e_type ctrl) -> task_type
         {
-            auto & args = *ctrl;
-            if(args.args.size() < 2)
+            PSEUDONIX_PROC_START(ctrl);
+
+            if(ARGS.size() < 2)
                 co_return 1;
 
             pid_type pid = 0;
-            auto [ptr, ec] = std::from_chars(args.args[1].data(), args.args[1].data() + args.args[1].size(), pid);
-            if(ec != std::errc())
+            if(std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pid).ec != std::errc())
             {
-                args << std::format("Must be a Process ID. Recieved {}\n", args.args[1]);
+                OUT << std::format("Must be a Process ID. Recieved {}\n", ARGS[1]);
                 co_return 1;
             }
-            (void)ptr;
-            auto & M = *args.system;
-            if(!M.kill(pid))
+
+            if(!SYSTEM.kill(pid))
             {
-                args << std::format("Could not find process ID: {}\n", pid);
+                OUT << std::format("Could not find process ID: {}\n", pid);
                 co_return 0;
             }
             co_return 1;
         };
         m_funcs["signal"] = [](e_type ctrl) -> task_type
         {
-            auto & args = *ctrl;
-            if(args.args.size() < 3)
+            PSEUDONIX_PROC_START(ctrl);
+
+            if(ARGS.size() < 3)
                 co_return 1;
 
             pid_type pid = 0;
             int sig=2;
             {
-                if(std::errc() != std::from_chars(args.args[1].data(), args.args[1].data() + args.args[1].size(), pid).ec)
+                if(std::errc() != std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pid).ec)
                 {
-                    args << std::format("Arg 1 must be a Process ID. Recieved {}\n", args.args[1]);
+                    OUT << std::format("Arg 1 must be a Process ID. Recieved {}\n", ARGS[1]);
                     co_return 1;
                 }
             }
             {
-                if(std::errc() != std::from_chars(args.args[2].data(), args.args[2].data() + args.args[2].size(), sig).ec)
+                if(std::errc() != std::from_chars(ARGS[2].data(), ARGS[2].data() + ARGS[2].size(), sig).ec)
                 {
-                    args << std::format("Arg 2 must be a integer signal code. Recieved {}\n", args.args[1]);
+                    OUT << std::format("Arg 2 must be a integer signal code. Recieved {}\n", ARGS[1]);
                     co_return 1;
                 }
             }
-            auto & M = *args.system;
-            if(!M.signal(pid, sig))
+
+            if(!SYSTEM.signal(pid, sig))
             {
-                args << std::format("Could not find process ID: {}\n", pid);
+                OUT << std::format("Could not find process ID: {}\n", pid);
                 co_return 0;
             }
             co_return 1;
         };
         m_funcs["io_info"] = [](e_type ctrl) -> task_type
         {
-            auto & args = *ctrl;
-            for(auto & [pid, proc] : ctrl->system->m_procs2)
+            PSEUDONIX_PROC_START(ctrl);
+
+            for(auto & [pid, proc] : SYSTEM.m_procs2)
             {
-                args << std::format("{}[{}]->{}->{}[{}]\n", static_cast<void*>(proc.control->in.get()), proc.control->in.use_count(), proc.control->args[0], static_cast<void*>(proc.control->out.get()), proc.control->out.use_count() );
+                OUT << std::format("{}[{}]->{}->{}[{}]\n", static_cast<void*>(proc.control->in.get()), proc.control->in.use_count(), proc.control->args[0], static_cast<void*>(proc.control->out.get()), proc.control->out.use_count() );
             }
             co_return 0;
         };
         m_funcs["to_std_cout"] = [](e_type ctrl) -> task_type
         {
-            while(!ctrl->in->closed())
+            PSEUDONIX_PROC_START(ctrl);
+            while(!IN.eof())
             {
                 std::string s;
                 HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in, s), ctrl);
-                *ctrl->in >> s;
+                IN >> s;
                 std::cout << s << std::endl;
             }
             co_return 0;
