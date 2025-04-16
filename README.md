@@ -53,7 +53,7 @@ cmake --preset conan-release .
 ### Example 1: Basic Usage
 
 ```c++
-#include <PseudoNix/MiniLinux.h>
+#include <PseudoNix/System.h>
 
 
 PseudoNix::System::task_type my_custom_function(PseudoNix::System::e_type ctrl)
@@ -111,7 +111,7 @@ The output stream will be piped into another process which will write the
 data to std::cout.
 
 ```c++
-#include <PseudoNix/MiniLinux.h>
+#include <PseudoNix/System.h>
 
 PseudoNix::System::task_type my_custom_function(PseudoNix::System::e_type ctrl)
 {
@@ -167,7 +167,7 @@ terminal window.
 
 ```c++
 
-#include <PseudoNix/MiniLinux.h>
+#include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
 #include <PseudoNix/Launcher.h>
 
