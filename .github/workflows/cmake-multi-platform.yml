@@ -85,7 +85,7 @@ jobs:
 
     - name: Configure Conan 
       run: |
-        conan install ${{ github.workspace }}/conanfile.py --build missing  -s:h "&:build_type=${{ matrix.build_type }}" -s "compiler.cppstd=20" -of=${{ steps.strings.outputs.build-output-dir }}  -c:h "user:preset_name=ci"
+        conan install ${{ github.workspace }}/conanfile.py --build missing  -s:h "&:build_type=${{ matrix.build_type }}" -s "compiler.cppstd=20" -of=${{ steps.strings.outputs.build-output-dir }} -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
 
 
     - name: Configure CMake-Linux
@@ -93,24 +93,23 @@ jobs:
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       run: >
-        cmake --preset conan-ci-$(echo "${{ matrix.build_type }}" | tr '[:upper:]' '[:lower:]') -S ${{ github.workspace }}
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} -S ${{ github.workspace }} -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake  -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_BUILD_TYPE=Release
 
 
     - name: Configure CMake-Windows
       if: matrix.os == 'windows-latest'
-      # run:  cmake --preset conan-ci -B ${{ steps.strings.outputs.build-output-dir }} -S ${{ github.workspace }}
       run: >
-        cmake --preset conan-ci -S ${{ github.workspace }}
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} -S ${{ github.workspace }} -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake  -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_BUILD_TYPE=Release
 
 
     - name: Build
-      run: cmake --build --preset conan-ci-$(echo "${{ matrix.build_type }}" | tr '[:upper:]' '[:lower:]') 
+      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} --parallel
       #run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} --parallel
 
     - name: Test
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest --preset conan-ci-$(echo "${{ matrix.build_type }}" | tr '[:upper:]' '[:lower:]')
+      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --target test --config ${{ matrix.build_type }} 
 
     # Execute the coverage report. the cmake target "coverage" is greated in the Cmake file. We just need too 
     # execute make coverage on a Debug build.
