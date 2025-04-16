@@ -46,6 +46,18 @@ cmake --preset conan-release .
 
 ## How It Works
 
+The PseudoNix::System acts like a fully contained Linux system and scheduler.
+A process is a coroutine which can be added to the system to be executed.
+The coroutines that are added to the system are not automatically executed.
+When `system.executeAll()` is called, each coroutine is resumed one at a time
+until all of them have been resumed.
+
+Coroutines run on a single thread by design in the order of their PID number.
+
+The coroutines provide a `input/output` stream which can be written to. This is
+simlar to the standard input/output streams, but instead of writing to the console,
+it writes to memory. This way the output of one process can be sent to the input
+of another, just like on Linux.
 
 ## Examples
 
@@ -230,9 +242,13 @@ int main()
 
     M.setFunction("guess", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
     {
+        // Macro to define a few variables such as
+        // IN, OUT, ENV, SYSTEM, ARGS, PID
+        PSEUDONIX_PROC_START(ctrl);
+
         std::string input;
         uint32_t random_number = std::rand() % 100 + 1;
-        *ctrl << std::format("I have chosen a number between 1-100. Can you guess what it is?\n");
+        OUT << std::format("I have chosen a number between 1-100. Can you guess what it is?\n");
 
         while(true)
         {
@@ -249,23 +265,23 @@ int main()
 
             if(std::errc() != std::from_chars(line.data(), line.data() + line.size(), guess).ec)
             {
-                *ctrl->out << std::format("invalid entry: {}\n", line);
-                *ctrl->out << std::format("Guess Again: \n");
+                OUT << std::format("invalid entry: {}\n", line);
+                OUT << std::format("Guess Again: \n");
                 continue;
             }
 
             if(guess > random_number)
             {
-                *ctrl->out << std::format("Too High!\n");
+                OUT << std::format("Too High!\n");
             }
             else if(guess < random_number)
             {
-                *ctrl->out << std::format("Too Low!\n");
+                OUT  << std::format("Too Low!\n");
             }
             else
             {
-                *ctrl->out << std::format("Awesome! You guessed the correct number: {}!\n", random_number);
-                *ctrl->out << std::format("Exiting\n");
+                OUT << std::format("Awesome! You guessed the correct number: {}!\n", random_number);
+                OUT << std::format("Exiting\n");
                 co_return 0;
             }
         }
