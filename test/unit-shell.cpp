@@ -26,7 +26,7 @@ exit
 )foo");
     // We're going to close the stream so that the task will complete, otherwise
     // it will keep trying to read code.
-    E.in->close();
+    E.in->set_eof();
     E.out = System::make_stream();
 
     // Finally execute the command and get the PID

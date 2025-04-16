@@ -22,32 +22,16 @@ public:
     {
         return data.size_approx();
     }
-    bool closed() const
-    {
-        return _closed;
-    }
 
     bool eof() const
     {
         return !has_data() && _closed;
     }
 
-    void close()
-    {
-        _closed = true;
-    }
-
     void flush()
     {
         while(has_data())
             get();
-    }
-
-    T get()
-    {
-        T ch = {};
-        data.try_dequeue(ch);
-        return ch;
     }
 
     enum class Result
@@ -137,23 +121,12 @@ public:
         }
     }
 
-    size_t readsome(char *c, size_t i)
-    {
-        size_t j=0;
-        while(has_data() && j<i)
-        {
-            *c = get();
-            ++c;
-            j++;
-        }
-        return j;
-    }
-
     ReaderWriterStream_t& operator << (ReaderWriterStream_t &ss)
     {
-        while(ss.has_data())
+        char c;
+        while(ss.get(&c) == Result::SUCCESS)
         {
-            put(ss.get());
+            put(c);
         }
         return *this;
     }
@@ -173,9 +146,10 @@ public:
         requires std::ranges::range<iter_container>
     ReaderWriterStream_t& operator >> (iter_container &ss)
     {
-        while(has_data())
+        char c;
+        while(get(&c) == Result::SUCCESS)
         {
-            ss.push_back(get());
+            ss.push_back(c);
         }
         return *this;
     }
@@ -189,9 +163,10 @@ public:
     std::string str()
     {
         std::string s;
-        while(has_data())
+        char c;
+        while(get(&c) == Result::SUCCESS)
         {
-            s+=get();
+            s.push_back(c);
         }
         return s;
     }

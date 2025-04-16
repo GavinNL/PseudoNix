@@ -118,9 +118,9 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
 
         HANDLE_AWAIT_TERM(co_await ctrl->await_yield(), ctrl);
 
-        while(shell_stdout->has_data())
+        char c;
+        while(shell_stdout->get(&c) == ReaderWriterStream::Result::SUCCESS)
         {
-            auto c = shell_stdout->get();
             if(c == '\n')
             {
                 console.AddLog(output);

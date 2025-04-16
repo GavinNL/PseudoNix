@@ -718,7 +718,6 @@ struct System
             }
             if(coro.control->out && coro.control.use_count() == 2)
             {
-                coro.control->out->close();
                 coro.control->out->set_eof();
             }
 
@@ -745,7 +744,6 @@ struct System
             {
                 it->second.force_terminate = true;
                 it->second.is_complete = true;
-                it->second.control->out->close();
                 it->second.control->out->set_eof();
             }
         }
@@ -756,7 +754,6 @@ struct System
         {
             if(it->second.force_terminate)
             {
-                it->second.control->out->close();
                 it->second.control->out->set_eof();
 
                 it = m_procs2.erase(it);

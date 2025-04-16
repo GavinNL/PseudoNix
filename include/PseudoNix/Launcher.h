@@ -59,16 +59,6 @@ inline System::task_type launcher_coro(System::e_type ctrl)
         // so to ensure it gets decremnted properly
         // we'll put it in a defer block
         if(count) count--;
-
-        // We technically dont need to do this because
-        // the output stream is automatically closed
-        // by System when launcher completes
-        // either by forcefully removing it, or
-        // if it completes successfully. But just in case
-        // we should shutdown c_in because it is passed
-        // into the subprocess as a input stream
-        c_in->close();
-        c_out->close();
     };
 
 
@@ -118,9 +108,10 @@ inline System::task_type launcher_coro(System::e_type ctrl)
 
         // If there are any bytes in the output stream of
         // sh, read them and write them to std::cout
-        while(c_out->has_data())
+        char c;
+        while(c_out->get(&c) == ReaderWriterStream::Result::SUCCESS)
         {
-            std::cout.put( c_out->get());
+            std::cout.put(c);
         }
         std::cout << std::flush;
 

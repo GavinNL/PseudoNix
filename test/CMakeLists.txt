@@ -43,6 +43,7 @@ foreach(file ${files})
                                     doctest::doctest
                                     readerwriterqueue::readerwriterqueue
                                     ${PROJECT_NAME}::warnings
+                                    ${PROJECT_NAME}::coverage
                                     ${PROJECT_NAME}::${PROJECT_NAME}
                                 )
 
