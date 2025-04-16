@@ -12,7 +12,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
     static auto count = 0;
     if(count != 0)
     {
-        *ctrl << std::format("Only one instance of {} can exist\n", ctrl->args[0]);
+        *ctrl->in << std::format("Only one instance of {} can exist\n", ctrl->args[0]);
         co_return 1;
     }
 

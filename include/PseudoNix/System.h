@@ -8,6 +8,7 @@
 #include "ReaderWriterStream.h"
 #include "task.h"
 #include "defer.h"
+#include <thread>
 
 namespace PseudoNix
 {
@@ -33,23 +34,6 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
     return oss.str();
 }
 
-#define SUSPEND_POINT(C)         \
-{                                \
-        /*if (C->sig_code == PseudoNix::sig_terminate)*/      \
-        /*co_return static_cast<int>(PseudoNix::exit_terminated);*/                   \
-        co_await std::suspend_always{};  \
-}
-
-#define SUSPEND_SIGTERM(C) \
-{\
-        if(C->sig_code == PseudoNix::sig_int )  { /*std::cout << "SIGINT" << std::endl; */ co_return static_cast<int>(exit_interrupt);} \
-        if(C->sig_code == PseudoNix::sig_term ) { /*std::cout << "SIGTERM" << std::endl;*/ co_return static_cast<int>(exit_terminated);} \
-        co_await std::suspend_always{};\
-}
-
-#define SUSPEND_SIG_TERM     SUSPEND_POINT
-#define SUSPEND_SIG_INT_TERM SUSPEND_SIGTERM
-
 enum class AwaiterResult
 {
     SUCCESS = 0,
@@ -59,6 +43,13 @@ enum class AwaiterResult
     UNKNOWN_ERROR
 };
 
+
+#if defined PSUEDONIX_ENABLE_DEBUG
+#define DEBUG_LOG(...) std::cerr << std::format(__VA_ARGS__) << std::flush;
+#else
+#define DEBUG_LOG(...)
+#endif
+
 template <typename T, typename... Ts>
 concept all_same = (std::same_as<T, Ts> && ...);
 
@@ -66,8 +57,8 @@ struct System
 {
     using stream_type      = ReaderWriterStream_t<char>;
     using pid_type         = uint32_t;
-    using return_code_type = int32_t;
-    using task_type        = Task_t<return_code_type, std::suspend_always, std::suspend_always>;
+    using exit_code_type   = int32_t;
+    using task_type        = Task_t<exit_code_type, std::suspend_always, std::suspend_always>;
 
 
     struct Exec
@@ -88,7 +79,6 @@ struct System
             : m_pid(p), m_system(S), m_pred(f)
         {
             m_signal = &m_system->m_procs2.at(p).lastSignal;
-            // std::cerr << "Sleep Awaiter Created: " << this << std::endl;
         }
 
         ~Awaiter()
@@ -104,7 +94,6 @@ struct System
             if(static_cast<AwaiterResult>(*m_signal) != AwaiterResult::NO_ERROR)
                 return true;
             auto b = m_pred();
-            //std::cerr << "await_ready called: " << this << "  " << b << std::endl;
             return b;
         }
 
@@ -165,6 +154,13 @@ struct System
             return pid;
         }
 
+        /**
+         * @brief await_yield
+         * @return
+         *
+         * Yield the current process until the
+         * next iteration of the scheduler
+         */
         System::Awaiter await_yield()
         {
             return System::Awaiter{pid,
@@ -183,7 +179,30 @@ struct System
                                    }};
         }
 
+        /**
+         * @brief await_yield_for
+         * @param time
+         * @return
+         *
+         * Sleep for an amount of time.
+         */
+        System::Awaiter await_yield_for(std::chrono::nanoseconds time)
+        {
+            auto T1 = std::chrono::system_clock::now() + time;
+            return System::Awaiter{get_pid(),
+                                   system,
+                                   [T=T1](){
+                                       return std::chrono::system_clock::now() > T;
+                                   }};
+        }
 
+        /**
+         * @brief await_finished
+         * @param _pid
+         * @return
+         *
+         * Yield until a specific PID has completed
+         */
         System::Awaiter await_finished(pid_type _pid)
         {
             return System::Awaiter{get_pid(),
@@ -194,6 +213,13 @@ struct System
                                    }};
         }
 
+        /**
+         * @brief await_finished
+         * @param pids
+         * @return
+         *
+         * Yield until all PIDs have completed
+         */
         System::Awaiter await_finished(std::vector<pid_type> pids)
         {
             return System::Awaiter{get_pid(),
@@ -209,7 +235,14 @@ struct System
                                    }};
         }
 
-
+        /**
+         * @brief await_read_line
+         * @param d
+         * @param line
+         * @return
+         *
+         * Yield until a line has been read from the input stream. Similar to std::getline
+         */
         System::Awaiter await_read_line(std::shared_ptr<System::stream_type> d, std::string & line)
         {
             return System::Awaiter{get_pid(),
@@ -236,6 +269,13 @@ struct System
                                    }};
         }
 
+        /**
+         * @brief await_has_data
+         * @param d
+         * @return
+         *
+         * Yield until the input stream has data
+         */
         System::Awaiter await_has_data(std::shared_ptr<System::stream_type> d)
         {
             return System::Awaiter{get_pid(),
@@ -247,100 +287,13 @@ struct System
                                    }};
         }
 
-        System::Awaiter await_yield_for(std::chrono::nanoseconds time)
-        {
-            auto T1 = std::chrono::system_clock::now() + time;
-            return System::Awaiter{get_pid(),
-                                   system,
-                                   [T=T1](){
-                                       return std::chrono::system_clock::now() > T;
-                                   }};
-        }
-
-        ProcessControl& operator << (std::string_view const &ss)
-        {
-            for(auto i : ss)
-            {
-                out->put(i);
-            }
-            return *this;
-        }
-        ProcessControl& operator << (char d)
-        {
-            out->put(d);
-            return *this;
-        }
-
-        ProcessControl& operator << (char const *d)
-        {
-            while(*d != 0)
-            {
-                out->put(*d);
-                ++d;
-            }
-            return *this;
-        }
-
-
-        template<typename iter_container>
-            requires std::ranges::range<iter_container>
-        ProcessControl& operator << (iter_container const & d)
-        {
-            for(auto i : d)
-            {
-                out->put(i);
-            }
-            return *this;
-        }
-
-        template<typename iter_container>
-            requires std::ranges::range<iter_container>
-        ProcessControl& operator >> (iter_container const & d)
-        {
-            while(has_data())
-                d.insert(d.end(), get());
-            return *this;
-        }
-
         pid_type executeSubProcess(System::Exec E)
         {
-            auto p = system->runRawCommand(E, get_pid());
-            return p;
+            return system->runRawCommand(E, get_pid());
         }
         std::vector<pid_type> executeSubProcess(std::vector<Exec> E)
         {
-            auto pids = system->runPipeline(E, get_pid());
-            return pids;
-        }
-
-        bool has_data() const
-        {
-            return in->has_data();
-        }
-
-        char get()
-        {
-            return in->get();
-        }
-        int32_t put(char c)
-        {
-            out->put(c);
-            return 1;
-        }
-        bool eof() const
-        {
-            return in->eof();
-        }
-        size_t readsome(char *c, size_t i)
-        {
-            size_t j=0;
-            while(has_data() && j<i)
-            {
-                *c = get();
-                ++c;
-                j++;
-            }
-            return j;
+            return system->runPipeline(E, get_pid());
         }
     };
 
@@ -506,6 +459,13 @@ struct System
      */
     pid_type runRawCommand(Exec args, pid_type parent = 0xFFFFFFFF)
     {
+        if(m_main_thread_id != std::thread::id{})
+        {
+            if(m_main_thread_id != std::this_thread::get_id())
+            {
+                throw std::runtime_error("Cannot execute new commands on a separate thread");
+            }
+        }
         // Try to find the name of the function to run
         auto it = m_funcs.find(args.args[0]);
         if(it ==  m_funcs.end())
@@ -705,7 +665,7 @@ struct System
      * Executes a specific PID and returns true if the
      * coroutine is completed
      */
-    bool execute(uint32_t pid)
+    bool execute(pid_type pid)
     {
         auto & coro = m_procs2.at(pid);
         if(coro.is_complete)
@@ -776,6 +736,8 @@ struct System
      */
     size_t executeAll()
     {
+        m_main_thread_id = std::this_thread::get_id();
+
         for(auto it = m_procs2.begin(); it!=m_procs2.end();it++)
         {
             auto & pid = it->first;
@@ -804,6 +766,7 @@ struct System
                 ++it;
             }
         }
+        m_main_thread_id = {};
         return m_procs2.size();
     }
 
@@ -843,7 +806,7 @@ struct System
      * auto _exit = sys.getProcessExitCode(p);
      *
      */
-    std::shared_ptr<return_code_type> getProcessExitCode(pid_type p) const
+    std::shared_ptr<exit_code_type> getProcessExitCode(pid_type p) const
     {
         if(auto it = m_procs2.find(p); it!=m_procs2.end())
         {
@@ -943,7 +906,7 @@ struct System
         Awaiter                       * awaiter = nullptr;
 
         bool is_complete = false;
-        std::shared_ptr<return_code_type> exit_code = std::make_shared<return_code_type>(-1);
+        std::shared_ptr<exit_code_type  > exit_code = std::make_shared<exit_code_type>(-1);
         std::function<void(int)>          signal = {};
         std::chrono::nanoseconds          processTime = std::chrono::nanoseconds(0);
 
@@ -959,8 +922,8 @@ struct System
 
 protected:
     std::map<std::string, std::function< task_type(e_type) >> m_funcs;
-    std::map<uint32_t, Process > m_procs2;
-
+    std::map<pid_type, Process > m_procs2;
+    std::thread::id m_main_thread_id = {};
     pid_type _pid_count=1;
 
     void setDefaultFunctions()

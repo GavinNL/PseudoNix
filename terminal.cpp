@@ -29,27 +29,28 @@ public:
         // ImGui window to show you a terminal emulator
         m_mini.setFunction("term", PseudoNix::terminalWindow_coro);
 
-        m_mini.setFunction("theme", [](PseudoNix::System::e_type control) -> PseudoNix::System::task_type
+        m_mini.setFunction("theme", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
         {
-            auto & E = *control;
-            if(E.args.size() > 1)
+            PSEUDONIX_PROC_START(ctrl);
+
+            if(ARGS.size() > 1)
             {
-                if(E.args[1] == "classic")
+                if(ARGS[1] == "classic")
                 {
                     ImGui::StyleColorsClassic();
                 }
-                if(E.args[1] == "light")
+                if(ARGS[1] == "light")
                 {
                     ImGui::StyleColorsLight();
                 }
-                if(E.args[1] == "dark")
+                if(ARGS[1] == "dark")
                 {
                     ImGui::StyleColorsDark();
                 }
             }
             else
             {
-                E << "theme [classic|dark|light]\n";
+                OUT << "theme [classic|dark|light]\n";
             }
             co_return 0;
         });
@@ -85,13 +86,7 @@ public:
 
         // finally, execute the term command
         // and execute the system call
-        PseudoNix::System::Exec E;
-        E.args = {"term", "sh"};
-        E.env = {
-            {"SHELL", "sh"}
-        };
-
-        m_mini.runRawCommand(E);
+        m_mini.spawnProcess({"SHELL=sh", "term", "sh"});
     }
 
     void imguiRender()
@@ -101,7 +96,6 @@ public:
         // all coroutines once. Some coroutines can draw to the
         // screen
         m_mini.executeAllFor(std::chrono::milliseconds(1), 10);
-        //ImGui::ShowDemoWindow(nullptr);
     }
 
 };

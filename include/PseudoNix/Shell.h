@@ -368,7 +368,6 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
     // });
     while(!shellEnv.exitShell)
     {
-
         HANDLE_AWAIT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
 
         char c;
