@@ -27,9 +27,9 @@ int main()
     // The to_std_cout function is provided for you
     // It simply takes whatever is in its input buffer
     // and writes it to std::cout
-    M.runPipeline(M.genPipeline({
+    M.spawnPipelineProcess({
             {"launcher", "sh"}
-    }));
+    });
 
     // executeAllFor( ) will keep calling executeAll()
     // until the total time elapsed is more than the

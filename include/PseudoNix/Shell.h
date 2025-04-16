@@ -150,16 +150,14 @@ struct ShellEnv
                     if(!shell)\
                     co_return 0;\
 
-        auto & f = L->m_funcs;
-
-        f["exit"] = [](System::e_type ex) -> System::task_type
+        L->setFunction("exit", [](System::e_type ex) -> System::task_type
             {
                 _GET_SHELL
 
                 shell->exitShell = true;
                 co_return 0;
-        };
-        f[""] = [](System::e_type ex) -> System::task_type
+        });
+        L->setFunction("", [](System::e_type ex) -> System::task_type
         {
             _GET_SHELL
             (void)ex;
@@ -171,8 +169,8 @@ struct ShellEnv
                 shell->env[var] = val;
             }
             co_return 0;
-        };
-        f["export"] = [](System::e_type ex) -> System::task_type
+        });
+        L->setFunction("export", [](System::e_type ex) -> System::task_type
         {
             _GET_SHELL
 
@@ -195,9 +193,9 @@ struct ShellEnv
                 }
             }
             co_return 0;
-        };
+        });
 
-        f["exported"] = [](System::e_type ex) -> System::task_type
+        L->setFunction("exported", [](System::e_type ex) -> System::task_type
         {
             _GET_SHELL
             // used to export variables
@@ -207,7 +205,7 @@ struct ShellEnv
                 *ex->out << x.first << '\n';
             }
             co_return 0;
-        };
+        });
     }
 };
 
@@ -263,7 +261,7 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
         }
     }
 
-    auto pids = proc->executeSubPipeline(E);
+    auto pids = proc->executeSubProcess(E);
 
     return pids;
 }
@@ -340,7 +338,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
     auto & shellEnv = _shells[shellPID];
 
     shellEnv = shellEnv1;
-    ShellEnv::setFuncs(control->mini);
+    ShellEnv::setFuncs(control->system);
 
     if(control->args.end() == std::find(control->args.begin(), control->args.end(), "--noprofile"))
     {
@@ -516,7 +514,7 @@ inline System::task_type shell_coro(System::e_type control, ShellEnv shellEnv1)
 
             auto stdout = System::make_stream();
             subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), &exev, &shellEnv, exev.in, exev.out);
-            auto f_exit_code = exev.mini->processExitCode(subProcess.back());
+            auto f_exit_code = exev.system->getProcessExitCode(subProcess.back());
 
             HANDLE_AWAIT_TERM(co_await control->await_finished(subProcess), control)
 

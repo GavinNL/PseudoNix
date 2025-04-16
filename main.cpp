@@ -115,7 +115,7 @@ export HOME
     // it will then read the output stream of the child process and output it to
     // std::cout
     //
-    launcher_pid = M.runRawCommand(System::parseArguments({"launcher", "sh"}));
+    launcher_pid = M.spawnProcess({"launcher", "sh"});
 
     // We are going to use a signal handler to
     // catch ctrl-C inputs and then

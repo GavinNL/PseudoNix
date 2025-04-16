@@ -11,7 +11,7 @@ SCENARIO("test shell")
 {
     System M;
 
-    M.m_funcs["sh"] = std::bind(shell_coro, std::placeholders::_1, ShellEnv{});
+    M.setFunction("sh", std::bind(shell_coro, std::placeholders::_1, ShellEnv{}));
 
 
     System::Exec E;

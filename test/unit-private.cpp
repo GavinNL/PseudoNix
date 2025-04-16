@@ -78,16 +78,16 @@ SCENARIO("System: Run a single command manually")
     System M;
 
     // Clear any default commands
-    M.m_funcs.clear();
+    M.removeAllFunctions();
 
     // add our command manually
-    M.m_funcs["echo"] = [](System::e_type control) -> System::task_type {
+    M.setFunction("echo", [](System::e_type control) -> System::task_type {
         auto & args = *control;
         for (size_t i = 1; i < args.args.size(); i++) {
             *args.out << args.args[i] + (i == args.args.size() - 1 ? "" : " ");
         }
         co_return 0;
-    };
+    });
 
     System::Exec exec;
 
@@ -124,10 +124,10 @@ SCENARIO("System: Run a single command manually read from input")
     System M;
 
     // Clear any default commands
-    M.m_funcs.clear();
+    M.removeAllFunctions();
 
     // add our command manually
-    M.m_funcs["echo_from_input"] = [](System::e_type control) -> System::task_type {
+    M.setFunction("echo_from_input", [](System::e_type control) -> System::task_type {
         auto & args = *control;
         char c=0;
         while (true)
@@ -144,7 +144,7 @@ SCENARIO("System: Run a single command manually read from input")
         }
 
         co_return 0;
-    };
+    });
 
     System::Exec exec;
 
@@ -228,7 +228,7 @@ SCENARIO("System: Execute two commands and have one piped into the other")
 SCENARIO("System: sh")
 {
     System M;
-    M.m_funcs["sh"] = std::bind(shell_coro, std::placeholders::_1, ShellEnv{});
+    M.setFunction("sh", std::bind(shell_coro, std::placeholders::_1, ShellEnv{}));
 
     System::Exec sh;
     sh.args = {"sh"};
@@ -249,7 +249,7 @@ SCENARIO("System: sh")
 SCENARIO("System: sh - multicommand")
 {
     System M;
-    M.m_funcs["sh"] = std::bind(shell_coro, std::placeholders::_1, ShellEnv{});
+    M.setFunction("sh", std::bind(shell_coro, std::placeholders::_1, ShellEnv{}));
 
     System::Exec sh;
     sh.args = {"sh"};
@@ -270,7 +270,7 @@ SCENARIO("System: sh - multicommand")
 SCENARIO("System: sh - multicommand with newline")
 {
     System M;
-    M.m_funcs["sh"] = std::bind(shell_coro, std::placeholders::_1, ShellEnv{});
+    M.setFunction("sh", std::bind(shell_coro, std::placeholders::_1, ShellEnv{}));
 
     System::Exec sh;
     sh.args = {"sh"};
@@ -291,7 +291,7 @@ SCENARIO("System: sh - multicommand with newline")
 SCENARIO("System: sh - pipe")
 {
     System M;
-    M.m_funcs["sh"] = std::bind(shell_coro, std::placeholders::_1, ShellEnv{});
+    M.setFunction("sh", std::bind(shell_coro, std::placeholders::_1, ShellEnv{}));
     THEN("We can wr")
     {
         System::Exec sh;

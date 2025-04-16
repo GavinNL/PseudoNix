@@ -42,18 +42,18 @@ int main()
     // The to_std_cout function is provided for you
     // It simply takes whatever is in its input buffer
     // and writes it to std::cout
-    M.runPipeline(M.genPipeline({
+    M.spawnPipelineProcess({
             {"mycustomfunction", "alice"},
             {"to_std_cout"}
-    }));
-    M.runPipeline(M.genPipeline({
+    });
+    M.spawnPipelineProcess({
         {"mycustomfunction", "bob"},
         {"to_std_cout"}
-    }));
-    M.runPipeline(M.genPipeline({
+    });
+    M.spawnPipelineProcess({
         {"mycustomfunction", "charlie"},
         {"to_std_cout"}
-    }));
+    });
 
     // executeAllFor( ) will keep calling executeAll()
     // until the total time elapsed is more than the

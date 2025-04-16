@@ -47,7 +47,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
 
     // Get the input and output streams for the
     // shell process
-    auto [c_in, c_out] = ctrl->mini->getIO(sh_pid);
+    auto [c_in, c_out] = ctrl->system->getIO(sh_pid);
     assert(c_in == E.in);
     assert(c_out == E.out);
 
@@ -126,7 +126,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
 
         // Check if the sh function is still running
         // if not, quit.
-        if(!ctrl->mini->isRunning(sh_pid))
+        if(!ctrl->system->isRunning(sh_pid))
         {
             break;
         }

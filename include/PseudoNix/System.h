@@ -59,6 +59,9 @@ enum class AwaiterResult
     UNKNOWN_ERROR
 };
 
+template <typename T, typename... Ts>
+concept all_same = (std::same_as<T, Ts> && ...);
+
 struct System
 {
     using stream_type      = ReaderWriterStream_t<char>;
@@ -140,18 +143,21 @@ struct System
 
     struct ProcessControl
     {
+        friend struct System;
+
         std::vector<std::string>           args;
         std::shared_ptr<stream_type>       in;
         std::shared_ptr<stream_type>       out;
         std::map<std::string, std::string> env;
+        System * system = nullptr;
 
+    protected:
         pid_type    pid = 0xFFFFFFFF;
-
-        System *mini = nullptr;
+    public:
 
         void setSignalHandler(std::function<void(int)> f)
         {
-            mini->m_procs2.at(pid).signal = f;
+            system->m_procs2.at(pid).signal = f;
         }
 
         pid_type get_pid() const
@@ -162,7 +168,7 @@ struct System
         System::Awaiter await_yield()
         {
             return System::Awaiter{pid,
-                                   mini,
+                                   system,
                                    [x=false]() mutable {
                                        if(!x)
                                        {
@@ -181,8 +187,8 @@ struct System
         System::Awaiter await_finished(pid_type _pid)
         {
             return System::Awaiter{get_pid(),
-                                   mini,
-                                   [_pid,sys=mini]()
+                                   system,
+                                   [_pid,sys=system]()
                                    {
                                        return !sys->isRunning(_pid);
                                    }};
@@ -191,8 +197,8 @@ struct System
         System::Awaiter await_finished(std::vector<pid_type> pids)
         {
             return System::Awaiter{get_pid(),
-                                   mini,
-                                   [pids,sys=mini]()
+                                   system,
+                                   [pids,sys=system]()
                                    {
                                        for(auto p : pids)
                                        {
@@ -207,7 +213,7 @@ struct System
         System::Awaiter await_read_line(std::shared_ptr<System::stream_type> d, std::string & line)
         {
             return System::Awaiter{get_pid(),
-                                   mini,
+                                   system,
                                    [d, l = &line]()
                                    {
                                        char c;
@@ -233,7 +239,7 @@ struct System
         System::Awaiter await_has_data(std::shared_ptr<System::stream_type> d)
         {
             return System::Awaiter{get_pid(),
-                                   mini,
+                                   system,
                                    [d](){
                                        if(d->check() == System::stream_type::Result::EMPTY)
                                            return false;
@@ -245,7 +251,7 @@ struct System
         {
             auto T1 = std::chrono::system_clock::now() + time;
             return System::Awaiter{get_pid(),
-                                   mini,
+                                   system,
                                    [T=T1](){
                                        return std::chrono::system_clock::now() > T;
                                    }};
@@ -298,12 +304,12 @@ struct System
 
         pid_type executeSubProcess(System::Exec E)
         {
-            auto p = mini->runRawCommand(E, get_pid());
+            auto p = system->runRawCommand(E, get_pid());
             return p;
         }
-        std::vector<pid_type> executeSubPipeline(std::vector<Exec> E)
+        std::vector<pid_type> executeSubProcess(std::vector<Exec> E)
         {
-            auto pids = mini->runPipeline(E, get_pid());
+            auto pids = system->runPipeline(E, get_pid());
             return pids;
         }
 
@@ -338,69 +344,20 @@ struct System
         }
     };
 
-
-
-    static Exec parseArguments(std::vector<std::string> args)
-    {
-        Exec e;
-        e.args = args;
-        // cycle through the arguments and search for the first
-        // element that does not have the following pattern:
-        //
-        // VARNAME=VARVALUE
-        //
-        // As the patterns are found, remove them and place
-        // them in the environment map
-        auto it = std::find_if(e.args.begin(), e.args.end(), [&e](auto & arg)
-                               {
-                                   auto [var,val] = splitVar(arg);
-                                   if(!var.empty())
-                                   {
-                                       e.env[std::string(var)] = val;
-                                       return false;
-                                   }
-                                   return true;
-                               });
-        e.args.erase(e.args.begin(), it);
-
-        return e;
-    }
-
-    /**
-     * @brief genPipeline
-     * @param array_of_args
-     * @return
-     *
-     * Given a vector of argument lists, generte a vector of exec objects
-     * where one cmd is piped into the next
-     *
-     */
-    static std::vector<Exec> genPipeline( std::vector<std::vector<std::string> > array_of_args)
-    {
-        std::vector<Exec> out;
-
-        for(size_t i=0;i<array_of_args.size();i++)
-        {
-            out.push_back(parseArguments(array_of_args[i]));
-            out.back().out = make_stream();
-        }
-        for(size_t i=1;i<out.size();i++)
-        {
-            out[i].in = out[i-1].out;
-        }
-        return out;
-    }
-
     using e_type = std::shared_ptr<ProcessControl>;
     using function_type    = std::function< task_type(e_type)>;
 
-    void clearFunction(std::string name)
+    void removeFunction(std::string name)
     {
         m_funcs.erase(name);
     }
     void setFunction(std::string name, std::function< task_type(e_type) > _f)
     {
         m_funcs[name] = _f;
+    }
+    void removeAllFunctions()
+    {
+        m_funcs.clear();
     }
 
 
@@ -427,6 +384,90 @@ struct System
         setDefaultFunctions();
     }
 
+
+    /**
+     * @brief spawnProcess
+     * @param args
+     * @return
+     *
+     * Spawn a process into the system and return the
+     * pid that was generated
+     *
+     * auto pid = system.spawnProcess({"echo", "hello", "world"});
+     *
+     * You can set environemnt variables for the process using:
+     *
+     * auto pid = system.spawnProcess({"VAR=VALUE", "echo", "hello", "world"});
+     */
+    pid_type spawnProcess(std::vector<std::string> args)
+    {
+        return runRawCommand(parseArguments(args));
+    }
+
+    /**
+     * @brief spawnPipelineProcess
+     * @param args
+     * @return
+     *
+     * Run multiple processes by piping the output of one process into the input
+     * of another. Returns a vector of PIDs
+     *
+     * The linux equivelant of: "echo hello world | rev"
+     *
+     * auto pids = spawnPipelineProcess({
+     *      {"echo", "hello", "world"},
+     *      {"rev"}
+     * });
+     */
+    std::vector<pid_type> spawnPipelineProcess(std::vector<std::vector<std::string>> args)
+    {
+        return runPipeline(genPipeline(args));
+    }
+
+    /**
+     * @brief interrupt
+     * @param pid
+     * @return
+     *
+     * Send an interrupt signal to the
+     * process. Unless your process has created
+     * custom behaviour for interrupts. It will
+     * exit the process.
+     *
+     * The process is not immediately interrupted.
+     * The coroutine will be interrupted on its
+     * next iteration.
+     */
+    bool interrupt(pid_type pid)
+    {
+        return signal(pid, sig_interrupt);
+    }
+
+    /**
+     * @brief kill
+     * @param pid
+     * @return
+     *
+     * Forcefully kill the running processs. The
+     * process's output streams will be closed and
+     * its coroutine will be removed from the scheduler.
+     * Your process will not be able to clean up any
+     * resources.
+     *
+     * Killing the process does not happen immediately
+     * the process will be killed on the next iteration
+     * of the scheduler.
+     */
+    bool kill(pid_type pid)
+    {
+        if(isRunning(pid))
+        {
+            auto & proc = m_procs2.at(pid);
+            proc.force_terminate = true;
+            return true;
+        }
+        return false;
+    }
 
     /**
      * @brief runRawCommand
@@ -499,8 +540,29 @@ struct System
         return pid;
     }
 
+    std::vector<pid_type> runPipeline(std::vector<Exec> E, pid_type parent = 0xFFFFFFFF)
+    {
+        if(!E.front().in)
+            E.front().in = make_stream();
+        if(!E.back().out)
+            E.back().out = make_stream();
+
+        for(size_t i=0;i<E.size()-1;i++)
+        {
+            assert(E[i].out == E[i+1].in);
+        }
+
+        std::vector<pid_type> out;
+        for(auto & e  : E)
+        {
+            out.push_back(runRawCommand(e,parent));
+        }
+        return out;
+    }
+
     // register a task as a process by giving it a PID
     // and placing it in the scheduler to be run
+    // This is an internal function and shouldn't be used
     //
     pid_type registerProcess(task_type && t, e_type arg, pid_type parent = 0xFFFFFFFF)
     {
@@ -512,7 +574,7 @@ struct System
 
         _t.parent = parent;
         arg->pid = _pid;
-        arg->mini = this;
+        arg->system = this;
 
         if(parent != 0xFFFFFFFF)
         {
@@ -543,41 +605,6 @@ struct System
     }
 
 
-    std::vector<pid_type> runPipeline(std::vector<Exec> E, pid_type parent = 0xFFFFFFFF)
-    {
-        if(!E.front().in)
-            E.front().in = make_stream();
-        if(!E.back().out)
-            E.back().out = make_stream();
-
-        for(size_t i=0;i<E.size()-1;i++)
-        {
-            assert(E[i].out == E[i+1].in);
-        }
-
-        std::vector<pid_type> out;
-        for(auto & e  : E)
-        {
-            out.push_back(runRawCommand(e,parent));
-        }
-        return out;
-    }
-
-    /**
-     * @brief setStdIn
-     * @param pid
-     * @param stream
-     * @return
-     *
-     * Sets the standard input of a PID to a specific stream
-     */
-    bool setStdIn(pid_type pid, std::shared_ptr<stream_type> stream)
-    {
-        auto it = m_procs2.find(pid);
-        if(it == m_procs2.end()) return false;
-        it->second.control->in = stream;
-        return true;
-    }
 
     /**
      * @brief isRunning
@@ -604,6 +631,24 @@ struct System
     }
 
 
+    /**
+     * @brief signal
+     * @param pid
+     * @param sigtype
+     * @return
+     *
+     * Sends a given signal to the pid.
+     * The signal can be any int type, but we're
+     * using 2 for interrupts, and 15 of Terminate
+     * to be in consistant with linux.
+     *
+     * Your process can set a custom signal handler
+     * to be called. The default signal handler
+     * will signal all child processes
+     *
+     * When you signal a process, it will stay
+     * in the signaled state
+     */
     bool signal(pid_type pid, int sigtype)
     {
         if(isRunning(pid))
@@ -622,16 +667,13 @@ struct System
         return false;
     }
 
-    AwaiterResult getSignal(pid_type pid)
-    {
-        if(isRunning(pid))
-        {
-            auto & proc = m_procs2.at(pid);
-            return static_cast<AwaiterResult>(proc.lastSignal);
-        }
-        return AwaiterResult::UNKNOWN_ERROR;
-    }
-
+    /**
+     * @brief clearSignal
+     * @param pid
+     *
+     * Clear the current signal. You can use this
+     * if you are defining a custom signal handler
+     */
     void clearSignal(pid_type pid)
     {
         if(isRunning(pid))
@@ -639,27 +681,6 @@ struct System
             auto & proc = m_procs2.at(pid);
             proc.lastSignal = 0;
         }
-    }
-    /**
-     * @brief kill
-     * @param pid
-     * @return
-     *
-     * Forcefully kill the running processs. The
-     * process's output streams will be closed and
-     * its coroutine will be removed from the scheduler.
-     * Your process will not be able to clean up any
-     * resources.
-     */
-    bool kill(pid_type pid)
-    {
-        if(isRunning(pid))
-        {
-            auto & proc = m_procs2.at(pid);
-            proc.force_terminate = true;
-            return true;
-        }
-        return false;
     }
 
     /**
@@ -786,29 +807,43 @@ struct System
         return m_procs2.size();
     }
 
+    /**
+     * @brief executeAllFor
+     * @param d
+     * @param maxIterations
+     * @return
+     *
+     * Continuiously execute all processes in the scheduler
+     * until the desired duration has been reached or the maxIterations
+     * has been run.
+     */
     size_t executeAllFor(std::chrono::nanoseconds d, size_t maxIterations)
     {
-        auto t0 = std::chrono::high_resolution_clock::now();
+        auto T1 = std::chrono::high_resolution_clock::now()+d;
         size_t ret=0;
         size_t i=0;
         while(true)
         {
             ret = executeAll();
-            if(std::chrono::high_resolution_clock::now()-t0 > d || i++ > maxIterations)
+            if(std::chrono::high_resolution_clock::now() > T1 || i++ > maxIterations)
                 break;
         }
         return ret;
     }
     /**
-     * @brief processExitCode
+     * @brief getProcessExitCode
      * @param p
      * @return
      *
      * Get a pointer to the exit code for the pid. This value
      * will be set to -1 if the process has not completed
-     * Or will be nullptr if the process doesn't exist
+     * Or will be nullptr if the process doesn't exist.
+     *
+     * auto p = sys.spawnProcess({"sleep", "10"});
+     * auto _exit = sys.getProcessExitCode(p);
+     *
      */
-    std::shared_ptr<return_code_type> processExitCode(pid_type p) const
+    std::shared_ptr<return_code_type> getProcessExitCode(pid_type p) const
     {
         if(auto it = m_procs2.find(p); it!=m_procs2.end())
         {
@@ -817,10 +852,88 @@ struct System
         return nullptr;
     }
 
-    //std::function< std::future<int>(task_type&&) > m_scheduler;
-    std::function< void(Exec&) >                 m_preExec;
-    std::function< void(Exec&) >                 m_postExec;
+    /**
+     * @brief getProcessControl
+     * @param pid
+     * @return
+     *
+     * Returns the process control for a specific PID
+     */
+    std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)
+    {
+        return m_procs2.at(pid).control;
+    }
 
+
+    /**
+     * @brief parseArguments
+     * @param args
+     * @return
+     *
+     * Given a list of arguments: eg {"echo", "hello", "world"}
+     *
+     * Return an Exec object which can be inserted into the
+     * the System to be executed concurrently.
+     *
+     * Environment variables can be by set for the command
+     * by adding them before the command to run
+     *
+     * {"USER=BOB", "PASSWORD=hello", "cmd", "arg1"}
+     *
+     */
+    static Exec parseArguments(std::vector<std::string> args)
+    {
+        Exec e;
+        e.args = args;
+        // cycle through the arguments and search for the first
+        // element that does not have the following pattern:
+        //
+        // VARNAME=VARVALUE
+        //
+        // As the patterns are found, remove them and place
+        // them in the environment map
+        auto it = std::find_if(e.args.begin(), e.args.end(), [&e](auto & arg)
+                               {
+                                   auto [var,val] = splitVar(arg);
+                                   if(!var.empty())
+                                   {
+                                       e.env[std::string(var)] = val;
+                                       return false;
+                                   }
+                                   return true;
+                               });
+        e.args.erase(e.args.begin(), it);
+
+        return e;
+    }
+
+    /**
+     * @brief genPipeline
+     * @param array_of_args
+     * @return
+     *
+     * Given a vector of argument lists, generte a vector of exec objects
+     * where one cmd is piped into the next
+     *
+     */
+    static std::vector<Exec> genPipeline( std::vector<std::vector<std::string> > array_of_args)
+    {
+        std::vector<Exec> out;
+
+        for(size_t i=0;i<array_of_args.size();i++)
+        {
+            out.push_back(parseArguments(array_of_args[i]));
+            out.back().out = make_stream();
+        }
+        for(size_t i=1;i<out.size();i++)
+        {
+            out[i].in = out[i-1].out;
+        }
+        return out;
+    }
+
+
+    std::function< void(Exec&) >                 m_preExec;
 
     struct Process
     {
@@ -843,13 +956,10 @@ struct System
         std::vector<pid_type>           child_processes = {};
     };
 
-    std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)
-    {
-        return m_procs2.at(pid).control;
-    }
+
+protected:
     std::map<std::string, std::function< task_type(e_type) >> m_funcs;
     std::map<uint32_t, Process > m_procs2;
-protected:
 
     pid_type _pid_count=1;
 
@@ -866,7 +976,7 @@ protected:
 #define HANDLE_AWAIT_TERM(returned_signal, CTRL)\
         switch(returned_signal)\
             {\
-                case PseudoNix::AwaiterResult::SIG_INT:   CTRL->mini->clearSignal(CTRL->get_pid()); break; \
+                case PseudoNix::AwaiterResult::SIG_INT:   CTRL->system->clearSignal(CTRL->get_pid()); break; \
                 case PseudoNix::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
                     default: break;\
             }
@@ -885,7 +995,7 @@ protected:
         {
             auto & arg = *ctrl;
             arg << "List of commands:\n\n";
-            for(auto & f : ctrl->mini->m_funcs)
+            for(auto & f : ctrl->system->m_funcs)
             {
                 arg << f.first << '\n';
             }
@@ -1008,7 +1118,7 @@ protected:
         m_funcs["ps"] = [](e_type ctrl) -> task_type
         {
             auto & args = *ctrl;
-            auto & M = *args.mini;
+            auto & M = *args.system;
 
             args << std::format("PID   CMD\n");
             for(auto & [pid, P] : M.m_procs2)
@@ -1036,7 +1146,7 @@ protected:
                 co_return 1;
             }
             (void)ptr;
-            auto & M = *args.mini;
+            auto & M = *args.system;
             if(!M.kill(pid))
             {
                 args << std::format("Could not find process ID: {}\n", pid);
@@ -1066,7 +1176,7 @@ protected:
                     co_return 1;
                 }
             }
-            auto & M = *args.mini;
+            auto & M = *args.system;
             if(!M.signal(pid, sig))
             {
                 args << std::format("Could not find process ID: {}\n", pid);
@@ -1077,7 +1187,7 @@ protected:
         m_funcs["io_info"] = [](e_type ctrl) -> task_type
         {
             auto & args = *ctrl;
-            for(auto & [pid, proc] : ctrl->mini->m_procs2)
+            for(auto & [pid, proc] : ctrl->system->m_procs2)
             {
                 args << std::format("{}[{}]->{}->{}[{}]\n", static_cast<void*>(proc.control->in.get()), proc.control->in.use_count(), proc.control->args[0], static_cast<void*>(proc.control->out.get()), proc.control->out.use_count() );
             }

@@ -34,9 +34,9 @@ int main()
 
     // run 3 instances of the coroutine using different input
     // arguments
-    M.runRawCommand(System::parseArguments({"mycustomfunction", "alice"}));
-    M.runRawCommand(System::parseArguments({"mycustomfunction", "bob"}));
-    M.runRawCommand(System::parseArguments({"mycustomfunction", "charlie"}));
+    M.spawnProcess({"mycustomfunction", "alice"});
+    M.spawnProcess({"mycustomfunction", "bob"});
+    M.spawnProcess({"mycustomfunction", "charlie"});
 
 
     // executeAllFor( ) will keep calling executeAll()

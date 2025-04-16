@@ -40,7 +40,7 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
     std::string _cmdline;
     std::string output;
 
-    auto & m_mini = *ctrl->mini;
+    auto & m_mini = *ctrl->system;
 
     std::vector<std::string> args(ctrl->args.begin()+1, ctrl->args.end());
     if(args.empty())
@@ -116,7 +116,7 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
         }
         //--------------------------------------------------------------
 
-        if(exit_if_subprocess_exits && !ctrl->mini->isRunning(sh_pid)) break;
+        if(exit_if_subprocess_exits && !ctrl->system->isRunning(sh_pid)) break;
 
         HANDLE_AWAIT_TERM(co_await ctrl->await_yield(), ctrl);
 
