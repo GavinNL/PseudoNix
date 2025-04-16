@@ -101,7 +101,7 @@ SCENARIO("System: Run a single command manually")
     // Make sure we close the input stream otherwise
     // Otherwise if the command reads from input, it will
     // block until data is available or the stream is closed
-    exec.in->close();
+    exec.in->set_eof();
 
     //=======================================================
     // Execute the command
@@ -117,6 +117,8 @@ SCENARIO("System: Run a single command manually")
     REQUIRE(exec.out->str() == "hello world");
 }
 
+
+
 SCENARIO("System: Run a single command manually read from input")
 {
     System M;
@@ -127,16 +129,18 @@ SCENARIO("System: Run a single command manually read from input")
     // add our command manually
     M.m_funcs["echo_from_input"] = [](System::e_type control) -> System::task_type {
         auto & args = *control;
+        char c=0;
         while (true)
         {
-            if (args.in->eof())
-                break;
-
-            if (!args.in->has_data())
+            if(System::stream_type::Result::SUCCESS == args.in->get(&c))
+            {
+                args.out->put(c);
                 co_await std::suspend_always{};
-
-            auto c = args.in->get();
-            args.out->put(c);
+            }
+            else
+            {
+                break;
+            }
         }
 
         co_return 0;
@@ -155,7 +159,7 @@ SCENARIO("System: Run a single command manually read from input")
     // Make sure we close the input stream otherwise
     // Otherwise if the command reads from input, it will
     // block until data is available or the stream is closed
-    exec.in->close();
+    exec.in->set_eof();
 
     //=======================================================
     // This returns a coroutine that needs to be executed in
@@ -174,6 +178,7 @@ SCENARIO("System: Run a single command manually read from input")
 }
 
 
+
 SCENARIO("System: Execute two commands and have one piped into the other")
 {
     System M;
@@ -190,7 +195,7 @@ SCENARIO("System: Execute two commands and have one piped into the other")
     exec[0].args = {"echo", "Hello", "world"};
     exec[0].in = System::make_stream();
     exec[0].out = System::make_stream();
-    exec[0].in->close(); // only close the first input straem
+    exec[0].in->set_eof(); // only close the first input straem
 
     exec[1].args = {"rev"};
     exec[1].in = exec[0].out; // make the output of exec[0] the input of exec[1]
@@ -213,7 +218,7 @@ SCENARIO("System: Execute two commands and have one piped into the other")
     // run this until its finished
     while (M.executeAll());
 
-    REQUIRE(exec[1].out->str() == "dlrow olleH\n");
+    REQUIRE(exec[1].out->str() == "dlrow olleH\n\n");
 }
 
 
@@ -231,13 +236,14 @@ SCENARIO("System: sh")
     sh.out = std::make_shared<System::stream_type>();
 
     *sh.in << "echo hello world;";
-    sh.in->close();
+    sh.in->set_eof();
     M.runRawCommand(sh);
 
     while(M.executeAll());
 
-    REQUIRE(sh.out->str() == "hello world\n");
+    REQUIRE(sh.out->str() == "hello world\nexit");
 }
+
 
 
 SCENARIO("System: sh - multicommand")
@@ -251,13 +257,15 @@ SCENARIO("System: sh - multicommand")
     sh.out = std::make_shared<System::stream_type>();
 
     *sh.in << "echo hello ; sleep 2.0 ; echo world;";
-    sh.in->close();
+    sh.in->set_eof();
 
     REQUIRE(0xFFFFFFFF != M.runRawCommand(sh) );
     while(M.executeAll());
 
-    REQUIRE(sh.out->str() == "hello\nworld\n");
+    REQUIRE(sh.out->str() == "hello\nworld\nexit");
 }
+
+
 
 SCENARIO("System: sh - multicommand with newline")
 {
@@ -270,13 +278,15 @@ SCENARIO("System: sh - multicommand with newline")
     sh.out = std::make_shared<System::stream_type>();
 
     *sh.in << "echo hello \n sleep 2.0 \n echo world\n";
-    sh.in->close();
+    sh.in->set_eof();
 
     REQUIRE(0xFFFFFFFF != M.runRawCommand(sh) );
     while(M.executeAll());
 
-    REQUIRE(sh.out->str() == "hello\nworld\n");
+    REQUIRE(sh.out->str() == "hello\nworld\nexit");
 }
+
+
 
 SCENARIO("System: sh - pipe")
 {
@@ -289,12 +299,12 @@ SCENARIO("System: sh - pipe")
         sh.in  = std::make_shared<System::stream_type>();
         sh.out = std::make_shared<System::stream_type>();
         *sh.in << "echo hello | wc && echo goodbye;";
-        sh.in->close();
+        sh.in->set_eof();
 
         REQUIRE(0xFFFFFFFF != M.runRawCommand(sh) );
         while(M.executeAll());
 
-        REQUIRE(sh.out->str() == "6\ngoodbye\n");
+        REQUIRE(sh.out->str() == "6\ngoodbye\nexit");
         //sh.out->toStream(std::cout);
         //std::cout << std::endl;
     }

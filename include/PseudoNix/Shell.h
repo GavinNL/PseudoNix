@@ -121,107 +121,6 @@ struct Tokenizer3
 };
 
 
-struct Tokenizer2
-{
-    std::string_view input;
-    std::string _next;
-    size_t pos = 0;
-
-    Tokenizer2(std::string_view in) : input(in)
-    {
-    }
-
-    static std::vector<std::string> to_vector(std::string_view _out)
-    {
-        std::vector<std::string> tokens;
-        Tokenizer2 T2(_out);
-        auto t2=T2.next();
-        while(!t2.empty())
-        {
-            tokens.push_back(t2);
-            t2 = T2.next();
-        }
-        return tokens;
-    }
-
-    static std::pair<std::string_view, std::string_view> splitVar(std::string_view var_def)
-    {
-        auto i = var_def.find_first_of('=');
-        if(i!=std::string::npos)
-        {
-            return {{&var_def[0],i}, {&var_def[i+1], var_def.size()-i-1}};
-        }
-        return {};
-    };
-
-    std::string next()
-    {
-        std::string current;
-        bool quoted = false;
-
-        while(pos < input.size())
-        {
-            char c = input[pos];
-            auto sub = input.substr(pos, 2);
-
-            if(!quoted)
-            {
-                if(sub == "&&" || sub == "||" || sub == "$(")
-                {
-                    if(!current.empty())
-                        return current;
-                    pos+=2;
-                    return std::string(sub);
-                }
-                else if(c==')' || c == '|' || c=='(')
-                {
-                    if(!current.empty())
-                        return current;
-                    pos+=1;
-                    return std::string(1,c);
-                }
-                else if( c == '"')
-                {
-                    quoted = !quoted;
-                    pos += 1;
-                }
-                else
-                {
-                    if( !std::isspace(c) )
-                    {
-                        current += c;
-                        pos += 1;
-                    }
-                    else
-                    {
-                        if(!current.empty())
-                            return current;
-                        else
-                            pos += 1;
-                    }
-                }
-            }
-            else
-            {
-                if( c == '"')
-                    quoted = !quoted;
-                else
-                {
-                    current += c;
-                }
-                pos += 1;
-            }
-
-        }
-        if(!current.empty())
-        {
-            auto s = std::move(current);
-            return s;
-        }
-        return {};
-    }
-
-};
 
 struct ShellEnv;
 inline std::map<uint32_t, ShellEnv> _shells;
@@ -280,7 +179,7 @@ struct ShellEnv
             // used to export variables
             for(size_t i=1;i<ex->args.size();i++)
             {
-                auto [var,val] = Tokenizer2::splitVar(ex->args[i]);
+                auto [var,val] = System::splitVar(ex->args[i]);
                 if(!var.empty() && !val.empty())
                 {
                     // if the arg looked like: VAR=VAL
