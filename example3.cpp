@@ -3,24 +3,7 @@
 
 #include <PseudoNix/MiniLinux.h>
 #include <PseudoNix/Launcher.h>
-
-PseudoNix::System::task_type my_custom_function(PseudoNix::System::e_type ctrl)
-{
-    auto sleep_time = std::chrono::milliseconds(250);
-    for(int i=0;i<10;i++)
-    {
-        // Unlike in Example1, where we wrote directly
-        // to std::cout, we are going to write
-        // to the Output Stream of the process
-        //
-        // The output stream is not connected to anything
-        *ctrl << std::format("[{}] Counter: {}\n", ctrl->args[1], i);
-
-        co_await ctrl->await_yield_for(sleep_time);
-    }
-    std::cerr << "Exit" << std::endl;
-    co_return 0;
-}
+#include <PseudoNix/shell2.h>
 
 
 int main()
@@ -34,7 +17,7 @@ int main()
 
     // add our coroutine to the list of functions to be
     // called
-    M.setFunction("mycustomfunction", my_custom_function);
+    M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, ShellEnv{}));
     M.setFunction("launcher", PseudoNix::launcher_coro);
 
     // We can manually create a pipeline. This will
@@ -45,7 +28,7 @@ int main()
     // It simply takes whatever is in its input buffer
     // and writes it to std::cout
     M.runPipeline(M.genPipeline({
-            {"launcher", "mycustomfunction", "alice"}
+            {"launcher", "sh"}
     }));
 
     // executeAllFor( ) will keep calling executeAll()

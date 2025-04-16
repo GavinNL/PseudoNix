@@ -50,6 +50,15 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
 #define SUSPEND_SIG_TERM     SUSPEND_POINT
 #define SUSPEND_SIG_INT_TERM SUSPEND_SIGTERM
 
+enum class AwaiterResult
+{
+    SUCCESS = 0,
+    NO_ERROR = 0,
+    SIG_INT = sig_interrupt,
+    SIG_TERM = sig_terminate,
+    INPUT_STREAM_CLOSED
+};
+
 struct System
 {
     using stream_type      = ReaderWriterStream_t<char>;
@@ -68,15 +77,6 @@ struct System
         Exec(std::vector<std::string> const &_args = {}, std::map<std::string, std::string> const & _env = {}) : args(_args), env(_env)
         {
         }
-    };
-
-    enum class AwaiterResult
-    {
-        SUCCESS = 0,
-        NO_ERROR = 0,
-        SIG_INT = sig_interrupt,
-        SIG_TERM = sig_terminate,
-        INPUT_STREAM_CLOSED
     };
 
     class Awaiter {
@@ -210,33 +210,23 @@ struct System
                                    mini,
                                    [d, l = &line]()
                                    {
-                                       if(d->closed())
-                                           return true;
-                                       if(!d->has_data())
+                                       char c;
+                                       while(true)
                                        {
-                                           //std::cerr << "No data: false" << std::endl;
-                                           return false;
-                                       }
-                                       while(!d->eof())
-                                       {
-                                           auto c = d->get();
-                                           if(c == '\n')
+                                           auto r = d->get(&c);
+                                           switch(r)
+                                           {
+                                           case  System::stream_type::Result::EMPTY:
+                                               return false;
+                                           case  System::stream_type::Result::END_OF_STREAM:
                                                return true;
-                                           l->push_back(c);
-                                           return false;
+                                           case  System::stream_type::Result::SUCCESS:
+                                               l->push_back(c);
+                                               if(l->back() == '\n') { l->pop_back(); return true;};
+                                               break;
+                                           }
                                        }
-                                       return true;
-                                   }};
-        }
-
-        System::Awaiter await_data(std::shared_ptr<System::stream_type> d)
-        {
-            return System::Awaiter{get_pid(),
-                                   mini,
-                                   [d](){
-                                       if(d->closed())
-                                           return true;
-                                       return d->has_data();
+                                       return false;
                                    }};
         }
 
@@ -867,16 +857,16 @@ protected:
 #define HANDLE_AWAIT_INT_TERM(returned_signal, CTRL)\
         switch(returned_signal)\
             {\
-                case PseudoNix::System::AwaiterResult::SIG_INT:  { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
-                case PseudoNix::System::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
+                case PseudoNix::AwaiterResult::SIG_INT:  { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
+                case PseudoNix::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
                     default: break;\
             }
 
 #define HANDLE_AWAIT_TERM(returned_signal, CTRL)\
         switch(returned_signal)\
             {\
-                case PseudoNix::System::AwaiterResult::SIG_INT:   CTRL->mini->clearSignal(CTRL->get_pid()); break; \
-                case PseudoNix::System::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
+                case PseudoNix::AwaiterResult::SIG_INT:   CTRL->mini->clearSignal(CTRL->get_pid()); break; \
+                case PseudoNix::AwaiterResult::SIG_TERM: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
                     default: break;\
             }
 

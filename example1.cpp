@@ -11,7 +11,7 @@ PseudoNix::System::task_type my_custom_function(PseudoNix::System::e_type ctrl)
     {
         std::cout << std::format("[{}] Counter: {}", ctrl->args[1], i) << std::endl;
 
-        // yeild some time back to the scheduler
+        // yield some time back to the scheduler
         // so that other processes can execute
         co_await ctrl->await_yield_for(sleep_time);
     }

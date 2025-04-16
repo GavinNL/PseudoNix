@@ -1,39 +1,34 @@
 # PseudoNix
 
-PseudoNix is an embeddable, Linux-like environment you can integrate directly into your project to provide an interactive shell interface. 
+PseudoNix is an embeddable, Linux-like environment you can integrate directly into your project to provide
+concurrent process like behaviour.
+
+## Special Shell Features
+
+Psuedonix provides a default **shell** process that can be used as a starting point to create interactivity. 
+This shell behaves behaves similar to bash, allowing many features such as:
+
 It supports custom command registration and mimics familiar shell behavior including environment variables, 
-command substitution, logical operators (&&, ||), and output redirection (|). 
+command substitution, logical operators `&&, ||`, and output redirection `cmd1 | cmd2`. 
 Perfect for building scriptable, extensible CLI experiences right into your application.
 
-Although PseudoNix can be used for command line applications, 
-it was intended to be used for interactive applications, like games, to provide a debugging interface for 
-your system.
-
-PseudoNix provides a default `shell` that behaves similar to bash. 
-Through this interactive shell, you have access to a number of bash-like features:
-
-* Execute a process: 
-  * `echo hello world`
-* Execute a compound process: 
-  * `sleep 5 && echo hello world`
-  * `true && echo true || echo false`
-  * `false && echo true || echo false`
-* Run a process with additional variables: 
-  * `VAR=value env`
-* Set variables for the shell 
-  * `VAR=VALUE`
-* Use variables in the shell:
-  * `echo hello ${VAR}`
-* Export variables to child processes: 
-  * `export VAR`
-* Execute a process in the background: 
-  * `sleep 10 && echo hello world &`
-* Use Command Substituion
-  * `echo Running for: $(uptime) ms`
-
-
-
 PseudoNix allows you to register your own coroutine functions so that they can be called within the system.
+
+ * Logical commands: `true && echo true || echo false`
+ * Setting environment variables: `VAR=VALUE`
+ * Variable substitution: `echo hello ${VAR}`
+ * Passing variables to commands: `VAR=value env`
+ * Executing in the background: `sleep 10 && echo hello world &`
+ * Command substitution: `echo Running for: $(uptime) ms`
+ * Call your own coroutine functions
+
+
+
+## Dependendices
+
+* C++20 Compiler
+* [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) by cameron314 (available on Conan)
+
 
 ## Compiling the Examples
 
@@ -50,34 +45,50 @@ cmake --preset conan-release .
 
 ```
 
-## Usage
+## How It Works
 
-This is a slightly stripped down version of the `main.cpp` example.
+
+## Examples
+
+### Example 1: Basic Usage
 
 ```c++
 #include <PseudoNix/MiniLinux.h>
-#include <PseudoNix/shell2.h>
-#include <PseudoNix/Launcher.h>
+
+
+PseudoNix::System::task_type my_custom_function(PseudoNix::System::e_type ctrl)
+{
+    auto sleep_time = std::chrono::milliseconds(250);
+    for(int i=0;i<10;i++)
+    {
+        std::cout << std::format("[{}] Counter: {}", ctrl->args[1], i) << std::endl;
+
+        // yield some time back to the scheduler
+        // so that other processes can execute
+        co_await ctrl->await_yield_for(sleep_time);
+    }
+    co_return 0;
+}
 
 int main()
 {
-    // Create a default PseudoNix system which comes
-    // with a few standard functions
-    PseudoNix::System M;
+    using namespace PseudoNix;
+    // The first thing we need to do is create
+    // the instance of the mini linux system
+    //
+    System M;
+    // add our coroutine to the list of functions to be
+    // called
+    M.setFunction("mycustomfunction", my_custom_function);
+    // run 3 instances of the coroutine using different input
+    // arguments
+    M.runRawCommand(System::parseArguments({"mycustomfunction", "alice"}));
+    M.runRawCommand(System::parseArguments({"mycustomfunction", "bob"}));
+    M.runRawCommand(System::parseArguments({"mycustomfunction", "charlie"}));
 
-    // Set the default shell. See main.cpp for
-    // a more detailed explaination
-    M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
-
-    // Set the launcher function which reads data from
-    // standard input and redirects it to a sub process
-    M.setFunction("launcher", PseudoNix::launcher_coro);
-
-    // Execute the launcher proces
-    auto pid = M.runRawCommand(System::parseArguments({"launcher", "sh"}));
-
-    // Execute all the processes
-    // keep looping until all processes have completed
+    // executeAllFor( ) will keep calling executeAll()
+    // until the total time elapsed is more than the
+    // given input value
     while(M.executeAllFor(std::chrono::milliseconds(1), 10))
     {
         // sleep for 1 millisecond so we're not
@@ -86,12 +97,102 @@ int main()
     }
 
     return 0;
-
 }
 
 ```
 
-## Default Function Processes
+### Example 2: Using The Shell from the Command Line
+
+This is a slightly stripped down version of the `main.cpp` example.
+Unline in Example 1, where we wrote directly to std::cout, we are instead 
+going to write to the output stream of the process.
+
+The output stream will be piped into another process which will write the 
+data to std::cout.
+
+```c++
+#include <PseudoNix/MiniLinux.h>
+
+PseudoNix::System::task_type my_custom_function(PseudoNix::System::e_type ctrl)
+{
+    auto sleep_time = std::chrono::milliseconds(250);
+    for(int i=0;i<10;i++)
+    {
+        // write to the process's output stream
+        *ctrl->out << std::format("[{}] Counter: {}\n", ctrl->args[1], i);
+        co_await ctrl->await_yield_for(sleep_time);
+    }
+    co_return 0;
+}
+
+int main()
+{
+    PseudoNix::System M;
+
+    // add our coroutine to the list of functions to be
+    // called
+    M.setFunction("mycustomfunction", my_custom_function);
+
+    // We can manually create a pipeline. This will
+    // pipe the output of one function into the input of another
+    // just like in linux:  mycustomfunction | to_std_cout
+    //
+    // The to_std_cout function is provided for you
+    // It simply takes whatever is in its input buffer
+    // and writes it to std::cout
+    M.runPipeline(M.genPipeline({
+            {"mycustomfunction", "alice"},
+            {"to_std_cout"}
+    }));
+
+    while(M.executeAllFor(std::chrono::milliseconds(1), 10))
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    return 0;
+}
+```
+
+
+## Example 3: Using the Shell Process
+
+A `shell` process, similar to bash is provided for you. This shell process can be used to
+give you an actual command prompt entry into the PseudoNix system and let you launch commands.
+
+Additionally, if you are building a command line application, you will need the `launcher` process.
+The `launcher` reads data from std::cin, and pipes that data into a new process. It then takes std::cout 
+and writes that to std::cout. Without this, the shell will not be able to write anything to the 
+terminal window.
+
+```c++
+
+#include <PseudoNix/MiniLinux.h>
+#include <PseudoNix/Shell.h>
+#include <PseudoNix/Launcher.h>
+
+int main()
+{
+    PseudoNix::System M;
+
+    // register the shell function
+    M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
+    M.setFunction("launcher", PseudoNix::launcher_coro);
+
+    auto launcher_pid = M.runRawCommand(System::parseArguments({"launcher", "sh"}));
+
+    while(M.executeAllFor(std::chrono::milliseconds(1), 10))
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    return 0;
+}
+```
+
+### Default Function Processes
+
+Here is a list of commands that are provided by default
 
 | name     | Description                                                       |
 | -------- | ----------------------------------------------------------------- |
@@ -117,12 +218,10 @@ int main()
 ## Example Custom Function
 
 Here's an example of creating a simple guessing game within the PsuedoNix system. 
-Remember that all the process functions happen concurrently,  so the
-
- * All process functions happen concurrently, but on the main thread.
- * Long running processes will block your entire application
- * Make sure to use awaiters to yield the process flow to the next scheduled process
-
+Remember that **all process functions happen concurrently, but on a single thread**. 
+So to be able to run concurrently, processes that would normally block at a location,
+should use specific co-routine awaiter provided by the ProcessControl object.
+ 
 ```c++
 
 int main()
@@ -133,18 +232,18 @@ int main()
     {
         std::string input;
         uint32_t random_number = std::rand() % 100 + 1;
-        *ctrl->out << std::format("I have chosen a number between 1-100. Can you guess what it is?\n");
+        *ctrl << std::format("I have chosen a number between 1-100. Can you guess what it is?\n");
 
         while(true)
         {
             std::string line;
 
-            // HANDLE_AWAIT is a macro that looks at the return type of the
+            // HANDLE_AWAIT_INT_TERM is a macro that looks at the return type of the
             // Awaiter (a signal code), and co_returns the appropriate
-            // exit code.
+            // exit code. It will exit if the code is SIG_TERM or SIG_INT
             //
             // This is where Ctrl-C and Sig-kills are handled
-            HANDLE_AWAIT(co_await ctrl->await_read_line(ctrl->in.get(), line))
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in, line), ctrl)
 
             uint32_t guess = 0;
 
@@ -175,3 +274,79 @@ int main()
     });
 }
 ```
+
+## Process Control 
+
+The ProcessControl object is passed into your function as the input argument. 
+These are similar to any linux process.
+
+```c++
+M.setFunction("guess", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+{
+
+    ctrl->args; // vector of strings, your command line arguments
+    ctrl->in;  // the standard input stream
+    ctrl->out; // the standard output stream
+    ctrl->env; // the environment variables
+
+    co_return 0;
+});
+```
+
+## Coroutine Awaiters
+
+The Coroutine Awaiters are used to pause your process and yield the time to another process
+in the scheduler until some event has occured.
+
+The following is the simplest awaiter, which just pauses and waits until the scheduler
+resumes this process at a later time.
+
+```c++
+auto await_result = co_await ctrl->await_yield();
+```
+
+The awaiters return an `AwaitResult` enum which tells you what you should do.
+If it returns `AwaitResult::NO_ERROR`, then the awaiter returned properly.
+
+Other options are `AwaitResult::SIG_INT` and `AwaitResult::SIG_TERM`, which mean 
+the process was asked to interrupt itself (Ctrl+C in bash), or terminate itself (kill PID).
+
+In most cases, you would want to exit your process, unless you have some custom behaviour. 
+The `shell` and `launcher` have custom behaviour
+
+```c++
+switch(co_await ctrl->await_yield())
+{
+case AwaiterResult::SIG_INT:  { co_return 1;}
+case AwaiterResult::SIG_TERM: { co_return 1;}
+default: break;
+}
+```
+
+A macro has been created so that you can do this automatically. The following is a very simple 
+process that just prints out "hello world" continuously until you interrupt or kill the process
+
+```c++
+M.setFunction("hello", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+{
+    int i=0;
+    while(true)
+    {
+        *ctrl->out << std::format("Hello world: {}\n", i++);
+        HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
+    }
+
+    co_return 0;
+});
+```
+
+The following is a list of awaiters that can be used 
+
+| Awaiter                                   | Description
+| ----------------------------------------- |------------------------------------------ |
+| ctrl->await_yield()                       | Pauses until the next schedule            |
+| ctrl->await_yield_for(duration)           | Sleeps for a certain amount of time       |
+| ctrl->await_has_data(ctrl->in)            | Waits until there is data in the stream   |
+| ctrl->await_read_line(ctrl->in, line_str) | Waits until a line has been read          |
+| ctrl->await_finished(pid)                 | Waits until another process has completed |
+
