@@ -19,6 +19,15 @@ constexpr const int exit_terminated = 143;
 constexpr const int sig_interrupt  = 2;
 constexpr const int sig_terminate = 15;
 
+static std::pair<std::string_view, std::string_view> splitVar(std::string_view var_def)
+{
+    auto i = var_def.find_first_of('=');
+    if(i!=std::string::npos)
+    {
+        return {{&var_def[0],i}, {&var_def[i+1], var_def.size()-i-1}};
+    }
+    return {};
+};
 
 template <typename Container>
 std::string join(const Container& c, const std::string& delimiter = ", ") {
@@ -312,17 +321,6 @@ struct System
     {
         m_funcs.clear();
     }
-
-
-    static std::pair<std::string_view, std::string_view> splitVar(std::string_view var_def)
-    {
-        auto i = var_def.find_first_of('=');
-        if(i!=std::string::npos)
-        {
-            return {{&var_def[0],i}, {&var_def[i+1], var_def.size()-i-1}};
-        }
-        return {};
-    };
 
     static std::shared_ptr<stream_type> make_stream(std::string const& initial_data="")
     {
@@ -983,10 +981,8 @@ protected:
         m_funcs["echo"] = [](e_type ctrl) -> task_type
         {
             PSEUDONIX_PROC_START(ctrl);
-            for(size_t i=1;i<ARGS.size();i++)
-            {
-                OUT << std::format("{}{}", ARGS[i], (i==ARGS.size()-1 ? "\n" : " "));
-            }
+            OUT << std::format("{}", join(std::span(ARGS.begin()+1, ARGS.end()), " "));
+
             co_return 0;
         };
         m_funcs["yes"] = [](e_type ctrl) -> task_type

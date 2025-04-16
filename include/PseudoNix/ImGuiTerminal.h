@@ -119,16 +119,32 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
         HANDLE_AWAIT_TERM(co_await ctrl->await_yield(), ctrl);
 
         char c;
-        while(shell_stdout->get(&c) == ReaderWriterStream::Result::SUCCESS)
+        while(true)
         {
-            if(c == '\n')
+            auto s = shell_stdout->get(&c);
+            if(s == ReaderWriterStream::Result::SUCCESS)
+                output.push_back(c);
+            else if(s == ReaderWriterStream::Result::END_OF_STREAM)
             {
                 console.AddLog(output);
                 output.clear();
-            } else {
-                output+= c;
+                break;
+            }
+            else if(s == ReaderWriterStream::Result::EMPTY)
+            {
+                break;
             }
         }
+        //while(shell_stdout->get(&c) == ReaderWriterStream::Result::SUCCESS)
+        //{
+        //    if(c == '\n')
+        //    {
+        //        console.AddLog(output);
+        //        output.clear();
+        //    } else {
+        //        output+= c;
+        //    }
+        //}
     }
 
     co_return 0;

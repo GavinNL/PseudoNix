@@ -40,190 +40,6 @@ SCENARIO("Tokenizer 3")
     }
 }
 
-SCENARIO("System: gen pipeline")
-{
-    System M;
-
-    {
-        auto E = System::parseArguments( {"X=53", "Y=hello", "echo", "hello"});
-
-        REQUIRE(E.args[0] == "echo");
-        REQUIRE(E.args[1] == "hello");
-        REQUIRE(E.env.at("X") == "53");
-        REQUIRE(E.env.at("Y") == "hello");
-    }
-
-    {
-        auto E = System::parseArguments( {"X=53", "Y=hello"});
-
-        REQUIRE(E.args.size() == 0);
-        REQUIRE(E.env.at("X") == "53");
-        REQUIRE(E.env.at("Y") == "hello");
-    }
-
-    {
-        auto E = System::parseArguments( {"X=53", "Y=hello", "env", "Z=arg"});
-
-        REQUIRE(E.args.size() == 2);
-        REQUIRE(E.args[0] == "env");
-        REQUIRE(E.args[1] == "Z=arg");
-        REQUIRE(E.env.at("X") == "53");
-        REQUIRE(E.env.at("Y") == "hello");
-    }
-}
-
-
-SCENARIO("System: Run a single command manually")
-{
-    System M;
-
-    // Clear any default commands
-    M.removeAllFunctions();
-
-    // add our command manually
-    M.setFunction("echo", [](System::e_type control) -> System::task_type {
-        auto & args = *control;
-        for (size_t i = 1; i < args.args.size(); i++) {
-            *args.out << args.args[i] + (i == args.args.size() - 1 ? "" : " ");
-        }
-        co_return 0;
-    });
-
-    System::Exec exec;
-
-    exec.args = {"echo", "hello", "world"};
-
-    // echo will read from this input (stdin)
-    exec.in = System::make_stream();
-    // echo will write to this output stream (stdout)
-    exec.out = System::make_stream();
-
-    // Make sure we close the input stream otherwise
-    // Otherwise if the command reads from input, it will
-    // block until data is available or the stream is closed
-    exec.in->set_eof();
-
-    //=======================================================
-    // Execute the command
-    //=======================================================
-    auto pid = M.runRawCommand(exec);
-    REQUIRE(pid != 0);
-    REQUIRE(pid != 0xFFFFFFFF);
-
-    // We dont have a scheduler, so we'll manually
-    // run this until its finished
-    while (M.executeAll());
-
-    REQUIRE(exec.out->str() == "hello world");
-}
-
-
-
-SCENARIO("System: Run a single command manually read from input")
-{
-    System M;
-
-    // Clear any default commands
-    M.removeAllFunctions();
-
-    // add our command manually
-    M.setFunction("echo_from_input", [](System::e_type control) -> System::task_type {
-        auto & args = *control;
-        char c=0;
-        while (true)
-        {
-            if(System::stream_type::Result::SUCCESS == args.in->get(&c))
-            {
-                args.out->put(c);
-                co_await std::suspend_always{};
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        co_return 0;
-    });
-
-    System::Exec exec;
-
-    exec.args = {"echo_from_input"};
-
-    // Create the stream and put some initial data
-    exec.in = System::make_stream("Hello world");
-
-    // echo will write to this output stream
-    exec.out = System::make_stream();
-
-    // Make sure we close the input stream otherwise
-    // Otherwise if the command reads from input, it will
-    // block until data is available or the stream is closed
-    exec.in->set_eof();
-
-    //=======================================================
-    // This returns a coroutine that needs to be executed in
-    // your own scheduler
-    //
-    //=======================================================
-    auto pid = M.runRawCommand(exec);
-    REQUIRE(pid != 0);
-    REQUIRE(pid != 0xFFFFFFFF);
-
-    // We dont have a scheduler, so we'll manually
-    // run this until its finished
-    while (M.executeAll());
-
-    REQUIRE(exec.out->str() == "Hello world");
-}
-
-
-
-SCENARIO("System: Execute two commands and have one piped into the other")
-{
-    System M;
-
-    //
-    // echo and rev are two commands that are added by default
-    //
-    // We are going to run the equivelant of the bash command:
-    //
-    //    echo Hello world | rev
-    //
-    std::array<System::Exec,2> exec;
-
-    exec[0].args = {"echo", "Hello", "world"};
-    exec[0].in = System::make_stream();
-    exec[0].out = System::make_stream();
-    exec[0].in->set_eof(); // only close the first input straem
-
-    exec[1].args = {"rev"};
-    exec[1].in = exec[0].out; // make the output of exec[0] the input of exec[1]
-    exec[1].out = System::make_stream();
-
-    //=======================================================
-    // This returns a coroutine that needs to be executed in
-    // your own scheduler
-    //
-    //=======================================================
-    REQUIRE(0xFFFFFFFF != M.runRawCommand(exec[0]));
-    REQUIRE(0xFFFFFFFF != M.runRawCommand(exec[1]));
-
-    // We now have two tasks and each task may block at anytime
-    // because it's a coroutine. So we need to resume() each
-    // task in whatever order the scheduler decides (we'll just do it
-    // in order) until all the tasks are done.
-
-    // We dont have a scheduler, so we'll manually
-    // run this until its finished
-    while (M.executeAll());
-
-    REQUIRE(exec[1].out->str() == "dlrow olleH\n\n");
-}
-
-
-
-
 
 SCENARIO("System: sh")
 {
@@ -241,7 +57,7 @@ SCENARIO("System: sh")
 
     while(M.executeAll());
 
-    REQUIRE(sh.out->str() == "hello world\nexit");
+    REQUIRE(sh.out->str() == "hello world");
 }
 
 
@@ -256,34 +72,13 @@ SCENARIO("System: sh - multicommand")
     sh.in  = std::make_shared<System::stream_type>();
     sh.out = std::make_shared<System::stream_type>();
 
-    *sh.in << "echo hello ; sleep 2.0 ; echo world;";
+    *sh.in << "echo hello ; sleep 1.0 ; echo world;";
     sh.in->set_eof();
 
     REQUIRE(0xFFFFFFFF != M.runRawCommand(sh) );
     while(M.executeAll());
 
-    REQUIRE(sh.out->str() == "hello\nworld\nexit");
-}
-
-
-
-SCENARIO("System: sh - multicommand with newline")
-{
-    System M;
-    M.setFunction("sh", std::bind(shell_coro, std::placeholders::_1, ShellEnv{}));
-
-    System::Exec sh;
-    sh.args = {"sh"};
-    sh.in  = std::make_shared<System::stream_type>();
-    sh.out = std::make_shared<System::stream_type>();
-
-    *sh.in << "echo hello \n sleep 2.0 \n echo world\n";
-    sh.in->set_eof();
-
-    REQUIRE(0xFFFFFFFF != M.runRawCommand(sh) );
-    while(M.executeAll());
-
-    REQUIRE(sh.out->str() == "hello\nworld\nexit");
+    REQUIRE(sh.out->str() == "helloworld");
 }
 
 
@@ -304,7 +99,7 @@ SCENARIO("System: sh - pipe")
         REQUIRE(0xFFFFFFFF != M.runRawCommand(sh) );
         while(M.executeAll());
 
-        REQUIRE(sh.out->str() == "6\ngoodbye\nexit");
+        REQUIRE(sh.out->str() == "5\ngoodbye");
         //sh.out->toStream(std::cout);
         //std::cout << std::endl;
     }

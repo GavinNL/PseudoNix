@@ -11,7 +11,6 @@ struct ReaderWriterStream_t
 {
 protected:
     moodycamel::ReaderWriterQueue<T> data;
-    bool _closed = false;
 public:
     bool has_data() const
     {
@@ -25,7 +24,7 @@ public:
 
     bool eof() const
     {
-        return !has_data() && _closed;
+        return !has_data() && _eof;
     }
 
     void flush()
@@ -41,7 +40,7 @@ public:
         END_OF_STREAM
     };
 
-    Result check()
+    Result check() const
     {
         if(auto front = data.peek())
         {
@@ -77,8 +76,9 @@ public:
 
     Result read_line(std::string & line)
     {
-        char c;
+        char c = 0;
         auto r = get(&c);
+        line.clear();
         while(true)
         {
             switch(r)
@@ -123,10 +123,20 @@ public:
 
     ReaderWriterStream_t& operator << (ReaderWriterStream_t &ss)
     {
-        char c;
+        char c = 0;
         while(ss.get(&c) == Result::SUCCESS)
         {
             put(c);
+        }
+        return *this;
+    }
+
+    ReaderWriterStream_t& operator << (char const *s)
+    {
+        while(*s)
+        {
+            put(*s);
+            ++s;
         }
         return *this;
     }
@@ -146,7 +156,7 @@ public:
         requires std::ranges::range<iter_container>
     ReaderWriterStream_t& operator >> (iter_container &ss)
     {
-        char c;
+        char c = 0;
         while(get(&c) == Result::SUCCESS)
         {
             ss.push_back(c);
@@ -163,7 +173,7 @@ public:
     std::string str()
     {
         std::string s;
-        char c;
+        char c=0;
         while(get(&c) == Result::SUCCESS)
         {
             s.push_back(c);

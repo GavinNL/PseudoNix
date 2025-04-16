@@ -6,6 +6,106 @@
 
 using namespace PseudoNix;
 
+SCENARIO("ReaderWriterStream")
+{
+    using Stream = ReaderWriterStream;
+
+    GIVEN("A Stream")
+    {
+        Stream S;
+        WHEN("We can place items into the stream")
+        {
+            S.put('a'); // add a single character
+            S.put('b'); // add a single character
+            S.put('c'); // add a single character
+            S.set_eof(); // indicate that we have closed the stream.
+
+            THEN("We can query the stream")
+            {
+                REQUIRE(S.has_data() == true);
+                REQUIRE(S.size_approx() > 0);
+                REQUIRE(S.eof() == false);
+                REQUIRE(S.check() == Stream::Result::SUCCESS);
+            }
+            THEN("We can get from the stream")
+            {
+                char c=0;
+
+                REQUIRE(S.has_data() == true);
+                REQUIRE(S.check() == Stream::Result::SUCCESS);
+                REQUIRE(S.get(&c) == Stream::Result::SUCCESS);
+                REQUIRE(c == 'a');
+
+                REQUIRE(S.has_data() == true);
+                REQUIRE(S.get(&c) == Stream::Result::SUCCESS);
+                REQUIRE(c == 'b');
+
+                REQUIRE(S.has_data() == true);
+                REQUIRE(S.get(&c) == Stream::Result::SUCCESS);
+                REQUIRE(c == 'c');
+
+
+                REQUIRE(S.check() == Stream::Result::END_OF_STREAM);
+                REQUIRE(S.get(&c) == Stream::Result::END_OF_STREAM);
+                REQUIRE(S.has_data() == false);
+
+                // IF END_OF_STREAM is reached,
+                // then stream is reopened
+                REQUIRE(S.check() == Stream::Result::EMPTY);
+                REQUIRE(S.get(&c) == Stream::Result::EMPTY);
+            }
+        }
+    }
+}
+
+SCENARIO("Basic filling")
+{
+    using Stream = ReaderWriterStream;
+
+    GIVEN("A Stream")
+    {
+        Stream S;
+
+        WHEN("We can place items into the stream")
+        {
+            S << "Hello world\n";
+            S << std::string("This is a test");
+            S.set_eof();
+
+            THEN("We can query the stream")
+            {
+                REQUIRE(S.has_data() == true);
+                REQUIRE(S.size_approx() == 26);
+                REQUIRE(S.eof() == false);
+                REQUIRE(S.check() == Stream::Result::SUCCESS);
+            }
+            THEN("Then we can get the entire string")
+            {
+                std::string L = S.str();
+                REQUIRE(L == "Hello world\nThis is a test");
+            }
+            THEN("Then we can get the entire string")
+            {
+                std::string L;
+                S >> L;
+                REQUIRE(L == "Hello world\nThis is a test");
+            }
+            THEN("Then we can read one line at a time")
+            {
+                std::string L;
+                REQUIRE(Stream::Result::SUCCESS == S.read_line(L));
+                REQUIRE(L=="Hello world");
+
+                REQUIRE(Stream::Result::END_OF_STREAM == S.read_line(L));
+                REQUIRE(L=="This is a test");
+
+                // Empty
+                REQUIRE(Stream::Result::SUCCESS == S.read_line(L));
+            }
+        }
+    }
+}
+
 
 SCENARIO("Tokenizer 3")
 {

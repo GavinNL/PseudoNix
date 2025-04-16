@@ -177,7 +177,7 @@ struct ShellEnv
             // used to export variables
             for(size_t i=1;i<ex->args.size();i++)
             {
-                auto [var,val] = System::splitVar(ex->args[i]);
+                auto [var,val] = splitVar(ex->args[i]);
                 if(!var.empty() && !val.empty())
                 {
                     // if the arg looked like: VAR=VAL
@@ -508,7 +508,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
         }
     }
 
-    OUT << std::format("exit");
+    //OUT << std::format("exit");
     co_return ret_value;
 }
 
