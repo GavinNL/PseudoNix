@@ -1,12 +1,9 @@
 #include <string>
 #include <thread>
 
-//#include <fcntl.h>
-//#include <unistd.h>
-//#include <sys/ioctl.h>
-//#include <unistd.h>
-#include <PseudoNix/MiniLinux.h>
-#include <PseudoNix/shell2.h>
+
+#include <PseudoNix/System.h>
+#include <PseudoNix/Shell.h>
 #include <PseudoNix/Launcher.h>
 
 #include <csignal>

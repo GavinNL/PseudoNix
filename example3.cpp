@@ -1,9 +1,9 @@
 #include <string>
 #include <thread>
 
-#include <PseudoNix/MiniLinux.h>
+#include <PseudoNix/System.h>
 #include <PseudoNix/Launcher.h>
-#include <PseudoNix/shell2.h>
+#include <PseudoNix/Shell.h>
 
 
 int main()

@@ -1,7 +1,7 @@
 #ifndef PSUDONIX_LAUNCHER_H
 #define PSUDONIX_LAUNCHER_H
 
-#include "MiniLinux.h"
+#include "System.h"
 #include "defer.h"
 
 namespace PseudoNix

@@ -1,7 +1,7 @@
 #include <string>
 #include <thread>
 
-#include <PseudoNix/MiniLinux.h>
+#include <PseudoNix/System.h>
 
 
 PseudoNix::System::task_type my_custom_function(PseudoNix::System::e_type ctrl)

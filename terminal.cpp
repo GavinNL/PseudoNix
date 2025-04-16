@@ -1,8 +1,8 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "App.h"
 
-#include <PseudoNix/MiniLinux.h>
-#include <PseudoNix/shell2.h>
+#include <PseudoNix/System.h>
+#include <PseudoNix/Shell.h>
 #include <PseudoNix/ImGuiTerminal.h>
 
 

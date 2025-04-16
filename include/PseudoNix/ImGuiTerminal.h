@@ -1,7 +1,7 @@
 #ifndef EBASH_IMGUI_TERMINAL_H
 #define EBASH_IMGUI_TERMINAL_H
 
-#include "MiniLinux.h"
+#include "System.h"
 #include "ImGuiConsoleWidget.h"
 #include <imgui.h>
 
