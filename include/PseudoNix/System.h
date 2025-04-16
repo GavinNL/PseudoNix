@@ -981,7 +981,18 @@ protected:
         m_funcs["echo"] = [](e_type ctrl) -> task_type
         {
             PSEUDONIX_PROC_START(ctrl);
-            OUT << std::format("{}", join(std::span(ARGS.begin()+1, ARGS.end()), " "));
+
+            bool newline=true;
+            // Handle -n option
+            int start=1;
+            if (ARGS.size() > 1 && std::string(ARGS[1]) == "-n") {
+                newline = false;
+                start=2;
+            }
+
+            OUT << std::format("{}", join(std::span(ARGS.begin()+start, ARGS.end()), " "));
+            if(newline)
+                OUT.put('\n');
 
             co_return 0;
         };

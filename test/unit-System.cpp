@@ -135,7 +135,7 @@ SCENARIO("runRawCommand")
         WHEN("We execute a process") {
 
             System::Exec exec;
-            exec.args = {"echo", "hello", "world"};
+            exec.args = {"echo", "-n", "hello", "world"};
             exec.in = System::make_stream();
             exec.out = System::make_stream();
             exec.in->set_eof();
@@ -224,7 +224,7 @@ SCENARIO("System: Execute two commands and have one piped into the other")
     //
     std::array<System::Exec,2> exec;
 
-    exec[0].args = {"echo", "Hello", "world"};
+    exec[0].args = {"echo", "-n", "Hello", "world"};
     exec[0].in = System::make_stream();
     exec[0].out = System::make_stream();
     exec[0].in->set_eof(); // only close the first input straem

@@ -491,7 +491,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
             auto f_exit_code = SYSTEM.getProcessExitCode(subProcess.back());
 
             HANDLE_AWAIT_TERM(co_await ctrl->await_finished(subProcess), ctrl)
-
+            //ctrl->out->put('\n');
             if(!f_exit_code)
             {
                 OUT << std::format("Command not found: [{}]\n", cmd[1] );
