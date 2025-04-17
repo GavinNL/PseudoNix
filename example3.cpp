@@ -6,8 +6,10 @@
 #include <PseudoNix/Shell.h>
 
 
-int main()
+int main(int argc, char** argv)
 {
+    (void)argc;
+    (void)argv;
     using namespace PseudoNix;
 
     // The first thing we need to do is create

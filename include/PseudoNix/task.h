@@ -92,7 +92,7 @@ struct Task_t
             destroy();
         }
     }
-    Task_t(Task_t<T, initial_suspend_t, final_suspend_t> &&V) : handle(std::exchange(V.handle, nullptr))
+    Task_t(Task_t<T, initial_suspend_t, final_suspend_t> &&V) noexcept : handle(std::exchange(V.handle, nullptr))
     {
     }
     Task_t & operator=(Task_t<T, initial_suspend_t, final_suspend_t> && V)

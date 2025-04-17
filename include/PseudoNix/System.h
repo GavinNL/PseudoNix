@@ -48,7 +48,6 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
 enum class AwaiterResult
 {
     SUCCESS = 0,
-    NO_ERROR = 0,
     SIGNAL_INTERRUPT = sig_interrupt,
     SIGNAL_TERMINATE = sig_terminate,
     UNKNOWN_ERROR
@@ -102,7 +101,7 @@ struct System
             // Indicate that the awaiter is ready to be
             // resumed if we have internally set the
             // result to be a non-success
-            if(static_cast<AwaiterResult>(*m_signal) != AwaiterResult::NO_ERROR)
+            if(static_cast<AwaiterResult>(*m_signal) != AwaiterResult::SUCCESS)
                 return true;
             auto b = m_pred();
             return b;

@@ -100,8 +100,10 @@ public:
 
 };
 
-int main(int, char**)
+int main(int argc, char* argv[])
 {
+    (void)argc;
+    (void)argv;
     return ImGuiApp::run<MyApplication>("SDL Window", 1920, 1080);
 }
 

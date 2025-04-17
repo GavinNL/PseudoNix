@@ -19,8 +19,10 @@ PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
 }
 
 
-int main()
+int main(int argc, char ** argv)
 {
+    (void)argc;
+    (void)argv;
     using namespace PseudoNix;
 
     // The first thing we need to do is create
