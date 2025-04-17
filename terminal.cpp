@@ -50,7 +50,7 @@ public:
             }
             else
             {
-                OUT << "theme [classic|dark|light]\n";
+                COUT << "theme [classic|dark|light]\n";
             }
             co_return 0;
         });

@@ -13,13 +13,13 @@ PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
     PSEUDONIX_TRAP {
         // This will be called even if you call "kill"
         // on the pid
-        OUT << std::format("This is executed on cleanup.");
+        COUT << std::format("This is executed on cleanup.");
     };
 
     int i=0;
     while(true)
     {
-        OUT << std::format("Counter: {}\n", i++);
+        COUT << std::format("Counter: {}\n", i++);
 
         // await for the awaiter to signal
         // if it does, break the while loop if
@@ -32,7 +32,7 @@ PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
     // properly by reacting to a signal, either:
     // signal PID 2
     // signal PID 15
-    OUT << std::format("This a graceful exit\n");
+    COUT << std::format("This a graceful exit\n");
     co_return 0;
 }
 

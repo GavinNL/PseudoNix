@@ -262,9 +262,9 @@ SCENARIO("Test await_yield")
     M.setFunction("test", [](System::e_type control) -> System::task_type {
         PSEUDONIX_PROC_START(control);
 
-        OUT << "test: wait\n";
+        COUT << "test: wait\n";
         co_await control->await_yield(); // yield at this point, echo will run
-        OUT << "test: resume\n";
+        COUT << "test: resume\n";
 
         co_return 0;
     });
@@ -300,9 +300,9 @@ SCENARIO("Test await_yield_for")
     M.setFunction("test", [](System::e_type control) -> System::task_type {
         PSEUDONIX_PROC_START(control);
 
-        OUT << "test: wait\n";
+        COUT << "test: wait\n";
         co_await control->await_yield_for(std::chrono::seconds(1)); // yield at this point, echo will run
-        OUT << "test: resume\n";
+        COUT << "test: resume\n";
 
         co_return 0;
     });
@@ -345,9 +345,9 @@ SCENARIO("Test await_finished")
 
         std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pid);
 
-        OUT << "test: wait\n";
+        COUT << "test: wait\n";
         co_await control->await_finished(pid); // yield at this point, echo will run
-        OUT << "test: resume\n";
+        COUT << "test: resume\n";
 
         co_return 0;
     });
@@ -393,9 +393,9 @@ SCENARIO("Test await_finished multi")
         std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pids[0]);
         std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pids[1]);
 
-        OUT << "test: wait\n";
+        COUT << "test: wait\n";
         co_await control->await_finished(pids); // yield at this point, echo will run
-        OUT << "test: resume\n";
+        COUT << "test: resume\n";
 
         co_return 0;
     });
@@ -445,15 +445,15 @@ SCENARIO("test await_data")
         PSEUDONIX_PROC_START(control);
 
         char c;
-        OUT << "test: wait 1\n";
+        COUT << "test: wait 1\n";
         co_await control->await_has_data(control->in);
-        OUT << "test: resume 1\n";
+        COUT << "test: resume 1\n";
         REQUIRE(control->in->get(&c) == System::stream_type::Result::SUCCESS);
         REQUIRE(c == '1');
 
-        OUT << "test: wait 2\n";
+        COUT << "test: wait 2\n";
         co_await control->await_has_data(control->in);
-        OUT << "test: resume 2\n";
+        COUT << "test: resume 2\n";
         REQUIRE(control->in->get(&c) == System::stream_type::Result::SUCCESS);
         REQUIRE(c == '2');
 
@@ -524,7 +524,7 @@ SCENARIO("Test kill")
 
         PSEUDONIX_TRAP
         {
-            OUT << std::format("onExit\n");
+            COUT << std::format("onExit\n");
         };
 
         while(true)
@@ -532,7 +532,7 @@ SCENARIO("Test kill")
             // breaks the loop if await yields a non-success value
             HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await control->await_yield(), control);
         }
-        OUT << "Exited gracefully\n";
+        COUT << "Exited gracefully\n";
         co_return 0;
     });
 
