@@ -3,6 +3,7 @@
 
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
+#include <array>
 
 using namespace PseudoNix;
 
@@ -222,7 +223,7 @@ SCENARIO("System: Execute two commands and have one piped into the other")
     //
     //    echo Hello world | rev
     //
-    std::array<System::Exec,2> exec;
+    std::array<System::Exec, 2> exec;
 
     exec[0].args = {"echo", "-n", "Hello", "world"};
     exec[0].in = System::make_stream();

@@ -1,3 +1,6 @@
+//#define SDL_MAIN_HANDLED // This stupid thing caused me a lot of headache
+                         // Trying to build on windows
+
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "App.h"
 
@@ -5,6 +8,7 @@
 #include <PseudoNix/Shell.h>
 #include <PseudoNix/ImGuiTerminal.h>
 
+#include <SDL_main.h>
 
 struct MyApplication : public ImGuiApplication
 {
@@ -97,13 +101,13 @@ public:
         // screen
         m_mini.executeAllFor(std::chrono::milliseconds(1), 10);
     }
-
 };
+
 
 int main(int argc, char* argv[])
 {
-    (void)argc;
-    (void)argv;
+    //(void)argc;
+    //(void)argv;
     return ImGuiApp::run<MyApplication>("SDL Window", 1920, 1080);
 }
 

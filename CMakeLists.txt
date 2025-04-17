@@ -75,7 +75,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
         set(SDL_TARGET "")
     else()
         find_package(SDL2 REQUIRED)
-        set(SDL_TARGET SDL2::SDL2)
+        set(SDL_TARGET SDL2::SDL2 SDL2::SDL2main)
     endif()
     ################################################################################
 
