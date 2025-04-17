@@ -111,7 +111,7 @@ jobs:
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: |
         cd ${{ steps.strings.outputs.build-output-dir }}
-        ctest --target test --config ${{ matrix.build_type }} --output-on-failure
+        ctest --config ${{ matrix.build_type }} --output-on-failure
         cd ${{ github.workspace }}
 
     # Execute the coverage report. the cmake target "coverage" is greated in the Cmake file. We just need too 
