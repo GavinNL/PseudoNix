@@ -1,6 +1,3 @@
-//#define SDL_MAIN_HANDLED // This stupid thing caused me a lot of headache
-                         // Trying to build on windows
-
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "App.h"
 
