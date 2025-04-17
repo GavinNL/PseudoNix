@@ -4,6 +4,16 @@
 #include "System.h"
 #include "defer.h"
 
+#if defined(_WIN32)
+#include <windows.h>
+#include <conio.h>
+#include <cstddef>
+#else
+#include <unistd.h>
+#include <fcntl.h>
+#include <poll.h>
+#endif
+
 namespace PseudoNix
 {
 
@@ -62,6 +72,23 @@ inline System::task_type launcher_coro(System::e_type ctrl)
     };
 
 
+
+
+#if defined(_WIN32)
+    static const auto read_char_nonblocking = [](char* ch) -> ssize_t {
+        if (_kbhit()) {
+            int c = _getch(); // returns int to handle special keys
+            if (c == 0 || c == 224) {
+                // Handle extended keys (e.g., arrows), discard second byte
+                _getch();
+                return -1; // You can return something custom here if desired
+            }
+            *ch = static_cast<char>(c);
+            return 1; // Successfully read one character
+        }
+        return -1; // No input available
+    };
+#else
     static const auto read_char_nonblocking = [](char *ch) {
         fd_set fds;
         FD_ZERO(&fds);
@@ -82,6 +109,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
         return ssize_t{-1};
         //return false;
     };
+#endif
 
     std::cerr << std::format("Launcher started process: {}", ctrl->args[1]) << std::endl;
     while(true)
