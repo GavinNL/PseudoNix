@@ -962,8 +962,8 @@ protected:
             }
 
 #define PSEUDONIX_PROC_START(control) \
-        auto & OUT = *control->out; (void)OUT;\
-            auto & IN = *control->in; (void)IN;\
+            auto & COUT = *control->out; (void)COUT;\
+            auto & CIN = *control->in; (void)CIN;\
             auto const PID  = control->get_pid(); (void)PID;\
             auto & SYSTEM = *control->system; (void)SYSTEM;\
             auto const & ARGS = control->args; (void)ARGS;\
@@ -983,10 +983,10 @@ protected:
         {
             PSEUDONIX_PROC_START(ctrl);
 
-            OUT << "List of commands:\n\n";
+            COUT << "List of commands:\n\n";
             for(auto & f : ctrl->system->m_funcs)
             {
-                OUT << f.first << '\n';
+                COUT << f.first << '\n';
             }
             co_return 0;
         };
@@ -996,7 +996,7 @@ protected:
 
             for(auto & [var, val] : ENV)
             {
-                OUT << std::format("{}={}\n", var,val);
+                COUT << std::format("{}={}\n", var,val);
             }
             co_return 0;
         };
@@ -1012,9 +1012,9 @@ protected:
                 start=2;
             }
 
-            OUT << std::format("{}", join(std::span(ARGS.begin()+start, ARGS.end()), " "));
+            COUT << std::format("{}", join(std::span(ARGS.begin()+start, ARGS.end()), " "));
             if(newline)
-                OUT.put('\n');
+                COUT.put('\n');
 
             co_return 0;
         };
@@ -1026,7 +1026,7 @@ protected:
 
             while(true)
             {
-                OUT << "y\n";
+                COUT << "y\n";
 
                 HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
             }
@@ -1055,7 +1055,7 @@ protected:
         m_funcs["uptime"] = [T0=std::chrono::system_clock::now()](e_type ctrl) -> task_type
         {
             PSEUDONIX_PROC_START(ctrl);
-            OUT << std::format("{}\n", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()-T0).count());
+            COUT << std::format("{}\n", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()-T0).count());
             co_return 0;
         };
         m_funcs["rev"] = [](e_type ctrl) -> task_type
@@ -1102,7 +1102,7 @@ protected:
 
                 while(true)
                 {
-                    auto r = IN.get(&c);
+                    auto r = CIN.get(&c);
                     if(r == stream_type::Result::EMPTY)
                     {
                         break;
@@ -1116,7 +1116,7 @@ protected:
                 }
             }
 
-            OUT << std::to_string(i) << '\n';
+            COUT << std::to_string(i) << '\n';
 
             co_return 0;
         };
@@ -1124,13 +1124,13 @@ protected:
         {
             PSEUDONIX_PROC_START(ctrl);
 
-            OUT << std::format("PID   CMD\n");
+            COUT << std::format("PID   CMD\n");
             for(auto & [pid, P] : SYSTEM.m_procs2)
             {
                 std::string cmd;
                 for(auto & c : P.control->args)
                     cmd += c + " ";
-                OUT<< std::format("{}     {}\n", pid, cmd);
+                COUT<< std::format("{}     {}\n", pid, cmd);
             }
 
             //std::cout << std::to_string(i);
@@ -1146,13 +1146,13 @@ protected:
             pid_type pid = 0;
             if(std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pid).ec != std::errc())
             {
-                OUT << std::format("Must be a Process ID. Recieved {}\n", ARGS[1]);
+                COUT << std::format("Must be a Process ID. Recieved {}\n", ARGS[1]);
                 co_return 1;
             }
 
             if(!SYSTEM.kill(pid))
             {
-                OUT << std::format("Could not find process ID: {}\n", pid);
+                COUT << std::format("Could not find process ID: {}\n", pid);
                 co_return 0;
             }
             co_return 1;
@@ -1169,21 +1169,21 @@ protected:
             {
                 if(std::errc() != std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pid).ec)
                 {
-                    OUT << std::format("Arg 1 must be a Process ID. Recieved {}\n", ARGS[1]);
+                    COUT << std::format("Arg 1 must be a Process ID. Recieved {}\n", ARGS[1]);
                     co_return 1;
                 }
             }
             {
                 if(std::errc() != std::from_chars(ARGS[2].data(), ARGS[2].data() + ARGS[2].size(), sig).ec)
                 {
-                    OUT << std::format("Arg 2 must be a integer signal code. Recieved {}\n", ARGS[1]);
+                    COUT << std::format("Arg 2 must be a integer signal code. Recieved {}\n", ARGS[1]);
                     co_return 1;
                 }
             }
 
             if(!SYSTEM.signal(pid, sig))
             {
-                OUT << std::format("Could not find process ID: {}\n", pid);
+                COUT << std::format("Could not find process ID: {}\n", pid);
                 co_return 0;
             }
             co_return 1;
@@ -1194,18 +1194,18 @@ protected:
 
             for(auto & [pid, proc] : SYSTEM.m_procs2)
             {
-                OUT << std::format("{}[{}]->{}->{}[{}]\n", static_cast<void*>(proc.control->in.get()), proc.control->in.use_count(), proc.control->args[0], static_cast<void*>(proc.control->out.get()), proc.control->out.use_count() );
+                COUT << std::format("{}[{}]->{}->{}[{}]\n", static_cast<void*>(proc.control->in.get()), proc.control->in.use_count(), proc.control->args[0], static_cast<void*>(proc.control->out.get()), proc.control->out.use_count() );
             }
             co_return 0;
         };
         m_funcs["to_std_cout"] = [](e_type ctrl) -> task_type
         {
             PSEUDONIX_PROC_START(ctrl);
-            while(!IN.eof())
+            while(!CIN.eof())
             {
                 std::string s;
                 HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in, s), ctrl);
-                IN >> s;
+                CIN >> s;
                 std::cout << s << std::endl;
             }
             co_return 0;

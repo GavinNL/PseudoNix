@@ -345,7 +345,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
         // Copy the rc_text into the
         // the input stream so that
         // it will be executed first
-        IN << shellEnv.rc_text;
+        CIN << shellEnv.rc_text;
     }
 
     // Copy the additional environment variables
@@ -371,7 +371,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
         HANDLE_AWAIT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
 
         char c;
-        auto r = IN.get(&c);
+        auto r = CIN.get(&c);
         if(r == System::stream_type::Result::END_OF_STREAM)
         {
             shellEnv.exitShell = true;
@@ -427,7 +427,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
             STDIN->set_eof();
             auto pids = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), &shellEnv, STDIN, ctrl->out);
 
-            OUT << std::to_string(pids[0]) << "\n";
+            COUT << std::to_string(pids[0]) << "\n";
             continue;
         }
 
@@ -494,7 +494,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
             //ctrl->out->put('\n');
             if(!f_exit_code)
             {
-                OUT << std::format("Command not found: [{}]\n", cmd[1] );
+                COUT << std::format("Command not found: [{}]\n", cmd[1] );
                 ret_value = 127;
             }
             else

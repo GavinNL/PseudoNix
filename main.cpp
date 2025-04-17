@@ -66,7 +66,7 @@ export HOME
 
         std::string input;
         uint32_t random_number = std::rand() % 100 + 1;
-        OUT << std::format("I have chosen a number between 1-100. Can you guess what it is?\n");
+        COUT << std::format("I have chosen a number between 1-100. Can you guess what it is?\n");
 
         while(true)
         {
@@ -83,23 +83,23 @@ export HOME
 
             if(std::errc() != std::from_chars(line.data(), line.data() + line.size(), guess).ec)
             {
-                OUT << std::format("invalid entry: {}\n", line);
-                OUT << std::format("Guess Again: \n");
+                COUT << std::format("invalid entry: {}\n", line);
+                COUT << std::format("Guess Again: \n");
                 continue;
             }
 
             if(guess > random_number)
             {
-                OUT << std::format("Too High!\n");
+                COUT << std::format("Too High!\n");
             }
             else if(guess < random_number)
             {
-                OUT  << std::format("Too Low!\n");
+                COUT  << std::format("Too Low!\n");
             }
             else
             {
-                OUT << std::format("Awesome! You guessed the correct number: {}!\n", random_number);
-                OUT << std::format("Exiting\n");
+                COUT << std::format("Awesome! You guessed the correct number: {}!\n", random_number);
+                COUT << std::format("Exiting\n");
                 co_return 0;
             }
         }
