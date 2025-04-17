@@ -75,7 +75,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
 
 
 #if defined(_WIN32)
-    static const auto read_char_nonblocking = [](char* ch) -> ssize_t {
+    static const auto read_char_nonblocking = [](char* ch) -> int64_t {
         if (_kbhit()) {
             int c = _getch(); // returns int to handle special keys
             if (c == 0 || c == 224) {
@@ -83,7 +83,13 @@ inline System::task_type launcher_coro(System::e_type ctrl)
                 _getch();
                 return -1; // You can return something custom here if desired
             }
+            if (c == '\r')
+            {
+                c = '\n';
+            }
+            std::cout.put(c);
             *ch = static_cast<char>(c);
+            
             return 1; // Successfully read one character
         }
         return -1; // No input available
