@@ -113,8 +113,8 @@ static int run(char const* window_name, uint32_t width, uint32_t height)
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
     {
-        printf("Error: %s\n", SDL_GetError());
-        return EXIT_FAILURE;
+        //printf("Error: %s\n", SDL_GetError());
+        return 1;
     }
 
     SDL_WindowFlags window_flags = static_cast<SDL_WindowFlags>(SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI |  SDL_WINDOW_SHOWN);
@@ -186,7 +186,7 @@ static int run(char const* window_name, uint32_t width, uint32_t height)
     SDL_DestroyWindow(App.g_window);
     SDL_Quit();
 
-    return EXIT_SUCCESS;
+    return 0;
 }
 
 }

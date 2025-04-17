@@ -414,18 +414,18 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
 
         if( run_in_background )
         {
-            auto stdin = System::make_stream();
+            auto STDIN = System::make_stream();
 
             for(auto & a : args)
             {
                 // pipe the data into stdin, and make sure each argument
                 // is in quotes. We may need to tinker with this
                 // to have properly escaped characters
-                *stdin << std::format("\"{}\" ", a);
+                *STDIN << std::format("\"{}\" ", a);
             }
-            *stdin << std::format(";");
-            stdin->set_eof();
-            auto pids = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), &shellEnv, stdin, ctrl->out);
+            *STDIN << std::format(";");
+            STDIN->set_eof();
+            auto pids = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), &shellEnv, STDIN, ctrl->out);
 
             OUT << std::to_string(pids[0]) << "\n";
             continue;
@@ -462,18 +462,18 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
                 {
                     // we have a $(cmd arg1 arg2 arg3) situtation going on here
                     // so execute this as a new shell
-                    auto stdin  = System::make_stream();
-                    auto stdout = System::make_stream();
-                    subProcess = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), &shellEnv, stdin, stdout);
-                    *stdin << it->substr(2, it->size()-3);
-                    *stdin << ';';
-                    stdin->set_eof(); // make sure to set the eof of the output stream otherwise
+                    auto STDIN = System::make_stream();
+                    auto STDOUT = System::make_stream();
+                    subProcess = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), &shellEnv, STDIN, STDOUT);
+                    *STDIN << it->substr(2, it->size()-3);
+                    *STDIN << ';';
+                    STDIN->set_eof(); // make sure to set the eof of the output stream otherwise
                                     // sh will block waiting for bytes
 
                     HANDLE_AWAIT_TERM(co_await ctrl->await_finished(subProcess), ctrl)
 
                     std::string out;
-                    *stdout >> out;
+                    *STDOUT >> out;
                     auto new_args = Tokenizer3::to_vector(out);
                     it = cmd.erase(it);
                     it = cmd.insert(it, new_args.begin(), new_args.end());
@@ -486,7 +486,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
 
             //======================================================================
 
-            auto stdout = System::make_stream();
+            auto STDOUT = System::make_stream();
             subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), ctrl.get(), &shellEnv, ctrl->in, ctrl->out);
             auto f_exit_code = SYSTEM.getProcessExitCode(subProcess.back());
 
@@ -509,7 +509,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
     }
 
     //OUT << std::format("exit");
-    co_return ret_value;
+    co_return std::move(ret_value);
 }
 
 
