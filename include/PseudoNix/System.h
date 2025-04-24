@@ -675,6 +675,7 @@ struct System
         }
         return {};
     }
+
     /**
      * @brief execute
      * @param pid
@@ -718,15 +719,59 @@ struct System
             auto exit_code = coro.task();
             coro.is_complete = true;
             *coro.exit_code = !coro.force_terminate ? exit_code : -1;
-            coro.control->env["?"] = std::to_string(exit_code);
-            coro.awaiter = nullptr;
-            coro.force_terminate = true;
+            coro.should_remove = true;
+            _finalizePID(pid);
 
             return true;
         }
         return false;
     }
 
+    // End the process and clean up anything
+    // regardless of whether it was complete
+    // Does not remove the pid from the process list
+    void _finalizePID(pid_type p)
+    {
+        auto & coro = m_procs2.at(p);
+        if( coro.task.valid() )
+        {
+            coro.task.destroy();
+        }
+        // the output stream should have its
+        // EOF set so that any processes
+        // reading from it will know to close
+        coro.control->out->set_eof();
+
+        coro.awaiter = nullptr;
+        coro.is_complete = true;
+
+        _detachFromParent(p);
+
+        DEBUG_LOG("Finalized: {}\n", join(coro.control->args));
+        DEBUG_LOG("       IN: {}\n", coro.control->in.use_count());
+        DEBUG_LOG("      OUT: {}  ", coro.control->out.use_count());
+
+        coro.control->out = {};
+        coro.control->in  = {};
+
+        // set the flag so that
+        // it will be removed
+        coro.should_remove = true;
+    }
+
+    void _detachFromParent(pid_type p)
+    {
+        auto & coro = m_procs2.at(p);
+        if(coro.parent != invalid_pid && m_procs2.count(coro.parent))
+        {
+            auto & cp = m_procs2.at(coro.parent).child_processes;
+            cp.erase(std::remove_if(cp.begin(), cp.end(), [p](auto && ch)
+                                    {
+                                        return ch==p;
+                                    }), cp.end());
+            coro.parent = invalid_pid;
+        }
+    }
     /**
      * @brief executeAll
      * @return
@@ -738,49 +783,36 @@ struct System
     {
         m_main_thread_id = std::this_thread::get_id();
 
-        for(auto it = m_procs2.begin(); it!=m_procs2.end();it++)
+        // Execute all the processes in order of their PID
+        //
+        // Nothing is removed from the container until all
+        // of the objects have been processed
+        auto _end = m_procs2.end();
+        for(auto it = m_procs2.begin(); it!=_end; it++)
         {
             auto & pid = it->first;
             if(execute(pid))
             {
-                // destroy the task so that all
-                // internal data is destroyed
-                // and any defer blocks are executed
-                it->second.task.destroy();
-
-                // set the eof after destruction
-                it->second.control->out->set_eof();
             }
         }
 
-        // Remove any processes that have been completed
-        // or have been forcefuly terminated
-        for(auto it = m_procs2.begin(); it!=m_procs2.end();)
+        // Remove any processes that:
+        //   1. whose task has completed
+        //   2. who is force terminated
+        //
+        for(auto it = m_procs2.begin(); it!=_end;)
         {
             auto & coro = it->second;
+
+            // did someone call kill on the PID?
             if(coro.force_terminate)
             {
+                _finalizePID(it->first);
+            }
 
-                if(coro.parent != invalid_pid && m_procs2.count(coro.parent))
-                {
-                    auto & cp = m_procs2.at(coro.parent).child_processes;
-                    cp.erase(std::remove_if(cp.begin(), cp.end(), [pid=it->first](auto && ch)
-                                  {
-                                      return ch==pid;
-                                  }), cp.end());
-                    coro.parent = invalid_pid;
-                }
-
-                // Destroy the task first before erasing everything
-                // this is so any defered blocks in the coroutine
-                // get run before the streams get closed
-                if(it->second.task.valid()) it->second.task.destroy();
-
-                if(coro.control->out && coro.control.use_count() == 2)
-                {
-                    coro.control->out->set_eof();
-                }
-                std::cerr << "Terminating: " << std::format("{}", join(coro.control->args)) << std::endl;
+            if(coro.should_remove)
+            {
+                DEBUG_LOG("Removing {}", join(coro.control->args));;
                 it = m_procs2.erase(it);
             }
             else
@@ -939,6 +971,7 @@ struct System
         int32_t lastSignal = 0;
         bool has_been_signaled = false;
         bool force_terminate = false;
+        bool should_remove = false;
 
         pid_type                        parent = invalid_pid;
         std::vector<pid_type>           child_processes = {};
