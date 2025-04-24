@@ -691,13 +691,10 @@ struct System
             }
             else
             {
-                auto t0 = std::chrono::high_resolution_clock::now();
                 coro.task.resume();
-                auto t1 = std::chrono::high_resolution_clock::now();
-                coro.processTime += std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0);
             }
         }
-        if(coro.task.done())
+        if(coro.task.done() && !coro.is_complete)
         {
             auto exit_code = coro.task();
             coro.is_complete = true;
@@ -727,9 +724,6 @@ struct System
             auto & pid = it->first;
             if(execute(pid))
             {
-                it->second.force_terminate = true;
-                it->second.is_complete = true;
-
                 // destroy the task so that all
                 // internal data is destroyed
                 // and any defer blocks are executed
@@ -921,7 +915,6 @@ struct System
         bool is_complete = false;
         std::shared_ptr<exit_code_type  > exit_code = std::make_shared<exit_code_type>(-1);
         std::function<void(int)>          signal = {};
-        std::chrono::nanoseconds          processTime = std::chrono::nanoseconds(0);
 
         // This is where the current signal is
         int32_t lastSignal = 0;
