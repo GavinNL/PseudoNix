@@ -12,7 +12,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         build_type: [Debug, Release]
-        compiler: [gcc-11, gcc-12, gcc-13, clang-18, clang-19, msvc]
+        compiler: [gcc-12, gcc-13, clang-18, clang-19, msvc]
         cpp_std: [20]
         include:
           - os: ubuntu-latest
