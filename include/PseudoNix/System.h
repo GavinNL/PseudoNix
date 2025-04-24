@@ -50,6 +50,7 @@ enum class AwaiterResult
     SUCCESS = 0,
     SIGNAL_INTERRUPT = sig_interrupt,
     SIGNAL_TERMINATE = sig_terminate,
+    END_OF_STREAM,
     UNKNOWN_ERROR
 };
 
@@ -85,7 +86,7 @@ struct System
 
     class Awaiter {
     public:
-        explicit Awaiter(pid_type p, System* S,std::function<bool(void)> f)
+        explicit Awaiter(pid_type p, System* S,std::function<bool(Awaiter*)> f)
             : m_pid(p), m_system(S), m_pred(f)
         {
             m_signal = &m_system->m_procs2.at(p).lastSignal;
@@ -97,13 +98,19 @@ struct System
         }
 
         // called to check if
-        bool await_ready() const noexcept {
+        bool await_ready()  noexcept {
             // Indicate that the awaiter is ready to be
             // resumed if we have internally set the
             // result to be a non-success
-            if(static_cast<AwaiterResult>(*m_signal) != AwaiterResult::SUCCESS)
-                return true;
-            auto b = m_pred();
+            switch(*m_signal)
+            {
+                case sig_interrupt: m_result = AwaiterResult::SIGNAL_INTERRUPT; return true; break;
+                case sig_terminate: m_result = AwaiterResult::SIGNAL_TERMINATE; return true; break;
+                default:
+                break;
+            }
+
+            auto b = m_pred(this);
             return b;
         }
 
@@ -117,13 +124,17 @@ struct System
             m_system->m_procs2.at(m_pid).awaiter = this;
         }
 
+        void setResult(AwaiterResult r)
+        {
+            m_result = r;
+        }
+
         AwaiterResult await_resume() const noexcept {
-            return static_cast<AwaiterResult>(*m_signal);
+            return m_result;
         }
 
         void resume()
         {
-            //std::cerr << "Awaiter resuming handle: " << handle_.address() << std::endl;
             if(handle_)
             {
                 handle_.resume();
@@ -134,9 +145,10 @@ struct System
     protected:
         pid_type m_pid;
         System * m_system;
-        std::function<bool()> m_pred;
+        std::function<bool(Awaiter*)> m_pred;
         std::coroutine_handle<> handle_;
         int32_t * m_signal = nullptr;
+        AwaiterResult m_result = {};
     };
 
 
@@ -175,7 +187,7 @@ struct System
         {
             return System::Awaiter{pid,
                                    system,
-                                   [x=false]() mutable {
+                                   [x=false](Awaiter*) mutable {
                                        if(!x)
                                        {
                                            x = true;
@@ -201,7 +213,7 @@ struct System
             auto T1 = std::chrono::system_clock::now() + time;
             return System::Awaiter{get_pid(),
                                    system,
-                                   [T=T1](){
+                                   [T=T1](Awaiter*){
                                        return std::chrono::system_clock::now() > T;
                                    }};
         }
@@ -217,7 +229,7 @@ struct System
         {
             return System::Awaiter{get_pid(),
                                    system,
-                                   [_pid,sys=system]()
+                                   [_pid,sys=system](Awaiter*)
                                    {
                                        return !sys->isRunning(_pid);
                                    }};
@@ -234,7 +246,7 @@ struct System
         {
             return System::Awaiter{get_pid(),
                                    system,
-                                   [pids,sys=system]()
+                                   [pids,sys=system](Awaiter*)
                                    {
                                        for(auto p : pids)
                                        {
@@ -253,13 +265,20 @@ struct System
          *
          * Yield until a line has been read from the input stream. Similar to std::getline
          */
-        System::Awaiter await_read_line(std::shared_ptr<System::stream_type> d, std::string & line)
+        System::Awaiter await_read_line(std::shared_ptr<System::stream_type> & d, std::string & line)
         {
             return System::Awaiter{get_pid(),
                                    system,
-                                   [d, l = &line]()
+                                   [&d, l = &line](Awaiter* a)
                                    {
                                        char c;
+                                       if(d.use_count() == 1 && !d->has_data())
+                                       {
+                                           // no one is writing to this stream
+                                           // so by default it should be closed
+                                           a->setResult(AwaiterResult::END_OF_STREAM);
+                                           return true;
+                                       }
                                        while(true)
                                        {
                                            auto r = d->get(&c);
@@ -290,7 +309,7 @@ struct System
         {
             return System::Awaiter{get_pid(),
                                    system,
-                                   [d](){
+                                   [d](Awaiter*){
                                        if(d->check() == System::stream_type::Result::EMPTY)
                                            return false;
                                        return true;
