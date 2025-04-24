@@ -1205,7 +1205,6 @@ protected:
             {
                 std::string s;
                 HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in, s), ctrl);
-                CIN >> s;
                 std::cout << s << std::endl;
             }
             co_return 0;
