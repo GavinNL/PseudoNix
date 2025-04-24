@@ -55,8 +55,9 @@ enum class AwaiterResult
 };
 
 
+#define PSUEDONIX_ENABLE_DEBUG
 #if defined PSUEDONIX_ENABLE_DEBUG
-#define DEBUG_LOG(...) std::cerr << std::format(__VA_ARGS__) << std::flush;
+#define DEBUG_LOG(...) std::cerr << std::format(__VA_ARGS__) << std::endl;
 #else
 #define DEBUG_LOG(...)
 #endif
@@ -568,7 +569,7 @@ struct System
             {
                 // Default signal handler will pass through the
                 // signal to its children
-                std::cerr << std::format("[{}] Default Signal Handler: {}", s, join(aa->args)) << std::endl;
+                DEBUG_LOG("[{}] Default Signal Handler: {}", s, join(aa->args));
 
                 for(auto c : this->m_procs2.at(aa->pid).child_processes)
                 {
@@ -989,13 +990,13 @@ protected:
 #define HANDLE_AWAIT_INT_TERM(returned_signal, CTRL)\
         switch(returned_signal)\
             {\
-                case PseudoNix::AwaiterResult::SIGNAL_INTERRUPT:  { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
+                case PseudoNix::AwaiterResult::SIGNAL_INTERRUPT: { co_return static_cast<int>(PseudoNix::exit_interrupt);}\
                 case PseudoNix::AwaiterResult::SIGNAL_TERMINATE: { co_return static_cast<int>(PseudoNix::exit_terminated);}\
                     default: break;\
             }
 
 #define HANDLE_AWAIT_BREAK_ON_SIGNAL(returned_signal, CTRL)\
-            if(returned_signal == PseudoNix::AwaiterResult::SIGNAL_INTERRUPT)  { break;}\
+            if(returned_signal == PseudoNix::AwaiterResult::SIGNAL_INTERRUPT) { break;}\
             if(returned_signal == PseudoNix::AwaiterResult::SIGNAL_TERMINATE) { break;}
 
 #define HANDLE_AWAIT_TERM(returned_signal, CTRL)\
@@ -1111,23 +1112,15 @@ protected:
             bool quit = false;
             while(!quit)
             {
-                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
-
-                switch(ctrl->in->read_line(output))
+                if(AwaiterResult::SUCCESS == co_await ctrl->await_read_line(ctrl->in, output))
                 {
-                    case stream_type::Result::END_OF_STREAM:
-                        quit = true;
-                        [[fallthrough]];
-                    case stream_type::Result::SUCCESS:
-                    {
-                        std::reverse(output.begin(), output.end());
-                        *ctrl->out << std::format("{}\n", output);
-                        output.clear();
-                        break;
-                    }
-                    case stream_type::Result::EMPTY:
-                        std::cerr << "FAILURE, should not be here" << std::endl;
-                        break;
+                    std::reverse(output.begin(), output.end());
+                    *ctrl->out << std::format("{}\n", output);
+                    output.clear();
+                }
+                else
+                {
+                    break;
                 }
             }
             co_return 0;
@@ -1246,14 +1239,22 @@ protected:
         m_funcs["to_std_cout"] = [](e_type ctrl) -> task_type
         {
             PSEUDONIX_PROC_START(ctrl);
+            std::string s;
             while(!CIN.eof())
             {
-                std::string s;
-                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in, s), ctrl);
-                std::cout << s << std::endl;
+                if(AwaiterResult::SUCCESS == co_await ctrl->await_read_line(ctrl->in, s))
+                {
+                    std::cout << s << std::endl;
+                    s.clear();
+                }
+                else
+                {
+                    break;
+                }
             }
             co_return 0;
         };
+
     }
 };
 

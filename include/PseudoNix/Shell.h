@@ -486,7 +486,6 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
 
             //======================================================================
 
-            auto STDOUT = System::make_stream();
             subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), ctrl.get(), &shellEnv, ctrl->in, ctrl->out);
             auto f_exit_code = SYSTEM.getProcessExitCode(subProcess.back());
 
