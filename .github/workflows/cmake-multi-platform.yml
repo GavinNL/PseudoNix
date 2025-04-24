@@ -16,10 +16,6 @@ jobs:
         cpp_std: [20]
         include:
           - os: ubuntu-latest
-            compiler: gcc-11
-            cc: gcc-11
-            cxx: g++-11
-          - os: ubuntu-latest
             compiler: gcc-12
             cc: gcc-12
             cxx: g++-12
@@ -41,8 +37,6 @@ jobs:
             cxx: cl
         exclude:
           # Exclude non-Microsoft compilers from Windows
-          - os: windows-latest
-            compiler: gcc-11
           - os: windows-latest
             compiler: gcc-12
           - os: windows-latest
