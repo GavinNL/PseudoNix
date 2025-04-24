@@ -51,6 +51,8 @@ jobs:
             compiler: clang-18
           - os: windows-latest
             compiler: clang-19
+          - os: ubuntu-latest
+            compiler: msvc
 
     #env:
     #  CC: ${{ matrix.cc }}
