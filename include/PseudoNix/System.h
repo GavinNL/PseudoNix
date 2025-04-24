@@ -288,6 +288,7 @@ struct System
                                            case  System::stream_type::Result::EMPTY:
                                                return false;
                                            case  System::stream_type::Result::END_OF_STREAM:
+                                               a->setResult(AwaiterResult::END_OF_STREAM);
                                                return true;
                                            case  System::stream_type::Result::SUCCESS:
                                                l->push_back(c);
