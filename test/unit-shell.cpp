@@ -61,7 +61,7 @@ std::pair<std::string, System::exit_code_type> testS(std::string script)
     while(M.executeAll());
 
     auto str = E.out->str();
-    while(str.back() == '\n')
+    while(str.size() && str.back() == '\n')
         str.pop_back();
     return {str, *exit_code};
 }
