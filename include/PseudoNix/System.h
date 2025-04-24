@@ -55,7 +55,7 @@ enum class AwaiterResult
 };
 
 
-#define PSUEDONIX_ENABLE_DEBUG
+//#define PSUEDONIX_ENABLE_DEBUG
 #if defined PSUEDONIX_ENABLE_DEBUG
 #define DEBUG_LOG(...) std::cerr << std::format(__VA_ARGS__) << std::endl;
 #else

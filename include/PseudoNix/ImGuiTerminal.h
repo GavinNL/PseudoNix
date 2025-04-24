@@ -52,11 +52,6 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
     // Grab the input and output streams for the shell
     // command
     auto [shell_stdin, shell_stdout] = m_mini.getIO(sh_pid);
-    bl_defer
-    {
-        //std::cout << "destructor" << std::endl;
-        shell_stdin->set_eof();
-    };
 
     bool exit_if_subprocess_exits = true;
 

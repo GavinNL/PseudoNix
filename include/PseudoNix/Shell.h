@@ -362,15 +362,33 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
 
     std::vector<System::pid_type> subProcess;
 
-    // control->setSignalHandler([](int s)
-    // {
-    //     std::cerr << std::format("Custom signal recieved: {}", s) << std::endl;;
-    // });
+
     while(!shellEnv.exitShell)
     {
         HANDLE_AWAIT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
 
         char c;
+#if 1
+        while(true)
+        {
+            auto r = CIN.get(&c);
+            if(r == System::stream_type::Result::END_OF_STREAM)
+                shellEnv.exitShell = true;
+            else if(r == System::stream_type::Result::SUCCESS)
+            {
+                _current += c;
+                if(_current.back() == ';' || _current.back() == '\n')
+                {
+                    _current.pop_back();
+                    break;
+                }
+            }
+            else
+            {
+                break;
+            }
+        }
+#else
         auto r = CIN.get(&c);
         if(r == System::stream_type::Result::END_OF_STREAM)
         {
@@ -383,14 +401,13 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
             // the await
             break;
         }
-
         _current += c;
         if(c != ';' && c != '\n')
         {
             continue;
         }
         _current.pop_back();
-
+#endif
         if(_current.empty())
         {
             continue;
@@ -427,7 +444,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
             STDIN->set_eof();
             auto pids = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), &shellEnv, STDIN, ctrl->out);
 
-            COUT << std::to_string(pids[0]) << "\n";
+            COUT << std::format("{}\n", pids[0]);
             continue;
         }
 
@@ -490,7 +507,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
             auto f_exit_code = SYSTEM.getProcessExitCode(subProcess.back());
 
             HANDLE_AWAIT_TERM(co_await ctrl->await_finished(subProcess), ctrl)
-            //ctrl->out->put('\n');
+
             if(!f_exit_code)
             {
                 COUT << std::format("Command not found: [{}]\n", cmd[1] );
