@@ -21,6 +21,14 @@ constexpr const uint32_t invalid_pid = 0xFFFFFFFF;
 constexpr const int sig_interrupt  = 2;
 constexpr const int sig_terminate = 15;
 
+/**
+ * @brief splitVar
+ * @param var_def
+ * @return
+ *
+ * Given a stringview that looks like "VAR=VALUE", split this into two string views:
+ * VAR and VALUE
+ */
 static std::pair<std::string_view, std::string_view> splitVar(std::string_view var_def)
 {
     auto i = var_def.find_first_of('=');
@@ -31,6 +39,15 @@ static std::pair<std::string_view, std::string_view> splitVar(std::string_view v
     return {};
 };
 
+/**
+ * @brief join
+ * @param c
+ * @param delimiter
+ * @return
+ *
+ * Used to join a container for printing
+ * std::format("{}", join(vector, ","));
+ */
 template <typename Container>
 std::string join(const Container& c, const std::string& delimiter = ", ") {
     std::ostringstream oss;
@@ -45,12 +62,31 @@ std::string join(const Container& c, const std::string& delimiter = ", ") {
     return oss.str();
 }
 
+/**
+ * @brief The AwaiterResult enum
+ *
+ * This enum is returned when you coawait on the awaiter class.
+ */
 enum class AwaiterResult
 {
+    // No problems, the awaiter was resumed
+    // successfully
     SUCCESS = 0,
+
+    // The awaiter was resumed, but
+    // the system sent a signal while it was
+    // paused. You should terminate your process
+    // gracefully
     SIGNAL_INTERRUPT = sig_interrupt,
     SIGNAL_TERMINATE = sig_terminate,
+
+    // Sent if you are awaiting on an input stream
+    // If it returns END_OF_STREAM, it means the
+    // input stream was closed and you should
+    // probably exit your process
     END_OF_STREAM,
+
+
     UNKNOWN_ERROR
 };
 
@@ -265,6 +301,14 @@ struct System
          * @return
          *
          * Yield until a line has been read from the input stream. Similar to std::getline
+         *
+         * The awaiter will resume if:
+         *   - A full line (ending with a newline character) has been found
+         *      returns AwaiterResult::SUCCESS
+         *
+         *   - and END_OF_STREAM was found, (ie. the stream was closed)
+         *   - the shared pointer only has 1 use_count.
+         *      Returns AwaiterResult::END_OF_STREAM
          */
         System::Awaiter await_read_line(std::shared_ptr<System::stream_type> & d, std::string & line)
         {
@@ -307,13 +351,27 @@ struct System
          *
          * Yield until the input stream has data
          */
-        System::Awaiter await_has_data(std::shared_ptr<System::stream_type> d)
+        System::Awaiter await_has_data(std::shared_ptr<System::stream_type> & d)
         {
             return System::Awaiter{get_pid(),
                                    system,
-                                   [d](Awaiter*){
-                                       if(d->check() == System::stream_type::Result::EMPTY)
-                                           return false;
+                                   [&d](Awaiter* a){
+                                       if(d.use_count() == 1 && !d->has_data() )
+                                       {
+                                           a->setResult(AwaiterResult::END_OF_STREAM);
+                                           return true;
+                                       }
+                                       auto c = d->check();
+                                       switch(c)
+                                       {
+                                           case  System::stream_type::Result::EMPTY:
+                                               return false;
+                                           case  System::stream_type::Result::END_OF_STREAM:
+                                               a->setResult(AwaiterResult::END_OF_STREAM);
+                                               return true;
+                                           case  System::stream_type::Result::SUCCESS:
+                                               return true;
+                                       }
                                        return true;
                                    }};
         }
@@ -858,6 +916,9 @@ struct System
      * will be set to -1 if the process has not completed
      * Or will be nullptr if the process doesn't exist.
      *
+     * You should call this function right after you execute
+     * a spawnProcess call, but before the process executes
+     *
      * auto p = sys.spawnProcess({"sleep", "10"});
      * auto _exit = sys.getProcessExitCode(p);
      *
@@ -971,8 +1032,16 @@ struct System
 
         // This is where the current signal is
         int32_t lastSignal = 0;
+
+        // flag indicating whether the process has been signaled
         bool has_been_signaled = false;
+
+        // flag used to indicate that the process should terminate
+        // without cleanup.
         bool force_terminate = false;
+
+        // Process has been finalized and is ready to be
+        // removed from the scheduler
         bool should_remove = false;
 
         pid_type                        parent = invalid_pid;
@@ -983,6 +1052,12 @@ struct System
 protected:
     std::map<std::string, std::function< task_type(e_type) >> m_funcs;
     std::map<pid_type, Process > m_procs2;
+
+    // This is where all the awaiters are stored
+    // they are stored by
+    std::map<std::string,
+             std::vector<Awaiter*> > m_awaiters;
+
     std::thread::id m_main_thread_id = {};
     pid_type _pid_count=1;
 
