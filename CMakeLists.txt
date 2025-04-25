@@ -82,7 +82,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
 
     find_package(readerwriterqueue)
 
-    add_executable(terminal terminal.cpp)
+    add_executable(terminal examples/terminal.cpp)
     target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET}  readerwriterqueue::readerwriterqueue)
     target_include_directories(terminal PUBLIC
                                         # For ImGui, set them as system includes
@@ -99,19 +99,19 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
         target_link_options(   terminal PRIVATE "-sUSE_SDL=2")
         set_target_properties( terminal PROPERTIES SUFFIX ".html")
     else()
-        add_executable(main main.cpp)
+        add_executable(main examples/main.cpp)
         target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
 
-        add_executable(example1 example1.cpp)
+        add_executable(example1 examples/example1.cpp)
         target_link_libraries(example1 ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
 
-        add_executable(example2 example2.cpp)
+        add_executable(example2 examples/example2.cpp)
         target_link_libraries(example2 ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
 
-        add_executable(example3 example3.cpp)
+        add_executable(example3 examples/example3.cpp)
         target_link_libraries(example3 ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
 
-        add_executable(example4 example4.cpp)
+        add_executable(example4 examples/example4.cpp)
         target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} readerwriterqueue::readerwriterqueue)
     endif()
 
