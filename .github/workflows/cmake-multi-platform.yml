@@ -53,22 +53,31 @@ jobs:
     #  CXX: ${{ matrix.cxx }}
 
     steps:
+# ╔══════════════════════════════════════════════╗
       - name: Checkout source
+# ╚══════════════════════════════════════════════╝
         uses: actions/checkout@v4
 
+
+# ╔══════════════════════════════════════════════╗
       - name: Set up compilers on Ubuntu
+# ╚══════════════════════════════════════════════╝
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build ${{ matrix.cxx}} tree
 
+# ╔══════════════════════════════════════════════╗
       - name: Set compiler environment variables (Linux only)
+# ╚══════════════════════════════════════════════╝
         if: runner.os == 'Linux'
         run: |
           echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
           echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
 
+# ╔══════════════════════════════════════════════╗
       - name: Install latest Python 3 (Windows)
+# ╚══════════════════════════════════════════════╝
         if: runner.os == 'Windows'
         uses: actions/setup-python@v5
         with:
