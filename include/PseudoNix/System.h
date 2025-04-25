@@ -1199,6 +1199,11 @@ protected:
                     break;
                 }
             }
+            if(!output.empty())
+            {
+                std::reverse(output.begin(), output.end());
+                *ctrl->out << std::format("{}\n", output);
+            }
             co_return 0;
         };
 

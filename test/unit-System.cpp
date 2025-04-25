@@ -458,7 +458,7 @@ SCENARIO("test await_data")
         REQUIRE(control->in->get(&c) == System::stream_type::Result::SUCCESS);
         REQUIRE(c == '2');
 
-        REQUIRE(AwaiterResult::SUCCESS == co_await control->await_has_data(control->in));
+        REQUIRE(AwaiterResult::END_OF_STREAM == co_await control->await_has_data(control->in));
         REQUIRE(control->in->eof()==true);
         //REQUIRE(control->in->get(&c) == System::stream_type::Result::SUCCESS);
         co_return 0;
