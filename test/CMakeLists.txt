@@ -36,7 +36,7 @@ foreach(file ${files})
     target_compile_definitions( ${UNIT_EXE_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     target_compile_features( ${UNIT_EXE_NAME}
                                 PUBLIC
-                                    cxx_std_17)
+                                    cxx_std_20)
 
     target_link_libraries( ${UNIT_EXE_NAME}
                                 PUBLIC
