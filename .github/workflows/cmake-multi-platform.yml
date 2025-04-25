@@ -12,7 +12,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         build_type: [Debug, Release]
-        compiler: [gcc-12, gcc-13, clang-18, clang-19, msvc]
+        compiler: [gcc-12, gcc-13, msvc]
         cpp_std: [20]
         include:
           - os: ubuntu-latest
@@ -37,10 +37,6 @@ jobs:
             cxx: cl
         exclude:
           # Exclude non-Microsoft compilers from Windows
-          - os: ubuntu-latest
-            compiler: clang-18
-          - os: ubuntu-latest
-            compiler: clang-19
           - os: windows-latest
             compiler: gcc-12
           - os: windows-latest
