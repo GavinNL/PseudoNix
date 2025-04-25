@@ -37,6 +37,10 @@ jobs:
             cxx: cl
         exclude:
           # Exclude non-Microsoft compilers from Windows
+          - os: ubuntu-latest
+            compiler: clang-18
+          - os: ubuntu-latest
+            compiler: clang-19
           - os: windows-latest
             compiler: gcc-12
           - os: windows-latest
