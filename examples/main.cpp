@@ -130,14 +130,19 @@ export HOME
     std::signal(SIGINT, handle_sigint);
     _M = &M;
 
-    // executeAllFor( ) will keep calling executeAll()
-    // until the total time elapsed is more than the
-    // given input value
+    // Create another task queue
+    // Thi sis for the taskHopper example
+    M.createTaskQueue("THREAD");
+
+    // Execute all the processes on the MAIN task queue
     while(M.executeAllFor(std::chrono::milliseconds(1), 10))
     {
         // sleep for 1 millisecond so we're not
         // doing a busy loop
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+        // Execute all the tasks on the THREAD task queue
+        M.executeTaskQueue("THREAD");
     }
     _M = nullptr;
     return 0;

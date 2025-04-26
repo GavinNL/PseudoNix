@@ -8,13 +8,8 @@
 namespace PseudoNix
 {
 
-System::task_type terminalWindow_coro(System::e_type ctrl)
+inline System::task_type terminalWindow_coro(System::e_type ctrl)
 {
-    // we're going to suspend on first run
-    // because we are calling ImGui::Begin/End
-    // We need to make sure these are only called
-    // within the ImGui context otherwise
-    co_await std::suspend_always{};
 
     static int term_count=1;
     std::string terminal_name = std::format("Terminal {}", term_count++);
@@ -38,26 +33,31 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
     // Then we're going to get the input from the ImGui widget
     // and place it into the stream manually
     std::string _cmdline;
-    std::string output;
 
     auto & m_mini = *ctrl->system;
 
+#if 0
+    auto shell_stdin = System::make_stream();
+    auto shell_stdout = System::make_stream();
+    System::pid_type sh_pid = 0xFFFFFFFF;
+#else
     std::vector<std::string> args(ctrl->args.begin()+1, ctrl->args.end());
     if(args.empty())
         args.push_back("sh");
-
-
     auto sh_pid = ctrl->executeSubProcess(System::parseArguments(args));
-
     // Grab the input and output streams for the shell
     // command
     auto [shell_stdin, shell_stdout] = m_mini.getIO(sh_pid);
+#endif
 
-    bool exit_if_subprocess_exits = true;
+    bool open = true;
+    bool show_buttons = !(ctrl->env.count("NO_SHOW_BUTTONS") == 1);
+    bool exit_if_subprocess_exits = !(ctrl->env.count("NO_AUTO_CLOSE") == 1);
+    //bool exit_if_subprocess_exits = true;
 
 
     int frameCount[2] = {ImGui::GetFrameCount()-1, ImGui::GetFrameCount()-1};
-    while(true)
+    while(open)
     {
         frameCount[0] = frameCount[1];
         frameCount[1] = ImGui::GetFrameCount();
@@ -72,29 +72,30 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
             // between between ImGui::Begin/ImGui::End;
             //--------------------------------------------------------------
             ImGui::SetNextWindowSize(ImVec2(500, 500), ImGuiCond_Once);
-            ImGui::Begin(std::format("Terminal {}", terminal_name).c_str());
+            ImGui::Begin(std::format("Terminal {}", terminal_name).c_str(), &open);
 
-            if( ImGui::Button("New Terminal") )
+            if(show_buttons)
             {
-                m_mini.runRawCommand({ctrl->args});
+                if( ImGui::Button("New Terminal") )
+                {
+                    m_mini.runRawCommand({ctrl->args});
+                }
+                ImGui::SameLine();
+                if( ImGui::Button("Sig-Int (Ctrl+C)") )
+                {
+                    m_mini.signal(sh_pid, PseudoNix::sig_interrupt);
+                }
+                ImGui::SameLine();
+                if( ImGui::Button("End Stream (Ctrl+D)") )
+                {
+                    shell_stdin->set_eof();
+                }
+                ImGui::SameLine();
+                if( ImGui::Button("Sig-Term") )
+                {
+                    m_mini.signal(sh_pid, PseudoNix::sig_terminate);
+                }
             }
-            ImGui::SameLine();
-            if( ImGui::Button("Sig-Int (Ctrl+C)") )
-            {
-                m_mini.signal(sh_pid, PseudoNix::sig_interrupt);
-            }
-            ImGui::SameLine();
-            if( ImGui::Button("End Stream (Ctrl+D)") )
-            {
-                shell_stdin->set_eof();
-            }
-            ImGui::SameLine();
-            if( ImGui::Button("Sig-Term") )
-            {
-                m_mini.signal(sh_pid, PseudoNix::sig_terminate);
-            }
-            //ImGui::SameLine();
-            //ImGui::Text("%s", std::format("Frame Count {}", ImGui::GetFrameCount()).c_str());
             // Draw the console and invoke the callback if
             // a command is entered into the input text
             console.Draw([_in=shell_stdin](std::string const & cmd)
@@ -111,35 +112,26 @@ System::task_type terminalWindow_coro(System::e_type ctrl)
 
         if(exit_if_subprocess_exits && !ctrl->system->isRunning(sh_pid)) break;
 
-        HANDLE_AWAIT_TERM(co_await ctrl->await_yield(), ctrl);
+        auto returned_signal = co_await ctrl->await_yield();
+
+        switch(returned_signal)
+        {
+            case PseudoNix::AwaiterResult::SIGNAL_INTERRUPT:   ctrl->system->clearSignal(ctrl->get_pid()); break;
+            case PseudoNix::AwaiterResult::SIGNAL_TERMINATE: { co_return static_cast<int>(PseudoNix::exit_terminated);}
+                default: break;
+        }
 
         char c;
-        while(true)
+        while(shell_stdout->get(&c) == ReaderWriterStream::Result::SUCCESS)
         {
-            auto s = shell_stdout->get(&c);
-            if(s == ReaderWriterStream::Result::SUCCESS)
-                output.push_back(c);
-            else if(s == ReaderWriterStream::Result::END_OF_STREAM)
-            {
-                console.AddLog(output);
-                output.clear();
-                break;
-            }
-            else if(s == ReaderWriterStream::Result::EMPTY)
-            {
-                break;
-            }
+            console.pushLogByte(c);
         }
-        //while(shell_stdout->get(&c) == ReaderWriterStream::Result::SUCCESS)
-        //{
-        //    if(c == '\n')
-        //    {
-        //        console.AddLog(output);
-        //        output.clear();
-        //    } else {
-        //        output+= c;
-        //    }
-        //}
+    }
+
+    if(ctrl->system->isRunning(sh_pid))
+    {
+        ctrl->system->kill(sh_pid);
+        co_await ctrl->await_finished(sh_pid);
     }
 
     co_return 0;

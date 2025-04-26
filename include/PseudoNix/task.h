@@ -140,6 +140,10 @@ struct Task_t
     {
         return handle != nullptr;
     }
+    auto get_handle()
+    {
+        return handle;
+    }
 private:
     std::coroutine_handle<promise_type> handle;
 };

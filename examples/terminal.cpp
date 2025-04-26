@@ -1,6 +1,7 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "App.h"
 
+//#define PSUEDONIX_ENABLE_DEBUG
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
 #include <PseudoNix/ImGuiTerminal.h>
@@ -88,10 +89,14 @@ public:
         // finally, execute the term command
         // and execute the system call
         m_mini.spawnProcess({"SHELL=sh", "term", "sh"});
+
+        m_mini.createTaskQueue("THREAD");
     }
 
     void imguiRender()
     {
+        m_mini.executeTaskQueue("THREAD");
+
         // Each time imgui performs the rendering
         // we are going to execute the scheduler and invoke
         // all coroutines once. Some coroutines can draw to the

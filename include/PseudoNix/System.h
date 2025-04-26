@@ -10,6 +10,10 @@
 #include "defer.h"
 #include <span>
 #include <thread>
+#include <list>
+
+#define PSEUDONIX_VERSION_MAJOR 0
+#define PSEUDONIX_VERSION_MINOR 1
 
 namespace PseudoNix
 {
@@ -20,6 +24,7 @@ constexpr const uint32_t invalid_pid = 0xFFFFFFFF;
 
 constexpr const int sig_interrupt  = 2;
 constexpr const int sig_terminate = 15;
+
 
 /**
  * @brief splitVar
@@ -98,8 +103,6 @@ enum class AwaiterResult
 #define DEBUG_LOG(...)
 #endif
 
-template <typename T, typename... Ts>
-concept all_same = (std::same_as<T, Ts> && ...);
 
 struct System
 {
@@ -123,11 +126,16 @@ struct System
 
     class Awaiter {
     public:
-        explicit Awaiter(pid_type p, System* S,std::function<bool(Awaiter*)> f)
-            : m_pid(p), m_system(S), m_pred(f)
+        explicit Awaiter(pid_type p,
+                         System* S,
+                         std::function<bool(Awaiter*)> f,
+                         std::string queuName = "")
+            : m_pid(p), m_system(S), m_pred(f), m_queueName(queuName)
         {
-            m_signal = &m_system->m_procs2.at(p).lastSignal;
+            m_signal = &m_system->m_procs2.at(p)->lastSignal;
         }
+
+        Awaiter(){};
 
         ~Awaiter()
         {
@@ -157,8 +165,7 @@ struct System
             // this is where we need to place
             // the handle for executing on another
             // scheduler
-            assert(m_system->m_procs2.at(m_pid).awaiter == nullptr);
-            m_system->m_procs2.at(m_pid).awaiter = this;
+            m_system->handleAwaiter(this);
         }
 
         void setResult(AwaiterResult r)
@@ -175,17 +182,24 @@ struct System
             if(handle_)
             {
                 handle_.resume();
-                handle_ = {};
+                //handle_ = {};
             }
+        }
+
+        auto get_pid() const
+        {
+            return m_pid;
         }
 
     protected:
         pid_type m_pid;
         System * m_system;
         std::function<bool(Awaiter*)> m_pred;
-        std::coroutine_handle<> handle_;
         int32_t * m_signal = nullptr;
         AwaiterResult m_result = {};
+    public:
+        std::coroutine_handle<> handle_;
+        std::string m_queueName;
     };
 
 
@@ -198,6 +212,7 @@ struct System
         std::shared_ptr<stream_type>       out;
         std::map<std::string, std::string> env;
         System * system = nullptr;
+        std::string_view queue_name;
 
     protected:
         pid_type    pid = invalid_pid;
@@ -205,7 +220,7 @@ struct System
 
         void setSignalHandler(std::function<void(int)> f)
         {
-            system->m_procs2.at(pid).signal = f;
+            system->m_procs2.at(pid)->signal = f;
         }
 
         pid_type get_pid() const
@@ -220,7 +235,7 @@ struct System
          * Yield the current process until the
          * next iteration of the scheduler
          */
-        System::Awaiter await_yield()
+        System::Awaiter await_yield(std::string_view queue="MAIN")
         {
             return System::Awaiter{pid,
                                    system,
@@ -235,7 +250,7 @@ struct System
                                        // subsequent times, return true
                                        // so that we know it
                                        return true;
-                                   }};
+                                   }, std::string(queue)};
         }
 
         /**
@@ -245,14 +260,14 @@ struct System
          *
          * Sleep for an amount of time.
          */
-        System::Awaiter await_yield_for(std::chrono::nanoseconds time)
+        System::Awaiter await_yield_for(std::chrono::nanoseconds time, std::string_view queue="MAIN")
         {
             auto T1 = std::chrono::system_clock::now() + time;
             return System::Awaiter{get_pid(),
                                    system,
                                    [T=T1](Awaiter*){
                                        return std::chrono::system_clock::now() > T;
-                                   }};
+                                   }, std::string(queue)};
         }
 
         /**
@@ -269,7 +284,7 @@ struct System
                                    [_pid,sys=system](Awaiter*)
                                    {
                                        return !sys->isRunning(_pid);
-                                   }};
+                                   }, std::string(queue_name)};
         }
 
         /**
@@ -291,7 +306,7 @@ struct System
                                                return false;
                                        }
                                        return true;
-                                   }};
+                                   }, std::string(queue_name)};
         }
 
         /**
@@ -341,7 +356,7 @@ struct System
                                            }
                                        }
                                        return false;
-                                   }};
+                                   }, std::string(queue_name)};
         }
 
         /**
@@ -373,7 +388,7 @@ struct System
                                                return true;
                                        }
                                        return true;
-                                   }};
+                                   }, std::string(queue_name)};
         }
 
         pid_type executeSubProcess(System::Exec E)
@@ -412,6 +427,7 @@ struct System
 
     System()
     {
+        createTaskQueue("MAIN");
         setDefaultFunctions();
     }
 
@@ -493,7 +509,7 @@ struct System
         if(isRunning(pid))
         {
             auto & proc = m_procs2.at(pid);
-            proc.force_terminate = true;
+            proc->force_terminate = true;
             return true;
         }
         return false;
@@ -607,15 +623,17 @@ struct System
         if(arg == nullptr)
             arg = std::make_shared<ProcessControl>();
 
-        Process _t = {arg, std::move(t)};
+        auto handle = t.get_handle();
 
+        auto _t_p = std::make_shared<Process>(arg, std::move(t));
+        auto & _t = *_t_p;
         _t.parent = parent;
         arg->pid = _pid;
         arg->system = this;
 
         if(parent != invalid_pid)
         {
-            m_procs2.at(parent).child_processes.push_back(_pid);
+            m_procs2.at(parent)->child_processes.push_back(_pid);
         }
 
         std::weak_ptr<ProcessControl> p = arg;
@@ -630,13 +648,22 @@ struct System
                 // signal to its children
                 DEBUG_LOG("[{}] Default Signal Handler: {}", s, join(aa->args));
 
-                for(auto c : this->m_procs2.at(aa->pid).child_processes)
+                for(auto c : this->m_procs2.at(aa->pid)->child_processes)
                 {
                     this->signal(c, s);
                 }
             }
         };
-        m_procs2.emplace(_pid, std::move(_t));
+        auto Proc = m_procs2.emplace(_pid, _t_p);
+
+        // Create custom awaiter that will
+        // be placed in the main thread pool
+        DEBUG_LOG("Process Registered: {}", join(arg->args) );
+        Proc.first->second->initialAwaiter = Awaiter(_pid, this, [](Awaiter*){return true;}, "MAIN");
+        Proc.first->second->initialAwaiter.handle_ = handle;
+        Proc.first->second->initialAwaiter.await_suspend(handle);
+
+
 
         return _pid;
     }
@@ -655,7 +682,7 @@ struct System
     {
         auto it = m_procs2.find(pid);
         if(it == m_procs2.end()) return false;
-        return !it->second.is_complete;
+        return !it->second->is_complete;
     }
 
     bool isAllComplete(std::vector<pid_type> const &pid) const
@@ -690,7 +717,7 @@ struct System
     {
         if(isRunning(pid))
         {
-            auto & proc = m_procs2.at(pid);
+            auto & proc = *m_procs2.at(pid);
             if(proc.signal && !proc.has_been_signaled)
             {
                 proc.has_been_signaled = true;
@@ -715,7 +742,7 @@ struct System
     {
         if(isRunning(pid))
         {
-            auto & proc = m_procs2.at(pid);
+            auto & proc = *m_procs2.at(pid);
             proc.lastSignal = 0;
         }
     }
@@ -731,60 +758,9 @@ struct System
     {
         if(isRunning(pid))
         {
-            return {m_procs2.at(pid).control->in, m_procs2.at(pid).control->out};
+            return {m_procs2.at(pid)->control->in, m_procs2.at(pid)->control->out};
         }
         return {};
-    }
-
-    /**
-     * @brief execute
-     * @param pid
-     *
-     * Executes a specific PID and returns true if the
-     * coroutine is completed
-     */
-    bool execute(pid_type pid)
-    {
-        auto & coro = m_procs2.at(pid);
-        if(coro.is_complete)
-            return true;
-
-        if(!coro.task.done())
-        {
-            // check if the coroutine has an awaiter
-            // that needs to be processed
-            if(coro.awaiter)
-            {
-                // Process the awaiter. The awaiter has
-                // an internal function object that can executed
-                if(coro.awaiter->await_ready())
-                {
-                    auto a = coro.awaiter;
-                    // if the coroutine is ready to be resumed
-                    // null out the awaiter, because it is possible
-                    // that resuming the coroutine will produce another
-                    // awaiter
-                    coro.awaiter = nullptr;
-
-                    a->resume();
-                }
-            }
-            else
-            {
-                coro.task.resume();
-            }
-        }
-        if(coro.task.done() && !coro.is_complete)
-        {
-            auto exit_code = coro.task();
-            coro.is_complete = true;
-            *coro.exit_code = !coro.force_terminate ? exit_code : -1;
-            coro.should_remove = true;
-            _finalizePID(pid);
-
-            return true;
-        }
-        return false;
     }
 
     // End the process and clean up anything
@@ -792,7 +768,8 @@ struct System
     // Does not remove the pid from the process list
     void _finalizePID(pid_type p)
     {
-        auto & coro = m_procs2.at(p);
+        auto & coro = *m_procs2.at(p);
+        coro.control->queue_name = "MAIN";
         if( coro.task.valid() )
         {
             coro.task.destroy();
@@ -802,14 +779,13 @@ struct System
         // reading from it will know to close
         coro.control->out->set_eof();
 
-        coro.awaiter = nullptr;
         coro.is_complete = true;
 
         _detachFromParent(p);
 
-        DEBUG_LOG("Finalized: {}\n", join(coro.control->args));
-        DEBUG_LOG("       IN: {}\n", coro.control->in.use_count());
-        DEBUG_LOG("      OUT: {}  ", coro.control->out.use_count());
+        DEBUG_LOG("Finalized: {}", join(coro.control->args));
+        DEBUG_LOG("       IN: {}", coro.control->in.use_count());
+        DEBUG_LOG("      OUT: {}", coro.control->out.use_count());
 
         coro.control->out = {};
         coro.control->in  = {};
@@ -821,10 +797,10 @@ struct System
 
     void _detachFromParent(pid_type p)
     {
-        auto & coro = m_procs2.at(p);
+        auto & coro = *m_procs2.at(p);
         if(coro.parent != invalid_pid && m_procs2.count(coro.parent))
         {
-            auto & cp = m_procs2.at(coro.parent).child_processes;
+            auto & cp = m_procs2.at(coro.parent)->child_processes;
             cp.erase(std::remove_if(cp.begin(), cp.end(), [p](auto && ch)
                                     {
                                         return ch==p;
@@ -832,14 +808,21 @@ struct System
             coro.parent = invalid_pid;
         }
     }
+
     /**
      * @brief executeAll
      * @return
      *
      * Executes all the processes and returns the total
      * number of processes still in the scheduler
+     *
+     * Executes all the processes in a specific queue.
+     *
+     * The MAIN queue is the only queue that will finalize a
+     * process.
+     *
      */
-    size_t executeAll()
+    size_t executeTaskQueue(std::string const & queue_name = "MAIN")
     {
         m_main_thread_id = std::this_thread::get_id();
 
@@ -847,22 +830,50 @@ struct System
         //
         // Nothing is removed from the container until all
         // of the objects have been processed
-        auto _end = m_procs2.end();
-        for(auto it = m_procs2.begin(); it!=_end; it++)
+        auto & M = m_awaiters.at(queue_name);
+        auto size = M.size();
+
+        while(size > 0)
         {
-            auto & pid = it->first;
-            if(execute(pid))
+            auto a = M.front();
+            M.pop_front();
+            size--;
+            // its possible that the process had been forcefully killed
+            // and the handle to the coroutine no longer valid. So make sure
+            // that we do not resume any of those coroutines
+            if(a.second->force_terminate || a.second->is_complete || a.second->should_remove)
+                continue;
+            if(a.first->await_ready())
             {
+                a.second->control->queue_name = queue_name;
+                a.first->resume();
+            }
+            else
+            {
+                M.push_back(a);
             }
         }
+
+        if(queue_name != "MAIN")
+            return m_procs2.size() + M.size();
 
         // Remove any processes that:
         //   1. whose task has completed
         //   2. who is force terminated
         //
+        auto _end = m_procs2.end();
         for(auto it = m_procs2.begin(); it!=_end;)
         {
-            auto & coro = it->second;
+            auto & coro = *it->second;
+
+            if(coro.task.done() && !coro.is_complete)
+            {
+                auto exit_code = coro.task();
+                coro.is_complete = true;
+                *coro.exit_code = !coro.force_terminate ? exit_code : -1;
+                coro.should_remove = true;
+                coro.force_terminate = true;
+            }
 
             // did someone call kill on the PID?
             if(coro.force_terminate)
@@ -872,7 +883,6 @@ struct System
 
             if(coro.should_remove)
             {
-                DEBUG_LOG("Removing {}", join(coro.control->args));;
                 it = m_procs2.erase(it);
             }
             else
@@ -882,6 +892,21 @@ struct System
         }
         m_main_thread_id = {};
         return m_procs2.size();
+    }
+
+    void handleAwaiter(Awaiter *a)
+    {
+        auto pid = a->get_pid();
+        auto proc = m_procs2.at(pid);
+
+        // the queue must have been created prior to
+        // adding tasks
+        m_awaiters.at(a->m_queueName).push_back({a,proc});
+    }
+
+    void createTaskQueue(std::string name)
+    {
+        m_awaiters[name];
     }
 
     /**
@@ -901,7 +926,7 @@ struct System
         size_t i=0;
         while(true)
         {
-            ret = executeAll();
+            ret = executeTaskQueue();
             if(std::chrono::high_resolution_clock::now() > T1 || i++ > maxIterations)
                 break;
         }
@@ -927,7 +952,7 @@ struct System
     {
         if(auto it = m_procs2.find(p); it!=m_procs2.end())
         {
-            return it->second.exit_code;
+            return it->second->exit_code;
         }
         return nullptr;
     }
@@ -941,12 +966,12 @@ struct System
      */
     std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)
     {
-        return m_procs2.at(pid).control;
+        return m_procs2.at(pid)->control;
     }
 
     pid_type getParentProcess(pid_type pid)
     {
-        return m_procs2.at(pid).parent;
+        return m_procs2.at(pid)->parent;
     }
 
     /**
@@ -1021,10 +1046,11 @@ struct System
 
     struct Process
     {
+        Process(std::shared_ptr<ProcessControl> ctrl, task_type && t) : control(ctrl), task(std::move(t))
+        {
+        }
         std::shared_ptr<ProcessControl> control;
         task_type                       task;
-
-        Awaiter                       * awaiter = nullptr;
 
         bool is_complete = false;
         std::shared_ptr<exit_code_type  > exit_code = std::make_shared<exit_code_type>(-1);
@@ -1046,17 +1072,15 @@ struct System
 
         pid_type                        parent = invalid_pid;
         std::vector<pid_type>           child_processes = {};
+        Awaiter initialAwaiter = {};
     };
 
 
 protected:
     std::map<std::string, std::function< task_type(e_type) >> m_funcs;
-    std::map<pid_type, Process > m_procs2;
+    std::map<pid_type, std::shared_ptr<Process> >             m_procs2;
 
-    // This is where all the awaiters are stored
-    // they are stored by
-    std::map<std::string,
-             std::vector<Awaiter*> > m_awaiters;
+    std::map<std::string, std::list<std::pair<Awaiter*, std::shared_ptr<Process> > > >               m_awaiters;
 
     std::thread::id m_main_thread_id = {};
     pid_type _pid_count=1;
@@ -1089,7 +1113,8 @@ protected:
             auto const PID  = control->get_pid(); (void)PID;\
             auto & SYSTEM = *control->system; (void)SYSTEM;\
             auto const & ARGS = control->args; (void)ARGS;\
-            auto const & ENV = control->env; (void)ENV
+            auto const & ENV = control->env; (void)ENV; \
+            auto const & QUEUE = control->queue_name; (void)QUEUE
 
         m_funcs["false"] = [](e_type ctrl) -> task_type
         {
@@ -1247,7 +1272,7 @@ protected:
             for(auto & [pid, P] : SYSTEM.m_procs2)
             {
                 std::string cmd;
-                for(auto & c : P.control->args)
+                for(auto & c : P->control->args)
                     cmd += c + " ";
                 COUT<< std::format("{}     {}\n", pid, cmd);
             }
@@ -1313,7 +1338,7 @@ protected:
 
             for(auto & [pid, proc] : SYSTEM.m_procs2)
             {
-                COUT << std::format("{}[{}]->{}->{}[{}]\n", static_cast<void*>(proc.control->in.get()), proc.control->in.use_count(), proc.control->args[0], static_cast<void*>(proc.control->out.get()), proc.control->out.use_count() );
+                COUT << std::format("{}[{}]->{}->{}[{}]\n", static_cast<void*>(proc->control->in.get()), proc->control->in.use_count(), proc->control->args[0], static_cast<void*>(proc->control->out.get()), proc->control->out.use_count() );
             }
             co_return 0;
         };
@@ -1336,6 +1361,68 @@ protected:
             co_return 0;
         };
 
+#if 0
+        // execute a task queue on a different thread
+        // WIP: No synchronization primatives used
+        m_funcs["runner"] = [](e_type ctrl) -> task_type
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            std::string s;
+
+            std::jthread worker([sys=ctrl->system](std::stop_token stoken) {
+                    int i = 0;
+                    while (!stoken.stop_requested()) {
+                        std::cout << "Tick " << i++ << "\n";
+                        try
+                        {
+                            sys->executeAll("THREAD");
+                        } catch ( std::exception & e)
+                        {
+
+                        }
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    }
+                    std::cout << "Stopped by request\n";
+            });
+
+            PSEUDONIX_TRAP {
+                std::cout << "TRAPPED" << std::endl;
+                worker.request_stop();
+                worker.join();
+            };
+
+            while(true)
+            {
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
+            }
+
+            co_return 0;
+        };
+#endif
+
+        m_funcs["queueHopper"] = [](e_type ctrl) -> task_type
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            std::string s;
+
+            PSEUDONIX_TRAP {
+                COUT << std::format("Trap on {} queue\n", QUEUE);
+            };
+
+            COUT << std::format("On {} queue\n", QUEUE);
+
+            // wait for 1 second and then resume on a different Task Queue
+            // Specific task queues are executed at a specific time
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::seconds(1), "THREAD"), ctrl);
+
+            COUT << std::format("On {} queue\n", QUEUE);
+
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::seconds(1), "MAIN"), ctrl);
+
+            COUT << std::format("On {} queue\n", QUEUE);
+
+            co_return 0;
+        };
     }
 };
 

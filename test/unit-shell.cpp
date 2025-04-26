@@ -58,7 +58,7 @@ std::pair<std::string, System::exit_code_type> testS(std::string script)
     REQUIRE(pid == 1);
     auto exit_code = M.getProcessExitCode(pid);
 
-    while(M.executeAll());
+    while(M.executeTaskQueue());
 
     auto str = E.out->str();
     while(str.size() && str.back() == '\n')

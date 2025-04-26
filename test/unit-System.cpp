@@ -97,7 +97,7 @@ SCENARIO("Return values")
 
                 auto re = S.getProcessExitCode(pid);
                 REQUIRE(*re == -1);
-                while(S.executeAll());
+                while(S.executeTaskQueue());
                 REQUIRE(*re == 0);
             }
         }
@@ -120,7 +120,7 @@ SCENARIO("Return values")
 
                 auto re = S.getProcessExitCode(pid);
                 REQUIRE(*re == -1);
-                while(S.executeAll());
+                while(S.executeTaskQueue());
                 REQUIRE(*re == 1);
             }
         }
@@ -153,7 +153,7 @@ SCENARIO("runRawCommand")
                 auto re = S.getProcessExitCode(pid);
                 REQUIRE(*re == -1);
 
-                while(S.executeAll());
+                while(S.executeTaskQueue());
 
                 REQUIRE(exec.out->str() == "hello world");
                 REQUIRE(*re == 0);
@@ -178,7 +178,7 @@ SCENARIO("System: Run a single command manually read from input")
             if(System::stream_type::Result::SUCCESS == args.in->get(&c))
             {
                 args.out->put(c);
-                co_await std::suspend_always{};
+                co_await control->await_yield();
             }
             else
             {
@@ -205,7 +205,7 @@ SCENARIO("System: Run a single command manually read from input")
 
     // We dont have a scheduler, so we'll manually
     // run this until its finished
-    while (M.executeAll());
+    while (M.executeTaskQueue());
 
     REQUIRE(exec.out->str() == "Hello world");
 }
@@ -249,7 +249,7 @@ SCENARIO("System: Execute two commands and have one piped into the other")
 
     // We dont have a scheduler, so we'll manually
     // run this until its finished
-    while (M.executeAll());
+    while (M.executeTaskQueue());
 
     REQUIRE(exec[1].out->str() == "dlrow olleH\n");
 }
@@ -286,7 +286,7 @@ SCENARIO("Test await_yield")
 
     // We dont have a scheduler, so we'll manually
     // run this until its finished
-    while (M.executeAll());
+    while (M.executeTaskQueue());
 
     REQUIRE(out->str() == "test: wait\n"
                            "echo\n"
@@ -325,7 +325,7 @@ SCENARIO("Test await_yield_for")
     // We dont have a scheduler, so we'll manually
     // run this until its finished
     auto T0 = std::chrono::system_clock::now();
-    while (M.executeAll());
+    while (M.executeTaskQueue());
     auto T1 = std::chrono::system_clock::now();
 
     //
@@ -371,7 +371,7 @@ SCENARIO("Test await_finished")
     // We dont have a scheduler, so we'll manually
     // run this until its finished
     auto T0 = std::chrono::system_clock::now();
-    while (M.executeAll());
+    while (M.executeTaskQueue());
     auto T1 = std::chrono::system_clock::now();
 
     //
@@ -426,7 +426,7 @@ SCENARIO("Test await_finished multi")
     // We dont have a scheduler, so we'll manually
     // run this until its finished
     auto T0 = std::chrono::system_clock::now();
-    while (M.executeAll());
+    while (M.executeTaskQueue());
     auto T1 = std::chrono::system_clock::now();
 
     //
@@ -474,19 +474,19 @@ SCENARIO("test await_data")
 
 
     // Execute once until the first yield
-    REQUIRE(1 == M.executeAll() );
+    REQUIRE(1 == M.executeTaskQueue() );
 
     // place something in the stream
     // and execute again
     E1.in->put('1');
-    REQUIRE(1 == M.executeAll() );
+    REQUIRE(1 == M.executeTaskQueue() );
 
     // place soemthing again and execute
     E1.in->put('2');
-    REQUIRE(1 == M.executeAll() );
+    REQUIRE(1 == M.executeTaskQueue() );
 
     E1.in->set_eof();
-    REQUIRE(0 == M.executeAll() );
+    REQUIRE(0 == M.executeTaskQueue() );
 
     //
     // Still only takes 2 seconds since both sleeps are in parallel
@@ -508,11 +508,11 @@ SCENARIO("Test signal")
     REQUIRE(pid != 0xFFFFFFFF);
 
     // Execute once until the first yield
-    REQUIRE(1 == M.executeAll() );
+    REQUIRE(1 == M.executeTaskQueue() );
 
     M.signal(pid, sig_interrupt);
 
-    REQUIRE(0 == M.executeAll() );
+    REQUIRE(0 == M.executeTaskQueue() );
 }
 
 
@@ -547,7 +547,7 @@ SCENARIO("Test kill")
     REQUIRE(p2 != 0xFFFFFFFF);
 
     // execute once, should yield
-    REQUIRE(2 == M.executeAll() );
+    REQUIRE(2 == M.executeTaskQueue() );
 
     // send sig-interrupt. p1 should exit
     // after next run
@@ -555,7 +555,7 @@ SCENARIO("Test kill")
         auto O1 = M.getIO(p1).second;
 
         M.signal(p1, sig_interrupt);
-        REQUIRE(1 == M.executeAll() );
+        REQUIRE(1 == M.executeTaskQueue() );
         REQUIRE(M.isRunning(p1) == false); // p1 is no longer running
         // The interrupt handled
         REQUIRE(
@@ -570,7 +570,7 @@ SCENARIO("Test kill")
         auto O2 = M.getIO(p2).second;
 
         M.kill(p2);
-        REQUIRE(0 == M.executeAll() );
+        REQUIRE(0 == M.executeTaskQueue() );
         REQUIRE(M.isRunning(p2) == false); // p1 is no longer running
         // The interrupt handled
         // Did not exit gracefully, but defer block was called
