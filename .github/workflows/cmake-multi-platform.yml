@@ -52,9 +52,11 @@ jobs:
           - os: ubuntu-latest
             compiler: msvc
 
-    #env:
-    #  CC: ${{ matrix.cc }}
-    #  CXX: ${{ matrix.cxx }}
+     env:
+       CC: ${{ matrix.cc }}
+       CXX: ${{ matrix.cxx }}
+       CONAN_LOGIN_USERNAME: ${{ secrets.CONAN_REMOTE_LOGIN }}
+       CONAN_PASSWORD: ${{ secrets.CONAN_REMOTE_PASSWORD }}
 
     steps:
 # ╔══════════════════════════════════════════════╗
@@ -104,7 +106,11 @@ jobs:
       - name: Configure Conan
 # ╚══════════════════════════════════════════════╝
         run: |
+          conan remote add backup ${{ secrets.CONAN_REMOTE_URL }}
+          conan remote auth backup
+
           conan install ${{ github.workspace }}/conanfile.py --build missing -s:b "build_type=Release" -s:h "build_type=${{ matrix.build_type }}" -s "compiler.cppstd=${{ matrix.cpp_std }}"  -of=${{ github.workspace }}/../build  -c tools.system.package_manager:mode=install  -c tools.system.package_manager:sudo=True
+          conan remote upload "*" --remote=backup --confirm
 
 
 # ╔══════════════════════════════════════════════╗
