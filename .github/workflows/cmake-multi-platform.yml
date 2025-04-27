@@ -51,8 +51,8 @@ jobs:
             compiler: clang-19
           - os: ubuntu-latest
             compiler: msvc
-
-     env:
+    
+    env:
        CC: ${{ matrix.cc }}
        CXX: ${{ matrix.cxx }}
        CONAN_LOGIN_USERNAME: ${{ secrets.CONAN_REMOTE_LOGIN }}
