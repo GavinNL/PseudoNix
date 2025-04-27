@@ -12,7 +12,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         build_type: [Debug, Release]
-        compiler: [gcc-13, msvc]
+        compiler: [gcc-13, gcc-14, msvc]
         cpp_std: [20]
         include:
           - os: windows-latest
@@ -20,10 +20,10 @@ jobs:
             cc: cl
             cxx: cl
 
-          #- os: ubuntu-latest
-          #  compiler: gcc-12
-          #  cc: gcc-12
-          #  cxx: g++-12
+          - os: ubuntu-latest
+            compiler: gcc-14
+            cc: gcc-14
+            cxx: g++-14
 
           - os: ubuntu-latest
             compiler: gcc-13
@@ -41,6 +41,8 @@ jobs:
           #  cxx: clang++-19
         exclude:
           # Exclude non-Microsoft compilers from Windows
+          - os: windows-latest
+            compiler: gcc-14
           - os: windows-latest
             compiler: gcc-12
           - os: windows-latest
