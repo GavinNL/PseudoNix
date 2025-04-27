@@ -53,8 +53,8 @@ jobs:
             compiler: msvc
     
     env:
-       CC: ${{ matrix.cc }}
-       CXX: ${{ matrix.cxx }}
+       #CC: ${{ matrix.cc }}
+       #CXX: ${{ matrix.cxx }}
        CONAN_LOGIN_USERNAME: ${{ secrets.CONAN_REMOTE_LOGIN }}
        CONAN_PASSWORD: ${{ secrets.CONAN_REMOTE_PASSWORD }}
 
