@@ -11,26 +11,6 @@ concurrent process like behaviour.
 * [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) by cameron314 (available on Conan)
 
 
-## Special Shell Features
-
-Psuedonix provides a default **shell** process that can be used as a starting point to create interactivity. 
-This shell behaves behaves similar to bash, allowing many features such as:
-
-It supports custom command registration and mimics familiar shell behavior including environment variables, 
-command substitution, logical operators `&&, ||`, and output redirection `cmd1 | cmd2`. 
-Perfect for building scriptable, extensible CLI experiences right into your application.
-
-PseudoNix allows you to register your own coroutine functions so that they can be called within the system.
-
- * Logical commands: `true && echo true || echo false`
- * Setting environment variables: `VAR=VALUE`
- * Variable substitution: `echo hello ${VAR}`
- * Passing variables to commands: `VAR=value env`
- * Executing in the background: `sleep 10 && echo hello world &`
- * Command substitution: `echo Running for: $(uptime) ms`
- * Call your own coroutine functions
-
-
 ## Compiling the Examples
 
 Edit the top level `CMakeLists.txt` and change the project name. 
@@ -60,6 +40,61 @@ The coroutines provide a `input/output` stream which can be written to. This is
 simlar to the standard input/output streams, but instead of writing to the console,
 it writes to memory. This way the output of one process can be sent to the input
 of another, just like on Linux.
+
+
+### Special Shell Features
+
+Psuedonix provides a default **shell** process that can be used as a starting point to create interactivity. 
+This shell behaves behaves similar to bash, allowing many features such as:
+
+It supports custom command registration and mimics familiar shell behavior including environment variables, 
+command substitution, logical operators `&&, ||`, and output redirection `cmd1 | cmd2`. 
+Perfect for building scriptable, extensible CLI experiences right into your application.
+
+PseudoNix allows you to register your own coroutine functions so that they can be called within the system.
+
+ * Logical commands: `true && echo true || echo false`
+ * Setting environment variables: `VAR=VALUE`
+ * Variable substitution: `echo hello ${VAR}`
+ * Passing variables to commands: `VAR=value env`
+ * Executing in the background: `sleep 10 && echo hello world &`
+ * Command substitution: `echo Running for: $(uptime) ms`
+ * Call your own coroutine functions
+
+**NOTE**: The `shell` process is not a full bash interpreter. It does not provide many
+of the features. It was inteded to be a simple interface into the PseudoNix system. 
+The following bash features are not provided, but may be included in the future
+
+  * if statements
+  * loops
+  * functions
+
+
+### Default Functions
+
+Here is a list of commands that are provided by default, mostly for testing purposes.
+See the examples below to define your own.
+
+| name     | Description                                                       |
+| -------- | ----------------------------------------------------------------- |
+| echo     | echos arguments to output: `echo hello world`                     |
+| env      | Shows all current env variables                                   |
+| exit     | Exits the shell                                                   |
+| export   | Exports env variables to children                                 |
+| exported | Lists all exported variables                                      |
+| false    | Returns immediately with exit code 1                              |
+| true     | Returns immediately with exit code 0                              |
+| help     | Lists all commands available                                      |
+| kill     | Kill a process: `kill <PID>`                                      |
+| launcher | Launches another process and redirects stdin/out to the process   |
+| ps       | Lists all processes                                               |
+| rev      | Reverses the input characters                                     |
+| sh       | The main shell process                                            |
+| signal   | Signal a process `signal <pid> <signal>`                          |
+| sleep    | Pause for a few seconds                                           |
+| uptime   | Prints milliseconds since start up                                |
+| wc       | Counts the characters in input                                    |
+| yes      | Outputs 'y' to the output                                         |
 
 
 ## Examples
@@ -116,10 +151,10 @@ int main()
 
 ```
 
-### Example 2: Using The Shell from the Command Line
+### Example 2: Using the Input/Output Streams
 
 This is a slightly stripped down version of the `main.cpp` example.
-Unline in Example 1, where we wrote directly to std::cout, we are instead 
+Unlike in Example 1, where we wrote directly to std::cout, we are instead 
 going to write to the output stream of the process.
 
 The output stream will be piped into another process which will write the 
@@ -176,12 +211,12 @@ A `shell` process, similar to bash, is provided for you. This shell process can 
 give you an actual command prompt entry into the PseudoNix system and let you launch commands.
 
 Additionally, if you are building a command line application, you will need the `launcher` process.
-The `launcher` reads data from std::cin, and pipes that data into a new process. It then takes std::cout 
-and writes that to std::cout. Without this, the shell will not be able to write anything to the 
-terminal window.
+The `launcher` reads data from std::cin, and pipes that data into a new process. It then takes the output 
+and writes that to std::cout. Without this, the shell will not be able to write anything to your terminal
+output.
+
 
 ```c++
-
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
 #include <PseudoNix/Launcher.h>
@@ -205,32 +240,46 @@ int main()
 }
 ```
 
-### Default Function Processes
+## Integrating with GUI
 
-Here is a list of commands that are provided by default
+PsuedoNix was originally built to be integrated into a game engine I was building, so
+was designed to be easily integrated into a GUI (eg: ImGui)
 
-| name     | Description                                                       |
-| -------- | ----------------------------------------------------------------- |
-| echo     | echos arguments to output: `echo hello world`                     |
-| env      | Shows all current env variables                                   |
-| exit     | Exits the shell                                                   |
-| export   | Exports env variables to children                                 |
-| exported | Lists all exported variables                                      |
-| false    | Returns immediately with exit code 1                              |
-| true     | Returns immediately with exit code 0                              |
-| help     | Lists all commands available                                      |
-| kill     | Kill a process: `kill <PID>`                                      |
-| launcher | Launches another process and redirects stdin/out to the process   |
-| ps       | Lists all processes                                               |
-| rev      | Reverses the input characters                                     |
-| sh       | The main shell process                                            |
-| signal   | Signal a process `signal <pid> <signal>`                          |
-| sleep    | Pause for a few seconds                                           |
-| uptime   | Prints milliseconds since start up                                |
-| wc       | Counts the characters in input                                    |
-| yes      | Outputs 'y' to the output                                         |
+A very simple ImGui Terminal emulator process has been created for you to use. 
 
-## Example 4: Signal Handlers, Exiting Gracefully and Traps
+See the [terminal](examples/terminal.cpp) example
+
+```c++
+#include <PseudoNix/System.h>
+#include <PseudoNix/Shell.h>
+#include <PseudoNix/ImGuiTerminal.h>
+
+int main()
+{
+    PseudoNix::System system;
+    system.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
+    system.setFunction("term", PseudoNix::terminalWindow_coro);
+
+    # Spawn the Imgui Terminal
+    system.spawnProcess({"term", "sh"});
+
+    // somewhere in your imgui draw loop, you can
+    // execute the system
+    while(true)  {
+        ...
+        ImGui::BeginFrame();
+
+        system.taskQueueExecute();
+
+        ImGui::EndFrame();
+        ...
+    }
+}
+```
+
+
+
+## Signal Handlers, Exiting Gracefully and Traps
 
 In Linux, you can signal a process to interrupt, usually with Ctrl+C. This will
 tell the process that it should stop what its doing and react to the event, or
@@ -244,7 +293,7 @@ If you call `signal <PID> 2`, or `signal <PID> 15` from the shell process (the
 exit its while loop. Since we reacted to an interrupt signal, it exited the loop and
 exited gracefully, printing out `This is a graceful exit`.
 
-But if we call `kill <PID>`, it will not send a signal, instead if wil flag the
+But if we call `kill <PID>`, it will not send a signal, instead if will flag the
 coroutine to be removed from the scheduler. You can use the `PSEUDONIX_TRAP`
 to create a deferred block that will be executed with the coroutine is destroyed.
 This is useful if your coroutine allocated any memory or needs to do some additional
@@ -289,7 +338,7 @@ PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
 }
 ```
 
-## Example Custom Function
+## Example: Guessing Game
 
 Here's an example of creating a simple guessing game within the PsuedoNix system. 
 Remember that **all process functions happen concurrently, but on a single thread**. 
@@ -355,7 +404,7 @@ int main()
 
 ## Example Multi-Task Queue
 
-Processes in the PseudoNix System are executed on a Task Queue. There is a "MAIN" queue which is executed
+Processes in the PseudoNix System are executed on a Task Queue. There is a `"MAIN"` queue which is executed
 when you call  `system.taskQueueExecute()` or `system.executeAllFor(...)`. By default all tasks 
 will be executed on that queue.
 

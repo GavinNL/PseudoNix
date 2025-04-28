@@ -94,7 +94,7 @@ public:
             }
 
             // returns exit code 0 if confirmed and 1 if cancelled
-            co_return ret;
+            co_return static_cast<int>(ret);
         });
     }
 
