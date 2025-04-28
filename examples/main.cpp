@@ -131,18 +131,29 @@ export HOME
     _M = &M;
 
     // Create another task queue
-    // Thi sis for the taskHopper example
-    M.createTaskQueue("THREAD");
+    // This is for the taskHopper example
+    //
+    // In the future, taskQueues will be able to be executed on
+    // different threads, so you can structure your processes
+    // with background computation as well
+    M.taskQueueCreate("PRE_MAIN");
+    M.taskQueueCreate("POST_MAIN");
 
     // Execute all the processes on the MAIN task queue
-    while(M.executeAllFor(std::chrono::milliseconds(1), 10))
+    while(true)
     {
+        // execute each task queue in a specific order
+        auto total_tasks =  M.taskQueueExecute("PRE_MAIN") +
+                          + M.taskQueueExecute("MAIN")
+                          + M.taskQueueExecute("POST_MAIN");
+
+        if(total_tasks == 0)
+            break;
+
         // sleep for 1 millisecond so we're not
         // doing a busy loop
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
-        // Execute all the tasks on the THREAD task queue
-        M.executeTaskQueue("THREAD");
     }
     _M = nullptr;
     return 0;

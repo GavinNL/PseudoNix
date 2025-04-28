@@ -38,11 +38,7 @@ SCENARIO("test await_yield")
     // input stream that the process is reading from
     // so once the data from that stream is empy
     // it will return EOF
-    while(M.executeTaskQueue());
-    //REQUIRE(1 == M.executeAll() );
-    //REQUIRE(1 == M.executeAll() );
-    //REQUIRE(1 == M.executeAll() );
-
+    while(M.taskQueueExecute());
 }
 
 #if 0

@@ -27,8 +27,9 @@ public:
         //
         m_mini.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
 
-        // The term function is specific to this application, it will open a new
-        // ImGui window to show you a terminal emulator
+        // an ImGui Terminal function has been created if you want to
+        // add a terminal to your projects. It is fairly simple
+        // and can be copied/modified for extra features
         m_mini.setFunction("term", PseudoNix::terminalWindow_coro);
 
         m_mini.setFunction("theme", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
@@ -55,6 +56,45 @@ public:
                 COUT << "theme [classic|dark|light]\n";
             }
             co_return 0;
+        });
+
+        m_mini.setFunction("confirm", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+        {
+            PSEUDONIX_PROC_START(ctrl);
+
+            int frameCount[2] = {ImGui::GetFrameCount()-1, ImGui::GetFrameCount()-1};
+            bool quit = false;
+            int ret = 0;
+
+            std::string txt = ARGS.size() == 1 ? std::format("{}", "Confirm?") : std::format("{}", ARGS[1]);
+
+            while(!quit)
+            {
+                frameCount[0] = frameCount[1];
+                frameCount[1] = ImGui::GetFrameCount();
+
+                if(frameCount[0] != frameCount[1])
+                {
+                    ImGui::Begin("Confirm:");
+                    ImGui::TextWrapped("%s", txt.c_str());
+                    if(ImGui::Button("Confirm"))
+                    {
+                        ret = 0;
+                        quit=true;
+                    }
+                    ImGui::SameLine();
+                    if(ImGui::Button("Cancel"))
+                    {
+                        ret = 1;
+                        quit = true;
+                    }
+                    ImGui::End();
+                }
+                co_await ctrl->await_yield();
+            }
+
+            // returns exit code 0 if confirmed and 1 if cancelled
+            co_return ret;
         });
     }
 
@@ -86,22 +126,34 @@ public:
         // in our System
         setupFunctions();
 
+        // Createa  new task queue called "THREAD"
+        // This can be executed at a different
+        // time as the MAIN task queue.
+        m_mini.taskQueueCreate("PRE_MAIN");
+        m_mini.taskQueueCreate("POST_MAIN");
+
         // finally, execute the term command
         // and execute the system call
         m_mini.spawnProcess({"SHELL=sh", "term", "sh"});
 
-        m_mini.createTaskQueue("THREAD");
+
     }
 
     void imguiRender()
     {
-        m_mini.executeTaskQueue("THREAD");
+        // Lets execute the main task queue first
+        // This is only an example
+        m_mini.taskQueueExecute("PRE_MAIN");
 
         // Each time imgui performs the rendering
         // we are going to execute the scheduler and invoke
-        // all coroutines once. Some coroutines can draw to the
-        // screen
-        m_mini.executeAllFor(std::chrono::milliseconds(1), 10);
+        // all coroutines once. Because we are running the
+        // coroutines within the imguiRender() functions
+        // the coroutines can also draw ImGui objects
+        m_mini.taskQueueExecute();
+
+
+        m_mini.taskQueueExecute("POST_MAIN");
     }
 };
 

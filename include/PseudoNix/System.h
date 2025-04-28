@@ -427,7 +427,7 @@ struct System
 
     System()
     {
-        createTaskQueue("MAIN");
+        taskQueueCreate("MAIN");
         setDefaultFunctions();
     }
 
@@ -822,7 +822,7 @@ struct System
      * process.
      *
      */
-    size_t executeTaskQueue(std::string const & queue_name = "MAIN")
+    size_t taskQueueExecute(std::string const & queue_name = "MAIN")
     {
         m_main_thread_id = std::this_thread::get_id();
 
@@ -904,9 +904,14 @@ struct System
         m_awaiters.at(a->m_queueName).push_back({a,proc});
     }
 
-    void createTaskQueue(std::string name)
+    void taskQueueCreate(std::string name)
     {
         m_awaiters[name];
+    }
+
+    bool taskQueueExists(std::string const & name) const
+    {
+        return m_awaiters.count(name) == 1;
     }
 
     /**
@@ -926,7 +931,7 @@ struct System
         size_t i=0;
         while(true)
         {
-            ret = executeTaskQueue();
+            ret = taskQueueExecute();
             if(std::chrono::high_resolution_clock::now() > T1 || i++ > maxIterations)
                 break;
         }
@@ -1405,21 +1410,39 @@ protected:
             PSEUDONIX_PROC_START(ctrl);
             std::string s;
 
+            if( ARGS.size() < 2)
+            {
+                COUT << std::format("Requires a Task Queue name\n\n   queueHopper PRE_MAIN");
+                co_return 1;
+            }
+            std::string TASK_QUEUE = ARGS[1];
+
+            if(!SYSTEM.taskQueueExists(TASK_QUEUE))
+            {
+                COUT << std::format("Task queue, {}, does not exist. The Task Queue needs to be created using System::taskQueueCreate", TASK_QUEUE);
+                co_return 1;
+            }
+
             PSEUDONIX_TRAP {
                 COUT << std::format("Trap on {} queue\n", QUEUE);
             };
 
+            // the QUEUE variable defined by PSEUDONIX_PROC_START(ctrl)
+            // tells you what queue this process is being executed on
             COUT << std::format("On {} queue\n", QUEUE);
 
-            // wait for 1 second and then resume on a different Task Queue
-            // Specific task queues are executed at a specific time
-            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::seconds(1), "THREAD"), ctrl);
+            for(int i=0;i<20;i++)
+            {
+                // wait for 1 second and then resume on a different Task Queue
+                // Specific task queues are executed at a specific time
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(1), TASK_QUEUE), ctrl);
 
-            COUT << std::format("On {} queue\n", QUEUE);
+                COUT << std::format("On {} queue\n", QUEUE);
 
-            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::seconds(1), "MAIN"), ctrl);
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(1), "MAIN"), ctrl);
 
-            COUT << std::format("On {} queue\n", QUEUE);
+                COUT << std::format("On {} queue\n", QUEUE);
+            }
 
             co_return 0;
         };
