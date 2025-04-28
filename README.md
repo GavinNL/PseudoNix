@@ -61,6 +61,7 @@ simlar to the standard input/output streams, but instead of writing to the conso
 it writes to memory. This way the output of one process can be sent to the input
 of another, just like on Linux.
 
+
 ## Examples
 
 ### Example 1: Basic Usage
@@ -171,7 +172,7 @@ int main()
 
 ## Example 3: Using the Shell Process
 
-A `shell` process, similar to bash is provided for you. This shell process can be used to
+A `shell` process, similar to bash, is provided for you. This shell process can be used to
 give you an actual command prompt entry into the PseudoNix system and let you launch commands.
 
 Additionally, if you are building a command line application, you will need the `launcher` process.
@@ -352,6 +353,100 @@ int main()
 }
 ```
 
+## Example Multi-Task Queue
+
+Processes in the PseudoNix System are executed on a Task Queue. There is a "MAIN" queue which is executed
+when you call  `system.taskQueueExecute()` or `system.executeAllFor(...)`. By default all tasks 
+will be executed on that queue.
+
+You can create different task queues, which can be executed at different times in your application. 
+For example, you can have a task queue that executes during your Physics portion of your game engine, and
+one that runs during the Render Pass of your graphics pipeline.
+
+Your processes can switch to different task queues by calling `await_yield` and passing in the name 
+of the queue you want to continue to execute.
+
+```c++
+    co_await ctrl->await_yield("RENDERPASS_QUEUE");
+```
+
+Additional Task Queues can be created using the `system.taskQueueCreate(name_str)` function.
+
+The `queueHopper` function is created by default as an example, but the code is shown below.
+
+```c++
+int main()
+{
+    PseudoNix::System M;
+    M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, ShellEnv{}));
+    M.setFunction("launcher", PseudoNix::launcher_coro);
+
+    M.setFunction("queueHopper, [](e_type ctrl) -> task_type
+    {
+        PSEUDONIX_PROC_START(ctrl);
+        std::string s;
+
+        if( ARGS.size() < 2)
+        {
+            COUT << std::format("Requires a Task Queue name\n\n   queueHopper PRE_MAIN");
+            co_return 1;
+        }
+        std::string TASK_QUEUE = ARGS[1];
+
+        if(!SYSTEM.taskQueueExists(TASK_QUEUE))
+        {
+            COUT << std::format("Task queue, {}, does not exist. The Task Queue needs to be created using System::taskQueueCreate", TASK_QUEUE);
+            co_return 1;
+        }
+
+        PSEUDONIX_TRAP {
+            COUT << std::format("Trap on {} queue\n", QUEUE);
+        };
+
+        // the QUEUE variable defined by PSEUDONIX_PROC_START(ctrl)
+        // tells you what queue this process is being executed on
+        COUT << std::format("On {} queue\n", QUEUE);
+
+        for(int i=0;i<20;i++)
+        {
+            // wait for 1 second and then resume on a different Task Queue
+            // Specific task queues are executed at a specific time
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(1), TASK_QUEUE), ctrl);
+
+            COUT << std::format("On {} queue\n", QUEUE);
+
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(1), "MAIN"), ctrl);
+
+            COUT << std::format("On {} queue\n", QUEUE);
+        }
+
+        co_return 0;
+    });
+
+    M.taskQueueCreate("PRE_MAIN");
+    M.taskQueueCreate("POST_MAIN");
+
+    M.spawnPipelineProcess({
+            {"launcher", "sh"}
+    });
+
+    while(true)
+    {
+        // execute each task queue in a specific order
+        auto total_tasks =  M.taskQueueExecute("PRE_MAIN");
+        total_tasks += M.taskQueueExecute();
+        total_tasks += M.taskQueueExecute("POST_MAIN");
+        if(total_tasks == 0) break;
+
+        // sleep for 1 millisecond so we're not
+        // doing a busy loop
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+}
+```
+
+
 ## Process Control 
 
 The ProcessControl object is passed into your function as the input argument. 
@@ -383,9 +478,9 @@ auto await_result = co_await ctrl->await_yield();
 ```
 
 The awaiters return an `AwaitResult` enum which tells you what you should do.
-If it returns `AwaitResult::NO_ERROR`, then the awaiter returned properly.
+If it returns `AwaitResult::SUCCESS`, then the awaiter returned properly.
 
-Other options are `AwaitResult::SIG_INT` and `AwaitResult::SIG_TERM`, which mean 
+Other options are `AwaitResult::SIGNAL_INTERRUPT` and `AwaitResult::SIGNAL_TERMINATE`, which mean 
 the process was asked to interrupt itself (Ctrl+C in bash), or terminate itself (kill PID).
 
 In most cases, you would want to exit your process, unless you have some custom behaviour. 
@@ -394,8 +489,8 @@ The `shell` and `launcher` have custom behaviour
 ```c++
 switch(co_await ctrl->await_yield())
 {
-case AwaiterResult::SIG_INT:  { co_return 1;}
-case AwaiterResult::SIG_TERM: { co_return 1;}
+case AwaiterResult::SIGNAL_INTERRUPT:  { co_return 1;}
+case AwaiterResult::SIGNAL_TERMINATE: { co_return 1;}
 default: break;
 }
 ```
