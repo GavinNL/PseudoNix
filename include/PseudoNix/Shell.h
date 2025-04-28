@@ -71,7 +71,7 @@ struct Tokenizer3
                     pos+=2;
                     return std::string(sub);
                 }
-                else if(c==')' || c == '|' || c=='(')
+                else if(c==')' || c == '|' || c=='(' || c== '#')
                 {
                     if(!current.empty())
                         return current;
@@ -362,7 +362,6 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
 
     std::vector<System::pid_type> subProcess;
 
-
     while(!shellEnv.exitShell)
     {
         HANDLE_AWAIT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
@@ -415,6 +414,11 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
 
         auto args = Tokenizer3::to_vector(var_sub1(_current, shellEnv.env));
         _current.clear();
+
+        auto first_comment = std::find(args.begin(), args.end(), "#");
+        args.erase(first_comment, args.end());
+        if(args.empty())
+            continue;
 
         bool run_in_background = false;
 

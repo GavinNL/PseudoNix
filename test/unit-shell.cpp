@@ -27,7 +27,7 @@ SCENARIO("Tokenizer 3")
     }
 
     {
-        auto v = Tokenizer3::to_vector("echo 1 && echo 2 || echo 3");
+        auto v = Tokenizer3::to_vector("echo 1 && echo 2 || echo 3 #comment");
         REQUIRE(v[0] == "echo");
         REQUIRE(v[1] == "1");
         REQUIRE(v[2] == "&&");
@@ -36,6 +36,15 @@ SCENARIO("Tokenizer 3")
         REQUIRE(v[5] == "||");
         REQUIRE(v[6] == "echo");
         REQUIRE(v[7] == "3");
+        REQUIRE(v[8] == "#");
+        REQUIRE(v[9] == "comment");
+    }
+    {
+        auto v = Tokenizer3::to_vector("#echo hello world");
+        REQUIRE(v[0] == "#");
+        REQUIRE(v[1] == "echo");
+        REQUIRE(v[2] == "hello");
+        REQUIRE(v[3] == "world");
     }
 }
 

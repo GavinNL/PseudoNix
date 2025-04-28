@@ -28,15 +28,9 @@ option( ${PROJECT_NAME}_BUILD_UNIT_TESTS        "Build the unit tests for this l
 option( ${PROJECT_NAME}_BUILD_EXAMPLES          "Build examples"                                       ${PROJECT_IS_TOP_LEVEL})
 option( ${PROJECT_NAME}_ENABLE_COVERAGE         "Enable Coverage. After build, execute: make coverage" ${PROJECT_IS_TOP_LEVEL})
 option( ${PROJECT_NAME}_ENABLE_WARNINGS         "Enable Strict Warnings"                               ${PROJECT_IS_TOP_LEVEL})
-option( ${PROJECT_NAME}_PACKAGE_INCLUDE_SOURCE  "Include source files when building the package"       ${PROJECT_IS_TOP_LEVEL})
 option( ${PROJECT_NAME}_WARNINGS_AS_ERRORS      "Treat compiler warnings as errors"                    ${PROJECT_IS_TOP_LEVEL})
-option( ${PROJECT_NAME}_PACKAGE_INCLUDE_HEADERS "Include source headers when building the package"     ${PROJECT_IS_TOP_LEVEL})
-option( ${PROJECT_NAME}_PACKAGE_INCLUDE_LIBS    "Include Library files when building the package"      ${PROJECT_IS_TOP_LEVEL})
-option( ${PROJECT_NAME}_PACKAGE_INCLUDE_BINS    "Include Executable files when building the package"   ${PROJECT_IS_TOP_LEVEL})
 
 include(cmake/extras.cmake)
-
-
 
 ################################################################################
 # Top level INTERFACE library which can be used to provide all the

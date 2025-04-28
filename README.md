@@ -432,7 +432,7 @@ int main()
     M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, ShellEnv{}));
     M.setFunction("launcher", PseudoNix::launcher_coro);
 
-    M.setFunction("queueHopper, [](e_type ctrl) -> task_type
+    M.setFunction("queueHopper", [](e_type ctrl) -> task_type
     {
         PSEUDONIX_PROC_START(ctrl);
         std::string s;
