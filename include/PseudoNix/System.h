@@ -6,14 +6,43 @@
 #include <map>
 #include <functional>
 #include "ReaderWriterStream.h"
+#include <concurrentqueue.h>
 #include "task.h"
 #include "defer.h"
 #include <span>
 #include <thread>
-#include <list>
 
 #define PSEUDONIX_VERSION_MAJOR 0
 #define PSEUDONIX_VERSION_MINOR 1
+
+
+#if defined PSEUDONIX_LOG_LEVEL_INFO
+#define DEBUG_INFO(...) std::cerr << std::format("[info] " __VA_ARGS__) << std::endl;
+#else
+#define DEBUG_INFO(...)
+#endif
+
+#if defined PSEUDONIX_LOG_LEVEL_TRACE
+#define DEBUG_TRACE(...) std::cerr << std::format("[trace] " __VA_ARGS__) << std::endl;
+#else
+#define DEBUG_TRACE(...)
+#endif
+
+#if defined PSEUDONIX_LOG_LEVEL_ERROR
+#define DEBUG_ERROR(...) std::cerr << std::format("[error] " __VA_ARGS__) << std::endl;
+#else
+#define DEBUG_ERROR(...)
+#endif
+
+template <>
+struct std::formatter<std::thread::id> : std::formatter<std::string> {
+    auto format(std::thread::id id, auto& ctx) const {
+        std::ostringstream oss;
+        oss << id;
+        return std::formatter<std::string>::format(oss.str(), ctx);
+    }
+};
+
 
 namespace PseudoNix
 {
@@ -94,14 +123,6 @@ enum class AwaiterResult
 
     UNKNOWN_ERROR
 };
-
-
-//#define PSUEDONIX_ENABLE_DEBUG
-#if defined PSUEDONIX_ENABLE_DEBUG
-#define DEBUG_LOG(...) std::cerr << std::format(__VA_ARGS__) << std::endl;
-#else
-#define DEBUG_LOG(...)
-#endif
 
 
 struct System
@@ -212,7 +233,7 @@ struct System
         std::shared_ptr<stream_type>       out;
         std::map<std::string, std::string> env;
         System * system = nullptr;
-        std::string_view queue_name;
+        std::string queue_name;
 
     protected:
         pid_type    pid = invalid_pid;
@@ -428,6 +449,7 @@ struct System
     System()
     {
         taskQueueCreate("MAIN");
+
         setDefaultFunctions();
     }
 
@@ -646,8 +668,6 @@ struct System
             {
                 // Default signal handler will pass through the
                 // signal to its children
-                DEBUG_LOG("[{}] Default Signal Handler: {}", s, join(aa->args));
-
                 for(auto c : this->m_procs2.at(aa->pid)->child_processes)
                 {
                     this->signal(c, s);
@@ -658,12 +678,10 @@ struct System
 
         // Create custom awaiter that will
         // be placed in the main thread pool
-        DEBUG_LOG("Process Registered: {}", join(arg->args) );
+        DEBUG_INFO("Process Registered: {}", join(arg->args) );
         Proc.first->second->initialAwaiter = Awaiter(_pid, this, [](Awaiter*){return true;}, "MAIN");
         Proc.first->second->initialAwaiter.handle_ = handle;
         Proc.first->second->initialAwaiter.await_suspend(handle);
-
-
 
         return _pid;
     }
@@ -783,9 +801,9 @@ struct System
 
         _detachFromParent(p);
 
-        DEBUG_LOG("Finalized: {}", join(coro.control->args));
-        DEBUG_LOG("       IN: {}", coro.control->in.use_count());
-        DEBUG_LOG("      OUT: {}", coro.control->out.use_count());
+        DEBUG_TRACE("Finalized: {}", join(coro.control->args));
+        DEBUG_TRACE("       IN: {}", coro.control->in.use_count());
+        DEBUG_TRACE("      OUT: {}", coro.control->out.use_count());
 
         coro.control->out = {};
         coro.control->in  = {};
@@ -809,6 +827,7 @@ struct System
         }
     }
 
+
     /**
      * @brief executeAll
      * @return
@@ -822,6 +841,33 @@ struct System
      * process.
      *
      */
+
+    bool _processQueue(auto & POP_Q, auto & PUSH_Q, std::string queue_name)
+    {
+        std::pair<Awaiter*, std::shared_ptr<Process> > a;
+        auto found = POP_Q.try_dequeue(a);
+        if(found)
+        {
+            // its possible that the process had been forcefully killed
+            // and the handle to the coroutine no longer valid. So make sure
+            // that we do not resume any of those coroutines
+            if(a.second->force_terminate || a.second->is_complete || a.second->should_remove)
+                return found;
+
+            if(a.first->await_ready())
+            {
+                a.second->control->queue_name = queue_name;
+                a.first->resume();
+            }
+            else
+            {
+                PUSH_Q.enqueue(std::move(a));
+            }
+        }
+        return found;
+    }
+
+    std::mutex _m;
     size_t taskQueueExecute(std::string const & queue_name = "MAIN")
     {
         m_main_thread_id = std::this_thread::get_id();
@@ -830,32 +876,22 @@ struct System
         //
         // Nothing is removed from the container until all
         // of the objects have been processed
-        auto & M = m_awaiters.at(queue_name);
-        auto size = M.size();
-
-        while(size > 0)
+        auto & POP_Q  = m_awaiters.at(queue_name).get();
+        auto & PUSH_Q = m_awaiters.at(queue_name).get2();
         {
-            auto a = M.front();
-            M.pop_front();
-            size--;
-            // its possible that the process had been forcefully killed
-            // and the handle to the coroutine no longer valid. So make sure
-            // that we do not resume any of those coroutines
-            if(a.second->force_terminate || a.second->is_complete || a.second->should_remove)
-                continue;
-            if(a.first->await_ready())
-            {
-                a.second->control->queue_name = queue_name;
-                a.first->resume();
-            }
-            else
-            {
-                M.push_back(a);
-            }
+            //std::lock_guard L(_m);
+            m_awaiters.at(queue_name).swap();
         }
 
+        std::pair<Awaiter*, std::shared_ptr<Process> > a;
+
+        // Process everything on the queue
+        // New tasks will not be added to this queue
+        // because of the double buffering
+        while(_processQueue(POP_Q, PUSH_Q,  queue_name));
+
         if(queue_name != "MAIN")
-            return m_procs2.size() + M.size();
+            return PUSH_Q.size_approx() + POP_Q.size_approx();
 
         // Remove any processes that:
         //   1. whose task has completed
@@ -878,6 +914,7 @@ struct System
             // did someone call kill on the PID?
             if(coro.force_terminate)
             {
+                it->second->control->queue_name = queue_name;
                 _finalizePID(it->first);
             }
 
@@ -901,7 +938,16 @@ struct System
 
         // the queue must have been created prior to
         // adding tasks
-        m_awaiters.at(a->m_queueName).push_back({a,proc});
+        auto it = m_awaiters.find(a->m_queueName);
+        if(it != m_awaiters.end())
+        {
+            it->second.enqueue({a,proc});
+        }
+        else
+        {
+            DEBUG_ERROR("{} not found. Adding to MAIN", a->m_queueName);
+            m_awaiters.at("MAIN").enqueue({a,proc});
+        }
     }
 
     void taskQueueCreate(std::string name)
@@ -1081,11 +1127,52 @@ struct System
     };
 
 
-protected:
+public:
     std::map<std::string, std::function< task_type(e_type) >> m_funcs;
     std::map<pid_type, std::shared_ptr<Process> >             m_procs2;
 
-    std::map<std::string, std::list<std::pair<Awaiter*, std::shared_ptr<Process> > > >               m_awaiters;
+    using awaiter_queue_type = moodycamel::ConcurrentQueue<std::pair<Awaiter*, std::shared_ptr<Process> > >;
+
+    template<typename T>
+    struct AwaiterQueue_T
+    {
+        using value_type = T;
+        using queue_type = moodycamel::ConcurrentQueue<value_type>;
+
+        queue_type & get()
+        {
+            return m_swap ? m_Q2 : m_Q1;
+        }
+        queue_type & get2()
+        {
+            return !m_swap ? m_Q2 : m_Q1;
+        }
+
+        void swap()
+        {
+            m_swap = !m_swap;
+        }
+
+        inline bool enqueue(value_type const & item)
+        {
+            return get().enqueue(item);
+        }
+        inline bool enqueue(value_type && item)
+        {
+            return get().enqueue(std::move(item));
+        }
+        inline bool try_dequeue(value_type & item)
+        {
+            return get().try_dequeue(item);
+        }
+
+        bool m_swap = false;
+        queue_type m_Q1;
+        queue_type m_Q2;
+    };
+
+    std::map<std::string,  AwaiterQueue_T<std::pair<Awaiter*, std::shared_ptr<Process> >> > m_awaiters;
+
 
     std::thread::id m_main_thread_id = {};
     pid_type _pid_count=1;
@@ -1121,17 +1208,19 @@ protected:
             auto const & ENV = control->env; (void)ENV; \
             auto const & QUEUE = control->queue_name; (void)QUEUE
 
-        m_funcs["false"] = [](e_type ctrl) -> task_type
+        #define DEF_FUNC(A) m_funcs[A] = [](e_type ctrl) -> task_type
+        DEF_FUNC("false")
         {
             (void)ctrl;
             co_return 1;
         };
-        m_funcs["true"] = [](e_type ctrl) -> task_type
+
+        DEF_FUNC("true")
         {
             (void)ctrl;
             co_return 0;
         };
-        m_funcs["help"] = [](e_type ctrl) -> task_type
+        DEF_FUNC("help")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1142,7 +1231,7 @@ protected:
             }
             co_return 0;
         };
-        m_funcs["env"] = [](e_type ctrl) -> task_type
+        DEF_FUNC("env")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1152,7 +1241,7 @@ protected:
             }
             co_return 0;
         };
-        m_funcs["echo"] = [](e_type ctrl) -> task_type
+        DEF_FUNC("echo")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1170,7 +1259,7 @@ protected:
 
             co_return 0;
         };
-        m_funcs["yes"] = [](e_type ctrl) -> task_type
+        DEF_FUNC("yes")
         {
             // A very basic example of a forever running
             // process
@@ -1185,7 +1274,7 @@ protected:
 
             co_return 0;
         };
-        m_funcs["sleep"] = [](e_type ctrl) -> task_type
+        DEF_FUNC("sleep")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1210,7 +1299,8 @@ protected:
             COUT << std::format("{}\n", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()-T0).count());
             co_return 0;
         };
-        m_funcs["rev"] = [](e_type ctrl) -> task_type
+
+        DEF_FUNC("rev")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1237,7 +1327,7 @@ protected:
             co_return 0;
         };
 
-        m_funcs["wc"] = [](e_type ctrl) -> task_type
+        DEF_FUNC("wc")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1269,7 +1359,8 @@ protected:
 
             co_return 0;
         };
-        m_funcs["ps"] = [](e_type ctrl) -> task_type
+
+        DEF_FUNC("ps")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1285,7 +1376,8 @@ protected:
             //std::cout << std::to_string(i);
             co_return 0;
         };
-        m_funcs["kill"] = [](e_type ctrl) -> task_type
+
+        DEF_FUNC("kill")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1306,7 +1398,8 @@ protected:
             }
             co_return 1;
         };
-        m_funcs["signal"] = [](e_type ctrl) -> task_type
+
+        DEF_FUNC("signal")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1337,7 +1430,8 @@ protected:
             }
             co_return 1;
         };
-        m_funcs["io_info"] = [](e_type ctrl) -> task_type
+
+        DEF_FUNC("io_info")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1347,7 +1441,8 @@ protected:
             }
             co_return 0;
         };
-        m_funcs["to_std_cout"] = [](e_type ctrl) -> task_type
+
+        DEF_FUNC("to_std_cout")
         {
             PSEUDONIX_PROC_START(ctrl);
             std::string s;
@@ -1366,60 +1461,180 @@ protected:
             co_return 0;
         };
 
-#if 0
-        // execute a task queue on a different thread
-        // WIP: No synchronization primatives used
-        m_funcs["runner"] = [](e_type ctrl) -> task_type
+        DEF_FUNC("ls")
         {
             PSEUDONIX_PROC_START(ctrl);
+
+            COUT << std::format("This function is a placeholder. PsuedoNix does not support a filesystem yet.");
+
+            co_return 0;
+        };
+#if 1
+        DEF_FUNC("spawn")
+        {
+            // Executes a command N times.
+            //
+            //  Usage: spawn 10 echo hello world
+            //
+            PSEUDONIX_PROC_START(ctrl);
+
+            if(ARGS.size() < 3)
+            {
+                COUT << std::format("Error: \n\n  spawn <count> cmd <args...>\n");
+                co_return 1;
+            }
+            size_t count = 0;
+            if(std::errc() != std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), count).ec)
+            {
+                COUT << std::format("Error: Arg 1 must be a postive number");
+            }
+            count = std::clamp<size_t>(count, 0u, 1000u);
+
+            while(count--)
+            {
+                auto E = System::parseArguments( std::vector(ARGS.begin()+2, ARGS.end()) );
+                E.out = ctrl->out;
+                SYSTEM.runRawCommand(E);
+            }
+
+            co_return 0;
+        };
+
+        DEF_FUNC("bgrunner")
+        {
+            // Executes a Task Queue in a background thread
+            // You can call this function on the same Task Queue
+            // multiple times to spawn multiple threads on the queue
+            // effectively creating a threadpool
+            //
+            PSEUDONIX_PROC_START(ctrl);
+            #if defined __EMSCRIPTEN__
+            COUT << "This command does not work on Emscripten at the moment.\n"
+            co_return 1;
+            #endif
             std::string s;
 
-            std::jthread worker([sys=ctrl->system](std::stop_token stoken) {
-                    int i = 0;
-                    while (!stoken.stop_requested()) {
-                        std::cout << "Tick " << i++ << "\n";
-                        try
-                        {
-                            sys->executeAll("THREAD");
-                        } catch ( std::exception & e)
-                        {
+            std::string TASK_QUEUE = ARGS.size() < 2 ? std::string("THREADPOOL") : ARGS[1];
+            std::atomic<bool> stop_token = false;
 
-                        }
-                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::binary_semaphore _semaphore(0);
+
+            std::thread worker([sys=ctrl->system, TASK_QUEUE, &stop_token, &_semaphore]()
+            {
+                while (true)
+                {
+                    if(sys->m_awaiters.count(TASK_QUEUE) == 0)
+                    {
+                        DEBUG_ERROR("Cannot find {}. Exiting", TASK_QUEUE);
+                        break;
                     }
-                    std::cout << "Stopped by request\n";
+                    auto & TQ = sys->m_awaiters.at(TASK_QUEUE);
+                    auto & Q = TQ.get();
+
+                    auto is_empty = !sys->_processQueue(Q, Q, TASK_QUEUE);
+                    if(is_empty)
+                    {
+                        DEBUG_INFO("No Tasks. Sleeping: {}", std::this_thread::get_id());
+                        _semaphore.acquire();
+                        DEBUG_INFO("Woke up: {}", std::this_thread::get_id());
+                    }
+                    if(stop_token)
+                        break;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+                DEBUG_INFO("Thread exit");
             });
 
             PSEUDONIX_TRAP {
-                std::cout << "TRAPPED" << std::endl;
-                worker.request_stop();
+                std::cerr << "TRAPPED: " << QUEUE << std::endl;
+                // set the stop token so the thread will exit
+                // its main loop
+                stop_token = true;
+                // trigger the semaphore so that any
+                _semaphore.release();
                 worker.join();
+
             };
 
             while(true)
             {
+                auto & TQ = SYSTEM.m_awaiters.at(TASK_QUEUE);
+                if(TQ.get().size_approx() > 0)
+                    _semaphore.release();
                 HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
             }
 
             co_return 0;
         };
 #endif
-
-        m_funcs["queueHopper"] = [](e_type ctrl) -> task_type
+        DEF_FUNC("queue")
         {
+            // Lists all the queues and the number of tasks
+            // currently in the queue
+            PSEUDONIX_PROC_START(ctrl);
+            if(ARGS.size() == 1)
+            {
+                COUT << std::format("Error in arguments:\n\n");
+                COUT << std::format("Usage: {} [list|create|destroy] <queue name>\n", ARGS[0]);
+                co_return 1;
+            }
+            if( ARGS[1] == "list")
+            {
+                for(auto & a : SYSTEM.m_awaiters)
+                {
+                    COUT << std::format("{} {}\n", a.first, a.second.get().size_approx());
+                }
+                co_return 0;
+            }
+            if( ARGS[1] == "create" )
+            {
+                if(ARGS.size() != 3)
+                {
+                    COUT << std::format("Requires a name for the queue\n");
+                    co_return 1;
+                }
+                SYSTEM.m_awaiters[ARGS[2]];
+                co_return 0;
+            }
+            if( ARGS[1] == "destroy" )
+            {
+                if(ARGS.size() != 3)
+                {
+                    COUT << std::format("Requires a name for the queue\n");
+                    co_return 1;
+                }
+                if(ARGS[2] == "HOME")
+                {
+                    COUT << std::format("Error: Cannot destroy the HOME queue\n");
+                    co_return 1;
+                }
+                SYSTEM.m_awaiters.erase(ARGS[2]);
+                co_return 0;
+            }
+
+            co_return 0;
+        };
+
+        DEF_FUNC("queueHopper")
+        {
+            //
+            // An example process which executes part of its
+            // code on the MAIN queue and part of the code on
+            // a different QUEUE
+            //
             PSEUDONIX_PROC_START(ctrl);
             std::string s;
 
             if( ARGS.size() < 2)
             {
-                COUT << std::format("Requires a Task Queue name\n\n   queueHopper PRE_MAIN");
+                COUT << std::format("Requires a Task Queue name\n\n   queueHopper <queue name>");
                 co_return 1;
             }
             std::string TASK_QUEUE = ARGS[1];
 
             if(!SYSTEM.taskQueueExists(TASK_QUEUE))
             {
-                COUT << std::format("Task queue, {}, does not exist. The Task Queue needs to be created using System::taskQueueCreate", TASK_QUEUE);
+                COUT << std::format("Task queue, {}, does not exist. The Task Queue needs to be created using 'queue create <name>' ", TASK_QUEUE);
                 co_return 1;
             }
 
@@ -1427,25 +1642,56 @@ protected:
                 COUT << std::format("Trap on {} queue\n", QUEUE);
             };
 
+            {
+                auto _lock = COUT.lock();
+                COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
+            }
+
             // the QUEUE variable defined by PSEUDONIX_PROC_START(ctrl)
             // tells you what queue this process is being executed on
-            COUT << std::format("On {} queue\n", QUEUE);
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), "MAIN"), ctrl);
+
+            {
+                auto _lock = COUT.lock();
+                COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
+            }
 
             for(int i=0;i<20;i++)
             {
                 // wait for 1 second and then resume on a different Task Queue
                 // Specific task queues are executed at a specific time
-                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(1), TASK_QUEUE), ctrl);
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), TASK_QUEUE), ctrl);
 
-                COUT << std::format("On {} queue\n", QUEUE);
+                {
+                    // Only one thread can read/write to the pipes at a time
+                    // it is quite likely that COUT is being shared by multiple
+                    // processes. So we ensure that we lock access
+                    // to it so that it doesn't cause any race conditions
+                    auto _lock = COUT.lock();
+                    COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
+                }
 
-                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(1), "MAIN"), ctrl);
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), "MAIN"), ctrl);
 
-                COUT << std::format("On {} queue\n", QUEUE);
+                {
+                    auto _lock = COUT.lock();
+                    COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
+                }
+            }
+
+            // finally make sure we are on the main queue
+            // when we exit so that the TRAP function will be executed
+            // on that
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), "MAIN"), ctrl);
+            {
+                auto _lock = COUT.lock();
+                COUT << std::format("Last On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
             }
 
             co_return 0;
         };
+
+        #undef DEF_FUNC
     }
 };
 

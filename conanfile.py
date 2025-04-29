@@ -11,6 +11,7 @@ class EBashRecipe(ConanFile):
     def requirements(self):
         # only actual requirement
         self.requires("readerwriterqueue/1.0.6")
+        self.requires("concurrentqueue/1.0.4")
 
         self.requires("doctest/2.4.11")
         self.requires("imgui/1.91.8-docking")

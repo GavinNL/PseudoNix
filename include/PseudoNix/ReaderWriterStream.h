@@ -11,7 +11,12 @@ struct ReaderWriterStream_t
 {
 protected:
     moodycamel::ReaderWriterQueue<T> data;
+    std::mutex _m;
 public:
+    std::lock_guard<std::mutex> lock()
+    {
+        return std::lock_guard(_m);
+    }
     bool has_data() const
     {
         return data.peek() != nullptr;

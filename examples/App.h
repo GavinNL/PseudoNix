@@ -32,7 +32,6 @@ namespace ImGuiApp
 template<typename App>
 static void em_main_loop(void *_app)
 {
-
     auto * app = static_cast<App*>(_app);
 
     auto & g_renderer = app->g_renderer;
@@ -91,18 +90,28 @@ static void em_main_loop(void *_app)
         ImGui::End();
     }
 
+    ImGui::EndFrame();
     // Rendering
     ImGui::Render();
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    SDL_RenderSetScale(g_renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
-    SDL_SetRenderDrawColor(g_renderer, static_cast<Uint8>(clear_color.x * 255), static_cast<Uint8>(clear_color.y * 255), static_cast<Uint8>(clear_color.z * 255), static_cast<Uint8>(clear_color.w * 255));
-    SDL_RenderClear(g_renderer);
-    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), g_renderer);
-    SDL_RenderPresent(g_renderer);
 
     if constexpr (requires {  App().imguiPostFrame(); }) {
         app->imguiPostFrame();
     }
+
+    if constexpr (requires {  App().sdlRender(); }) {
+        app->sdlRender();
+    }
+    else
+    {
+        ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+        SDL_RenderSetScale(g_renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
+        SDL_SetRenderDrawColor(g_renderer, static_cast<Uint8>(clear_color.x * 255), static_cast<Uint8>(clear_color.y * 255), static_cast<Uint8>(clear_color.z * 255), static_cast<Uint8>(clear_color.w * 255));
+        SDL_RenderClear(g_renderer);
+    }
+    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), g_renderer);
+    SDL_RenderPresent(g_renderer);
+
+
 }
 
 

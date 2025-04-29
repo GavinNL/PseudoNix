@@ -11,7 +11,7 @@ concurrent process like behaviour.
 
 * C++20 Compiler
 * [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) by cameron314 (available on Conan)
-
+* [concurrentqueue](https://github.com/cameron314/concurrentqueue) by cameron314 (available on Conan)
 
 ## Compiling the Examples
 
@@ -28,9 +28,30 @@ cmake --preset conan-release .
 
 ```
 
+## Usage In your Project
+
+If you are using the Conan Package Manager, you can add the following to your dependences list:
+
+```python
+    self.requires("readerwriterqueue/1.0.6")
+    self.requires("concurrentqueue/1.0.4")
+```
+
+Add this repo as a submodule and then add it as a subdirectory
+
+```cmake
+find_package(readerwriterqueue)
+find_package(concurrentqueue)
+
+add_subdirectory(third_party/PseudoNix)
+
+target_link_libraires(myapp PseudoNix::PseudoNix readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue)
+```
+
 ## How It Works
 
-The PseudoNix::System acts like a fully contained Linux system and scheduler.
+The PseudoNix::System acts like a fully contained Linux system and scheduler which 
+can execute processes concurrently.
 A process is a coroutine which can be added to the system to be executed.
 The coroutines that are added to the system are not automatically executed.
 When `system.executeAll()` is called, each coroutine is resumed one at a time
@@ -43,60 +64,28 @@ simlar to the standard input/output streams, but instead of writing to the conso
 it writes to memory. This way the output of one process can be sent to the input
 of another, just like on Linux.
 
+## Use Cases
 
-### Special Shell Features
+This library was built because I needed a way to interface with a custom CAD application I was
+building. I needed a shell interface where I could execute commands and probe information about
+the system. After add more and more features, I decided to turn it into its own library.
 
-Psuedonix provides a default **shell** process that can be used as a starting point to create interactivity. 
-This shell behaves behaves similar to bash, allowing many features such as:
+### Features
 
-It supports custom command registration and mimics familiar shell behavior including environment variables, 
-command substitution, logical operators `&&, ||`, and output redirection `cmd1 | cmd2`. 
-Perfect for building scriptable, extensible CLI experiences right into your application.
+ - Bash-like shell interface
+ - Define your own process coroutines similar to a linux process
+ - Run your processes within the system's scheduler
+ - Chain processes together `proc1 | proc2` just like in Linux
+ - Signal running proccess to terminate using the `kill` command
+ - ImGui Terminal Window
+ - Thread Pools to run processes outside of the MAIN Task Queue
 
-PseudoNix allows you to register your own coroutine functions so that they can be called within the system.
+### Future Development
 
- * Logical commands: `true && echo true || echo false`
- * Setting environment variables: `VAR=VALUE`
- * Variable substitution: `echo hello ${VAR}`
- * Passing variables to commands: `VAR=value env`
- * Executing in the background: `sleep 10 && echo hello world &`
- * Command substitution: `echo Running for: $(uptime) ms`
- * Call your own coroutine functions
-
-**NOTE**: The `shell` process is not a full bash interpreter. It does not provide many
-of the features. It was inteded to be a simple interface into the PseudoNix system. 
-The following bash features are not provided, but may be included in the future
-
-  * if statements
-  * loops
-  * functions
-
-
-### Default Functions
-
-Here is a list of commands that are provided by default, mostly for testing purposes.
-See the examples below to define your own.
-
-| name     | Description                                                       |
-| -------- | ----------------------------------------------------------------- |
-| echo     | echos arguments to output: `echo hello world`                     |
-| env      | Shows all current env variables                                   |
-| exit     | Exits the shell                                                   |
-| export   | Exports env variables to children                                 |
-| exported | Lists all exported variables                                      |
-| false    | Returns immediately with exit code 1                              |
-| true     | Returns immediately with exit code 0                              |
-| help     | Lists all commands available                                      |
-| kill     | Kill a process: `kill <PID>`                                      |
-| launcher | Launches another process and redirects stdin/out to the process   |
-| ps       | Lists all processes                                               |
-| rev      | Reverses the input characters                                     |
-| sh       | The main shell process                                            |
-| signal   | Signal a process `signal <pid> <signal>`                          |
-| sleep    | Pause for a few seconds                                           |
-| uptime   | Prints milliseconds since start up                                |
-| wc       | Counts the characters in input                                    |
-| yes      | Outputs 'y' to the output                                         |
+ - [ ] Virtual Filesystem
+ - [ ] Root vs Regular user
+ - [ ] Better bash-features (if statements, loops)
+ - [ ] More GNU core-utils like functions
 
 
 ## Examples
@@ -241,6 +230,63 @@ int main()
     return 0;
 }
 ```
+
+### Special Shell Features
+
+Psuedonix provides a default **shell** process that can be used as a starting point to create interactivity. 
+This shell behaves behaves similar to bash, allowing many features such as:
+
+It supports custom command registration and mimics familiar shell behavior including environment variables, 
+command substitution, logical operators `&&, ||`, and output redirection `cmd1 | cmd2`. 
+Perfect for building scriptable, extensible CLI experiences right into your application.
+
+PseudoNix allows you to register your own coroutine functions so that they can be called within the system.
+
+ * Logical commands: `true && echo true || echo false`
+ * Setting environment variables: `VAR=VALUE`
+ * Variable substitution: `echo hello ${VAR}`
+ * Passing variables to commands: `VAR=value env`
+ * Executing in the background: `sleep 10 && echo hello world &`
+ * Command substitution: `echo Running for: $(uptime) ms`
+ * Call your own coroutine functions
+
+**NOTE**: The `shell` process is not a full bash interpreter. It does not provide many
+of the features. It was inteded to be a simple interface into the PseudoNix system. 
+The following bash features are not provided, but may be included in the future
+
+  * if statements
+  * loops
+  * functions
+
+
+### Default Functions
+
+Here is a list of commands that are provided by default, mostly for testing purposes.
+See the examples below to define your own.
+
+| name     | Description                                                       |
+| -------- | ----------------------------------------------------------------- |
+| echo     | echos arguments to output: `echo hello world`                     |
+| env      | Shows all current env variables                                   |
+| exit     | Exits the shell                                                   |
+| export   | Exports env variables to children                                 |
+| exported | Lists all exported variables                                      |
+| false    | Returns immediately with exit code 1                              |
+| true     | Returns immediately with exit code 0                              |
+| help     | Lists all commands available                                      |
+| kill     | Kill a process: `kill <PID>`                                      |
+| launcher | Launches another process and redirects stdin/out to the process   |
+| ps       | Lists all processes                                               |
+| rev      | Reverses the input characters                                     |
+| sh       | A process that provides a bash-like shell interface               |
+| signal   | Signal a process `signal <pid> <signal>`                          |
+| sleep    | Pause for a few seconds                                           |
+| uptime   | Prints milliseconds since start up                                |
+| wc       | Counts the characters in input                                    |
+| yes      | Outputs 'y' to the output                                         |
+| queue    | List/Create/Destroy task queues                                   |
+| spawn    | Spawns N processes: `spawn 4 echo hello world`                    |
+
 
 ## Integrating with GUI
 
@@ -573,3 +619,101 @@ The following is a list of awaiters that can be used
 | ctrl->await_read_line(ctrl->in, line_str) | Waits until a line has been read          |
 | ctrl->await_finished(pid)                 | Waits until another process has completed |
 
+
+## Thread Pools
+
+Processes started in the PseudoNix system are always run on a single thread and only when
+the `executeTaskQueue` is called. This is so that the processes execute at known times within
+your application.
+
+You my have a process that takes an exceptionally long time to load and may not have a convenient
+way of yielding, for example, loading a large asset into memory. You may want to load this asset
+in a background thread. 
+
+One way of achieving this is to handle the background loading yourself. 
+
+```c++
+M.setFunction("loadAsset", [](e_type ctrl) -> task_type
+{
+    PSEUDONIX_PROC_START(ctrl);
+
+    std::filesystem::path p(ARGS[1]);
+
+    auto fut = std::async(std::launch::async, [&]()
+    {
+        // load p from the filesystem in a background
+        // thread
+    });
+
+    while(fut.wait_for(std::chrono::seconds(0))==std::future_status::timeout )
+    {
+        co_await ctrl->await_yield();
+    }
+
+    auto asset = fut.get();
+    // do what you need with asset
+    co_return 0;
+});
+```
+
+A much more convient way is to be able to run a portion of your coroutine on the `MAIN`
+queue, and some of it on a different queue which is executed on a background thread.
+
+The following offloads the loading of the asset to the THREADPOOL queue, and then 
+returns to the MAIN queue when it is done.
+
+```c++
+M.setFunction("loadAsset", [](e_type ctrl) -> task_type
+{
+    PSEUDONIX_PROC_START(ctrl);
+
+    std::filesystem::path p(ARGS[1]);
+
+    // wait and resume on the THREADPOOL taskqueue
+    HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield("THREADPOOL"), ctrl);
+
+    auto asset = loadFromFile(p);
+
+    // return to the main task queue
+    HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield("MAIN"), ctrl);
+            
+    // do what you need with asset
+    co_return 0;
+});
+```
+
+This, by itself, doesn't do anything and will block forever. You need to actually process the THREADPOOL queue.
+To do this, a special process, `bgrunner` has been created for you to spawn a background thread that processes a queue.
+
+```c++
+PseudoNix::System M;
+M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
+M.setFunction("launcher", PseudoNix::launcher_coro);
+
+M.taskQueueCreate("THREADPOOL");
+
+// Spawn 3 threads to process the THREADPOOL queue
+M.spawnProcess({"bgrunner", "THREADPOOL"});
+M.spawnProcess({"bgrunner", "THREADPOOL"});
+M.spawnProcess({"bgrunner", "THREADPOOL"});
+
+// Spawn the example queueHopper process
+M.spawnProcess({"queueHopper", "THREADPOOL"});
+M.spawnProcess({"queueHopper", "THREADPOOL"});
+M.spawnProcess({"queueHopper", "THREADPOOL"});
+M.spawnProcess({"queueHopper", "THREADPOOL"});
+M.spawnProcess({"queueHopper", "THREADPOOL"});
+```
+
+You can even spawn this from the `shell` command by calling `bgrunner THREADPOOL`.
+
+Try it out using the terminal.
+
+```bash
+# Spawn 3 bgrunners to process the THREADPOOL queue in the background
+spawn 3 bgrunner THREADPOOL
+
+# execute the queueHopper example process 5 times
+spawn 5 queueHopper THREADPOOL
+
+```

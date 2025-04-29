@@ -1,7 +1,7 @@
 #include <string>
 #include <thread>
 
-
+//#define PSUEDONIX_ENABLE_DEBUG
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
 #include <PseudoNix/Launcher.h>
@@ -138,11 +138,28 @@ export HOME
     // with background computation as well
     M.taskQueueCreate("PRE_MAIN");
     M.taskQueueCreate("POST_MAIN");
+    M.taskQueueCreate("THREADPOOL");
 
-    // Execute all the processes on the MAIN task queue
+    // Spawn 2 background runners to process the
+    // THREADPOOL queue.
+    //
+    // Note:
+    auto p1 = M.spawnProcess({"bgrunner", "THREADPOOL"});
+    auto p2 = M.spawnProcess({"bgrunner", "THREADPOOL"});
+
+    // Since bgrunner is spawned without a shell
+    // there is no way for it to exit by itself
+    // so when the shell process exits, the
+    // while loop will still continue
+    // So to fix this, we'll run one instance of the
+    // taskQueueExecute to see the total number of tasks
+    // there will be without user interaction
+    auto min_tasks   =  M.taskQueueExecute("PRE_MAIN") +
+                       + M.taskQueueExecute("MAIN")
+                       + M.taskQueueExecute("POST_MAIN");
+
     while(true)
     {
-        // execute each task queue in a specific order
         auto total_tasks =  M.taskQueueExecute("PRE_MAIN") +
                           + M.taskQueueExecute("MAIN")
                           + M.taskQueueExecute("POST_MAIN");
@@ -150,13 +167,19 @@ export HOME
         if(total_tasks == 0)
             break;
 
+        // Then if the total tasks remaining is less than
+        // the min_tasks (ie: sh exited), we can signal the two bgrunners
+        // to exit
+        if(total_tasks < min_tasks)
+        {
+            std::cerr << "Signaling bgrunners to exit" << std::endl;
+            M.signal(p1, PseudoNix::sig_interrupt);
+            M.signal(p2, PseudoNix::sig_interrupt);
+        }
         // sleep for 1 millisecond so we're not
         // doing a busy loop
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-
     }
     _M = nullptr;
     return 0;
 }
-
-

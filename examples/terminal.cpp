@@ -131,29 +131,34 @@ public:
         // time as the MAIN task queue.
         m_mini.taskQueueCreate("PRE_MAIN");
         m_mini.taskQueueCreate("POST_MAIN");
+        m_mini.taskQueueCreate("THREADPOOL");
 
         // finally, execute the term command
         // and execute the system call
         m_mini.spawnProcess({"SHELL=sh", "term", "sh"});
-
+        m_mini.spawnProcess({"bgrunner", "THREADPOOL"});
 
     }
 
-    void imguiRender()
+    void imguiPreFrame()
     {
         // Lets execute the main task queue first
         // This is only an example
         m_mini.taskQueueExecute("PRE_MAIN");
+    }
 
+    void imguiPostFrame()
+    {
+        m_mini.taskQueueExecute("POST_MAIN");
+    }
+    void imguiRender()
+    {
         // Each time imgui performs the rendering
         // we are going to execute the scheduler and invoke
         // all coroutines once. Because we are running the
         // coroutines within the imguiRender() functions
         // the coroutines can also draw ImGui objects
         m_mini.taskQueueExecute();
-
-
-        m_mini.taskQueueExecute("POST_MAIN");
     }
 };
 
