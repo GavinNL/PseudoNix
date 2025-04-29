@@ -11,6 +11,7 @@
 #include "defer.h"
 #include <span>
 #include <thread>
+#include <semaphore>
 
 #define PSEUDONIX_VERSION_MAJOR 0
 #define PSEUDONIX_VERSION_MINOR 1

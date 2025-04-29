@@ -110,16 +110,7 @@ public:
         // data such as environment variables
         m_mini.m_preExec = [](PseudoNix::System::Exec & E)
         {
-            const char* username = std::getenv(
-                #ifdef _WIN32
-                "USERNAME"
-                #else
-                "USER"
-                #endif
-                );
-            if (username) {
-                E.env["USER"] = username;
-            }
+            E.env["USER"] = "bob";
         };
 
         // Set up additional commands we want

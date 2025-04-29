@@ -2,6 +2,7 @@
 #define PSEUDONIX_READER_WRITER_STREAM_H
 
 #include <readerwriterqueue/readerwriterqueue.h>
+#include <mutex>
 
 namespace PseudoNix
 {
