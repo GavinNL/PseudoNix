@@ -120,6 +120,11 @@ public:
         // in our System
         setupFunctions();
 
+        m_mini.mkdir("/src");
+        m_mini.mkdir("/build");
+        m_mini.mount("/src", CMAKE_SOURCE_DIR);
+        m_mini.mount("/build", CMAKE_BINARY_DIR);
+
         // Createa  new task queue called "THREAD"
         // This can be executed at a different
         // time as the MAIN task queue.

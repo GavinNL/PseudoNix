@@ -12,6 +12,7 @@
 #include <span>
 #include <thread>
 #include <semaphore>
+#include "FileSystem.h"
 
 #define PSEUDONIX_VERSION_MAJOR 0
 #define PSEUDONIX_VERSION_MINOR 1
@@ -126,7 +127,7 @@ enum class AwaiterResult
 };
 
 
-struct System
+struct System : public PseudoNix::FileSystem
 {
     using stream_type      = ReaderWriterStream_t<char>;
     using pid_type         = uint32_t;
@@ -1689,6 +1690,73 @@ public:
                 COUT << std::format("Last On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
             }
 
+            co_return 0;
+        };
+
+
+        DEF_FUNC("pwd")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            COUT << "/\n";
+            co_return 0;
+        };
+
+
+        DEF_FUNC("ls")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            path_type path = "/";
+            if(ARGS.size() >= 2)
+            {
+                path = ARGS[1];
+            }
+
+            if(!path.is_absolute())
+            {
+                COUT << "Need an absolute path\n";
+                co_return 1;
+            }
+
+            for(auto u : SYSTEM.list_dir(path))
+            {
+                COUT << std::format("{}\n", u.c_str());
+            }
+
+            co_return 0;
+        };
+
+
+
+        DEF_FUNC("mkdir")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            path_type path = "/";
+            if(ARGS.size() >= 2)
+            {
+                path = ARGS[1];
+            }
+
+            if(!path.is_absolute())
+            {
+                COUT << "Need an absolute path\n";
+                co_return 1;
+            }
+
+            SYSTEM.mkdir(path);
+
+            co_return 0;
+        };
+
+        DEF_FUNC("mount")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            for(auto & n : SYSTEM.m_nodes)
+            {
+                if( std::holds_alternative<NodeMount>(n.second) )
+                {
+                    COUT << std::format("{} on {}\n", n.first.c_str(), std::get<NodeMount>(n.second).host_path.c_str());
+                }
+            }
             co_return 0;
         };
 

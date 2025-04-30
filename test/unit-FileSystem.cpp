@@ -68,7 +68,10 @@ SCENARIO("Custom file")
     REQUIRE(F.mkcustom("/test") == true);
 
     REQUIRE_NOTHROW( F.get_custom("/test") );
-
+    F.get_custom("/test").data = 32;
+    REQUIRE( std::any_cast<int>(F.get_custom("/test").data) == 32);
+    REQUIRE( F.get_custom("/test").is<int>() == true);
+    REQUIRE( F.get_custom("/test").as<int>() == 32);
 }
 
 

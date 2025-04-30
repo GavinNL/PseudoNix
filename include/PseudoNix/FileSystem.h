@@ -4,6 +4,7 @@
 #include <format>
 #include <map>
 #include <string>
+#include <typeindex>
 #include <variant>
 #include <cassert>
 #include <filesystem>
@@ -60,6 +61,22 @@ struct NodeCustom
 {
     // use for storing any type of data
     std::any data;
+
+    template<typename T>
+    T& as()
+    {
+        return std::any_cast<T&>(data);
+    }
+    template<typename T>
+    T const& as() const
+    {
+        return std::any_cast<T const&>(data);
+    }
+    template<typename T>
+    bool is() const
+    {
+        return data.type() == std::type_index(typeid(T));
+    }
 };
 
 struct NodeDir
