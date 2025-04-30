@@ -1,12 +1,14 @@
 #ifndef PSEUDONIX_FILESYSTEM_H
 #define PSEUDONIX_FILESYSTEM_H
 
+#include <format>
 #include <map>
 #include <string>
 #include <variant>
 #include <cassert>
 #include <filesystem>
 #include <fstream>
+#include <any>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast" // Example: disable specific warning
@@ -45,7 +47,8 @@ enum class FSResult
     EXISTS,
     DOES_NOT_EXIST,
     NOT_EMPTY,
-    NOT_VALID_MOUNT
+    NOT_VALID_MOUNT,
+    CANNOT_CREATE
 };
 
 struct NodeFile
@@ -53,8 +56,15 @@ struct NodeFile
     std::string filedata;
 };
 
+struct NodeCustom
+{
+    // use for storing any type of data
+    std::any data;
+};
+
 struct NodeDir
 {
+
 };
 
 struct NodeMount
@@ -108,7 +118,7 @@ struct NodeMount
         }
     }
 };
-using Node = std::variant<NodeDir, NodeFile, NodeMount>;
+using Node = std::variant<NodeDir, NodeFile, NodeCustom, NodeMount>;
 
 void _clean(std::filesystem::path & p)
 {
@@ -192,6 +202,17 @@ struct FileSystem
         return std::get<NodeMount>(mnt_i->second).is_file( p.lexically_relative(mnt_i->first) );
     }
 
+    expected<bool, FSResult> is_custom_file(path_type p)
+    {
+        _clean(p);
+        auto it = m_nodes.find(p);
+        if(it != m_nodes.end())
+        {
+            return std::holds_alternative<NodeCustom>(it->second);
+        }
+        return false;
+    }
+
     std::generator<path_type> list_dir(path_type path)
     {
         _clean(path);
@@ -225,6 +246,35 @@ struct FileSystem
         }
     }
 
+    template<typename node_type>
+    expected<bool, FSResult> mknode(path_type path)
+    {
+        _clean(path);
+        if(exists(path))
+            return false;
+
+        auto parent_mount_path = find_parent_mount(path);
+        if(!parent_mount_path.empty())
+        {
+            auto mnt_i = m_nodes.find(parent_mount_path);
+            return std::get<NodeMount>(mnt_i->second).mkdir( path.lexically_relative(mnt_i->first) );
+        }
+        else
+        {
+            if(!exists(path.parent_path()))
+            {
+                mkdir(path.parent_path());
+            }
+            if(!is_dir(path.parent_path()))
+            {
+                return false;
+            }
+            m_nodes[path] = node_type{};
+            return true;
+        }
+        return unexpected(FSResult::EXISTS);
+    }
+
     expected<bool, FSResult> mkdir(path_type path)
     {
         _clean(path);
@@ -248,6 +298,33 @@ struct FileSystem
                 return false;
             }
             m_nodes[path] = NodeDir{};
+            return true;
+        }
+        return unexpected(FSResult::EXISTS);
+    }
+
+    expected<bool, FSResult> mkcustom(path_type path)
+    {
+        _clean(path);
+        if(exists(path))
+            return false;
+
+        auto parent_mount_path = find_parent_mount(path);
+        if(!parent_mount_path.empty())
+        {
+            return unexpected(FSResult::CANNOT_CREATE);
+        }
+        else
+        {
+            if(!exists(path.parent_path()))
+            {
+                mkdir(path.parent_path());
+            }
+            if(!is_dir(path.parent_path()))
+            {
+                return false;
+            }
+            m_nodes[path] = NodeCustom{};
             return true;
         }
         return unexpected(FSResult::EXISTS);
@@ -329,6 +406,21 @@ struct FileSystem
         auto it = m_nodes.find(path);
         it->second = NodeMount{host_path};
         return true;
+    }
+
+    NodeCustom& get_custom(path_type path)
+    {
+        _clean(path);
+        auto it = m_nodes.find(path);
+        if(it != m_nodes.end())
+        {
+            if(std::holds_alternative<NodeCustom>(it->second))
+            {
+                return std::get<NodeCustom>(it->second);
+            }
+            throw std::out_of_range(std::format("{} is not a custom file", path.c_str()).c_str());
+        }
+        throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
     }
 };
 

@@ -15,7 +15,6 @@ public:
 
     void setupFunctions()
     {
-
         // The sh function is provided for you.
         // It's relatively rudametry but allowed you do
         // do simple linux pipling and shell substitution

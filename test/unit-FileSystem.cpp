@@ -3,8 +3,6 @@
 
 #include <PseudoNix/FileSystem.h>
 
-#include <format>
-
 using namespace PseudoNix;
 
 bool mkdir(FileSystem &F, std::filesystem::path const & p)
@@ -63,7 +61,16 @@ SCENARIO("touch")
     REQUIRE(F.is_file("/home/file2.txt") == false);
 }
 
-#if 1
+SCENARIO("Custom file")
+{
+    FileSystem F;
+
+    REQUIRE(F.mkcustom("/test") == true);
+
+    REQUIRE_NOTHROW( F.get_custom("/test") );
+
+}
+
 
 SCENARIO("Mount")
 {
@@ -129,4 +136,4 @@ SCENARIO("Mount")
     }
 }
 
-#endif
+
