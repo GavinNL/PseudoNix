@@ -83,6 +83,9 @@ SCENARIO("Mount")
             REQUIRE(F.mount("/src", CMAKE_SOURCE_DIR));
             REQUIRE(F.mount("/build", CMAKE_BINARY_DIR));
 
+            // cannot mount on the same spot
+            REQUIRE(F.mount("/src", CMAKE_SOURCE_DIR).error() == FSResult::NOT_VALID_MOUNT);
+
             THEN("We can query the files as if they were in the VFS")
             {
                 REQUIRE(F.exists("/src/conanfile.py"));
@@ -100,16 +103,27 @@ SCENARIO("Mount")
 
             THEN("We can create files on the host through the vfs")
             {
-                std::filesystem::remove(CMAKE_BINARY_DIR "/test-folder");
+                std::filesystem::remove_all(CMAKE_BINARY_DIR "/test-folder");
 
                 REQUIRE(F.mkdir("/build/test-folder") == true);
                 REQUIRE(F.exists("/build/test-folder") == true);
                 REQUIRE(F.exists("/build/test-folder/noexist.txt") == false);
-
                 REQUIRE(F.is_file("/build/test-folder/noexist.txt") == false);
 
-                REQUIRE(std::filesystem::is_directory(CMAKE_BINARY_DIR "/test-folder"));
-                REQUIRE(F.is_empty("/build/test-folder") == true);
+                // Cannot mount within a host tree
+                REQUIRE(F.mount("/build/test-folder", CMAKE_SOURCE_DIR).error() == FSResult::NOT_VALID_MOUNT);
+                {
+                    REQUIRE(std::filesystem::is_directory(CMAKE_BINARY_DIR "/test-folder"));
+                    REQUIRE(F.is_empty("/build/test-folder") == true);
+                }
+
+                {
+                    F.touch("/build/test-folder/file.txt");
+                    REQUIRE(std::filesystem::is_regular_file(CMAKE_BINARY_DIR "/test-folder/file.txt"));
+                    REQUIRE(F.exists("/build/test-folder/file.txt") == true);
+                    REQUIRE(F.is_file("/build/test-folder/file.txt") == true);
+                    REQUIRE(F.is_dir("/build/test-folder/file.txt") == false);
+                }
             }
         }
     }

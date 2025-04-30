@@ -6,7 +6,7 @@
 #include <variant>
 #include <cassert>
 #include <filesystem>
-#include "expected.h"
+#include <fstream>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast" // Example: disable specific warning
@@ -15,18 +15,29 @@
 #pragma GCC diagnostic pop
 
 
+#if defined __cpp_lib_expected
+    #include <expected>
+#else
+    #include "expected.h"
+#endif
 
 namespace PseudoNix
 {
 
-enum class NodeType
-{
-    MEM_DIR,
-    MEM_FILE,
-    MOUNT,
-    HOST_FILE,
-    HOST_DIR
-};
+#if defined __cpp_lib_expected
+template<typename T, typename E>
+using expected = std::expected<T,E>;
+
+template <typename E>
+using unexpected  = std::unexpected<E>;
+#else
+template<typename T, typename E>
+using expected = tl::expected<T,E>;
+
+template <typename E>
+using unexpected  = tl::unexpected<E>;
+#endif
+
 
 enum class FSResult
 {
@@ -34,16 +45,18 @@ enum class FSResult
     EXISTS,
     DOES_NOT_EXIST,
     NOT_EMPTY,
-
+    NOT_VALID_MOUNT
 };
 
 struct NodeFile
 {
     std::string filedata;
 };
+
 struct NodeDir
 {
 };
+
 struct NodeMount
 {
     std::filesystem::path host_path;
@@ -68,6 +81,14 @@ struct NodeMount
         assert(path.is_relative());
         return std::filesystem::create_directories(host_path / path);
     }
+    bool touch(std::filesystem::path const & path)
+    {
+        assert(path.is_relative());
+        std::ofstream out(host_path/path);
+        out.close();
+        return true;
+        //return std::filesystem::create_directories(host_path / path);
+    }
     bool is_empty(std::filesystem::path const & path) const
     {
         namespace fs = std::filesystem;
@@ -83,9 +104,7 @@ struct NodeMount
         namespace fs = std::filesystem;
         auto abs_path = host_path / path;
         for (const auto& entry : fs::directory_iterator(abs_path)) {
-            // Optional: check type
             co_yield entry.path().lexically_proximate(abs_path);
-            //co_yield entry.path();
         }
     }
 };
@@ -139,7 +158,7 @@ struct FileSystem
         return find_parent_mount(it->first.parent_path());
     }
 
-    tl::expected<bool, FSResult> is_dir(path_type p)
+    expected<bool, FSResult> is_dir(path_type p)
     {
         _clean(p);
         auto it = m_nodes.find(p);
@@ -150,13 +169,13 @@ struct FileSystem
 
         auto mnt = find_parent_mount(p);
         if(mnt.empty())
-            return tl::unexpected(FSResult::DOES_NOT_EXIST);
+            return unexpected(FSResult::DOES_NOT_EXIST);
 
         auto mnt_i = m_nodes.find(mnt);
         return std::get<NodeMount>(mnt_i->second).is_dir( p.lexically_relative(mnt_i->first) );
     }
 
-    tl::expected<bool, FSResult> is_file(path_type p)
+    expected<bool, FSResult> is_file(path_type p)
     {
         _clean(p);
         auto it = m_nodes.find(p);
@@ -171,20 +190,6 @@ struct FileSystem
 
         auto mnt_i = m_nodes.find(mnt);
         return std::get<NodeMount>(mnt_i->second).is_file( p.lexically_relative(mnt_i->first) );
-    }
-
-    bool touch(path_type p)
-    {
-        _clean(p);
-        if(is_dir(p.parent_path()))
-        {
-            if(!exists(p))
-            {
-                m_nodes[p] = NodeFile{};
-                return true;
-            }
-        }
-        return false;
     }
 
     std::generator<path_type> list_dir(path_type path)
@@ -220,7 +225,7 @@ struct FileSystem
         }
     }
 
-    tl::expected<bool, FSResult> mkdir(path_type path)
+    expected<bool, FSResult> mkdir(path_type path)
     {
         _clean(path);
         if(exists(path))
@@ -245,10 +250,38 @@ struct FileSystem
             m_nodes[path] = NodeDir{};
             return true;
         }
-        return tl::unexpected(FSResult::EXISTS);
+        return unexpected(FSResult::EXISTS);
     }
 
-    tl::expected<bool, FSResult> is_empty(path_type path) const
+    expected<bool, FSResult> touch(path_type path)
+    {
+        _clean(path);
+        if(exists(path))
+            return false;
+
+        auto parent_mount_path = find_parent_mount(path);
+        if(!parent_mount_path.empty())
+        {
+            auto mnt_i = m_nodes.find(parent_mount_path);
+            return std::get<NodeMount>(mnt_i->second).touch( path.lexically_relative(mnt_i->first) );
+        }
+        else
+        {
+            if(!exists(path.parent_path()))
+            {
+                mkdir(path.parent_path());
+            }
+            if(!is_dir(path.parent_path()))
+            {
+                return false;
+            }
+            m_nodes[path] = NodeFile{};
+            return true;
+        }
+        return unexpected(FSResult::EXISTS);
+    }
+
+    expected<bool, FSResult> is_empty(path_type path) const
     {
         _clean(path);
 
@@ -279,15 +312,19 @@ struct FileSystem
             }
             else
             {
-                return tl::unexpected(FSResult::DOES_NOT_EXIST);
+                return unexpected(FSResult::DOES_NOT_EXIST);
             }
         }
     }
 
-    tl::expected<bool, FSResult> mount(path_type path, path_type host_path)
+    expected<bool, FSResult> mount(path_type path, path_type host_path)
     {
+        auto mnt = find_parent_mount(path);
+        if(!mnt.empty())
+            return unexpected(FSResult::NOT_VALID_MOUNT);
+
         if(!is_empty(path))
-            return tl::unexpected(FSResult::NOT_EMPTY);
+            return unexpected(FSResult::NOT_EMPTY);
 
         auto it = m_nodes.find(path);
         it->second = NodeMount{host_path};
