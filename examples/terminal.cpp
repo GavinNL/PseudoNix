@@ -111,6 +111,10 @@ public:
         m_mini.m_preExec = [](PseudoNix::System::Exec & E)
         {
             E.env["USER"] = "bob";
+#if defined CMAKE_SOURCE_DIR
+            E.env["CMAKE_SOURCE_DIR"] = CMAKE_SOURCE_DIR;
+            E.env["CMAKE_BINARY_DIR"] = CMAKE_BINARY_DIR;
+#endif
         };
 
         // Set up additional commands we want
@@ -158,7 +162,7 @@ int main(int argc, char* argv[])
 {
     //(void)argc;
     //(void)argv;
-    return ImGuiApp::run<MyApplication>("SDL Window", 1920, 1080);
+    return ImGuiApp::run<MyApplication>("PseudoNix ImGui Terminal Example", 1920, 1080);
 }
 
 #include <imgui_impl_sdl2.cpp>

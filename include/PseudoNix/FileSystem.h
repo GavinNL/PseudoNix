@@ -6,7 +6,7 @@
 #include <variant>
 #include <cassert>
 #include <filesystem>
-#include <expected>
+#include "expected.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast" // Example: disable specific warning
@@ -28,6 +28,14 @@ enum class NodeType
     HOST_DIR
 };
 
+enum class FSResult
+{
+    SUCCESS,
+    EXISTS,
+    DOES_NOT_EXIST,
+    NOT_EMPTY,
+
+};
 
 struct NodeFile
 {
@@ -131,7 +139,7 @@ struct FileSystem
         return find_parent_mount(it->first.parent_path());
     }
 
-    bool is_dir(path_type p)
+    tl::expected<bool, FSResult> is_dir(path_type p)
     {
         _clean(p);
         auto it = m_nodes.find(p);
@@ -142,13 +150,13 @@ struct FileSystem
 
         auto mnt = find_parent_mount(p);
         if(mnt.empty())
-            return false;
+            return tl::unexpected(FSResult::DOES_NOT_EXIST);
 
         auto mnt_i = m_nodes.find(mnt);
         return std::get<NodeMount>(mnt_i->second).is_dir( p.lexically_relative(mnt_i->first) );
     }
 
-    bool is_file(path_type p)
+    tl::expected<bool, FSResult> is_file(path_type p)
     {
         _clean(p);
         auto it = m_nodes.find(p);
@@ -212,7 +220,7 @@ struct FileSystem
         }
     }
 
-    bool mkdir(path_type path)
+    tl::expected<bool, FSResult> mkdir(path_type path)
     {
         _clean(path);
         if(exists(path))
@@ -237,13 +245,12 @@ struct FileSystem
             m_nodes[path] = NodeDir{};
             return true;
         }
+        return tl::unexpected(FSResult::EXISTS);
     }
 
-    bool is_empty(path_type path) const
+    tl::expected<bool, FSResult> is_empty(path_type path) const
     {
         _clean(path);
-        //if(exists(path))
-        //    return false;
 
         auto parent_mount_path = find_parent_mount(path);
         if(!parent_mount_path.empty())
@@ -268,16 +275,19 @@ struct FileSystem
                 {
                     return false;
                 }
+                return true;
             }
-            return true;
-
+            else
+            {
+                return tl::unexpected(FSResult::DOES_NOT_EXIST);
+            }
         }
     }
 
-    bool mount(path_type path, path_type host_path)
+    tl::expected<bool, FSResult> mount(path_type path, path_type host_path)
     {
         if(!is_empty(path))
-            return false;
+            return tl::unexpected(FSResult::NOT_EMPTY);
 
         auto it = m_nodes.find(path);
         it->second = NodeMount{host_path};

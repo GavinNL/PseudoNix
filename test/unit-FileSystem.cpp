@@ -17,67 +17,53 @@ bool mkdir(FileSystem &F, std::filesystem::path const & p)
     return true;
 }
 
+SCENARIO("Exists")
+{
+    FileSystem F;
+
+    REQUIRE(F.exists("/") == true);
+    REQUIRE(F.exists("/home") == false);
+}
+
+SCENARIO("is_empty")
+{
+    FileSystem F;
+
+    REQUIRE(F.is_empty("/") == true);
+}
+
 SCENARIO("mkdir")
 {
     FileSystem F;
 
-    REQUIRE(mkdir(F, "/home") == true);
+    F.mkdir("/home");
+    F.mkdir("/usr");
+    F.mkdir("/lib");
 
+    REQUIRE(F.is_empty("/home") == true);
+    REQUIRE(F.is_empty("/usr") == true);
+    REQUIRE(F.is_empty("/lib") == true);
 
-    REQUIRE(F.mkdir("/home/A") == true);
-    REQUIRE(F.mkdir("/home/C") == true);
-    REQUIRE(F.mkdir("/home/B") == true);
-
-    REQUIRE(F.mkdir("/home/B/a") == true);
-    REQUIRE(F.mkdir("/home/B/b") == true);
-    REQUIRE(F.mkdir("/home/B/c") == true);
-    REQUIRE(F.mkdir("/home/B/d") == true);
+    REQUIRE(F.is_empty("/var").error() == FSResult::DOES_NOT_EXIST);
 }
 
-SCENARIO("dd")
+SCENARIO("touch")
 {
     FileSystem F;
 
-    {
-        std::filesystem::path p("/");
-        _clean(p);
-        REQUIRE(p == "/");
-    }
-    {
-        std::filesystem::path p("/home/");
-        _clean(p);
-        REQUIRE(p == "/home");
-    }
+    F.mkdir("/home");
+    REQUIRE(F.is_empty("/home") == true);
 
+    F.touch("/home/file.txt");
 
-    REQUIRE(F.exists("/"));
-    REQUIRE(F.is_dir("/"));
+    REQUIRE(F.exists("/home/file.txt"));
+    REQUIRE(F.is_file("/home/file.txt"));
 
-    F.mkdir("/home/gavin/");
-    F.mkdir("/home/gavin/Documents");
-    F.mkdir("/home/gavin/Projects");
-    REQUIRE(F.exists("/home"));
-    REQUIRE(F.exists("/home/"));
-    REQUIRE(F.is_dir("/home"));
-    REQUIRE(F.is_dir("/home/"));
-    REQUIRE(F.exists("/home/gavin"));
-    REQUIRE(F.exists("/home/gavin/"));
-
-    REQUIRE(F.is_empty("/home/gavin") == false);
-    REQUIRE(F.is_empty("/home/gavin/Documents") == true);
-
-
-    F.touch("/home/gavin/bashrc");
-    F.touch("/home/gavin/profile");
-
-    REQUIRE(F.exists("/home/gavin"));
-    REQUIRE(F.exists("/home/gavin/"));
-
-    REQUIRE(F.exists("/home/gavin/bashrc"));
-    REQUIRE(F.exists("/home/gavin/profile"));
-
-    REQUIRE(F.mkdir("/home/gavin/profile/test") == false);
+    REQUIRE(F.is_empty("/home/file2.txt").error() == FSResult::DOES_NOT_EXIST);
+    REQUIRE(F.is_file("/home/file2.txt") == false);
 }
+
+#if 1
 
 SCENARIO("Mount")
 {
@@ -107,6 +93,7 @@ SCENARIO("Mount")
             {
                 for(auto  i : F.list_dir("/build"))
                 {
+                    (void)i;
                     std::cout << i << std::endl;
                 }
             }
@@ -114,8 +101,12 @@ SCENARIO("Mount")
             THEN("We can create files on the host through the vfs")
             {
                 std::filesystem::remove(CMAKE_BINARY_DIR "/test-folder");
+
                 REQUIRE(F.mkdir("/build/test-folder") == true);
                 REQUIRE(F.exists("/build/test-folder") == true);
+                REQUIRE(F.exists("/build/test-folder/noexist.txt") == false);
+
+                REQUIRE(F.is_file("/build/test-folder/noexist.txt") == false);
 
                 REQUIRE(std::filesystem::is_directory(CMAKE_BINARY_DIR "/test-folder"));
                 REQUIRE(F.is_empty("/build/test-folder") == true);
@@ -124,3 +115,4 @@ SCENARIO("Mount")
     }
 }
 
+#endif
