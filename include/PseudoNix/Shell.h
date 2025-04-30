@@ -206,6 +206,39 @@ struct ShellEnv
             }
             co_return 0;
         });
+
+        L->setFunction("cd", [](System::e_type ex) -> System::task_type
+        {
+            _GET_SHELL
+            // used to export variables
+            (void)ex;
+            auto & ARGS = ex->args;
+
+            auto sh_proc = ex->system->getProcessControl(shell_pid);
+            if(ARGS.size() == 1)
+            {
+                sh_proc->chdir("/");
+                co_return 0;
+            }
+
+            System::path_type p = ARGS[1];
+            if(p.is_relative())
+                p = sh_proc->cwd / p;
+
+            p = p.lexically_normal();
+            if(!ex->system->exists(p))
+            {
+                *ex->out << std::format("cd: {}: No such file or directory\n", ARGS[1]);
+                co_return 1;
+            }
+
+            if(sh_proc->chdir(p))
+                co_return 0;
+
+            *ex->out << std::format("Unknown error\n");
+            co_return 1;
+
+        });
     }
 };
 
@@ -262,7 +295,12 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
     }
 
     auto pids = proc->executeSubProcess(E);
-
+    auto me = exported_environment->shellPID;
+    auto my_cwd = proc->system->getProcessControl(me)->cwd;
+    for(auto p : pids)
+    {
+        proc->system->getProcessControl(p)->chdir(my_cwd);
+    }
     return pids;
 }
 

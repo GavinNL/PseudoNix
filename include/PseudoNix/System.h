@@ -236,11 +236,25 @@ struct System : public PseudoNix::FileSystem
         std::map<std::string, std::string> env;
         System * system = nullptr;
         std::string queue_name;
+        path_type cwd = "/";
 
     protected:
         pid_type    pid = invalid_pid;
     public:
 
+        bool chdir(path_type new_dir)
+        {
+            if(!system->exists(new_dir)) return false;
+            if(new_dir.is_relative())
+            {
+                cwd = cwd / new_dir;
+            }
+            else
+            {
+                cwd = new_dir;
+            }
+            return true;
+        }
         void setSignalHandler(std::function<void(int)> f)
         {
             system->m_procs2.at(pid)->signal = f;
@@ -1208,7 +1222,9 @@ public:
             auto & SYSTEM = *control->system; (void)SYSTEM;\
             auto const & ARGS = control->args; (void)ARGS;\
             auto const & ENV = control->env; (void)ENV; \
-            auto const & QUEUE = control->queue_name; (void)QUEUE
+            auto const & QUEUE = control->queue_name; (void)QUEUE; \
+            auto const & CWD = control->cwd; (void)CWD
+
 
         #define DEF_FUNC(A) m_funcs[A] = [](e_type ctrl) -> task_type
         DEF_FUNC("false")
@@ -1697,7 +1713,7 @@ public:
         DEF_FUNC("pwd")
         {
             PSEUDONIX_PROC_START(ctrl);
-            COUT << "/\n";
+            COUT << std::format("{}\n", ctrl->cwd.c_str());
             co_return 0;
         };
 
@@ -1705,7 +1721,7 @@ public:
         DEF_FUNC("ls")
         {
             PSEUDONIX_PROC_START(ctrl);
-            path_type path = "/";
+            path_type path = CWD;
             if(ARGS.size() >= 2)
             {
                 path = ARGS[1];
