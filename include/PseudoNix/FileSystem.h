@@ -424,6 +424,17 @@ struct FileSystem
         it->second = NodeMount{host_path};
         return true;
     }
+    expected<bool, FSResult> umount(path_type path)
+    {
+        auto mnt = find_parent_mount(path);
+        if(mnt == path && !mnt.empty())
+        {
+            m_nodes.find(mnt)->second = NodeDir{};
+            return true;
+        }
+
+        return unexpected(FSResult::NOT_VALID_MOUNT);
+    }
 
     NodeCustom& get_custom(path_type path)
     {

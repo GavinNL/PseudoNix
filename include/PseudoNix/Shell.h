@@ -299,7 +299,8 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
     auto my_cwd = proc->system->getProcessControl(me)->cwd;
     for(auto p : pids)
     {
-        proc->system->getProcessControl(p)->chdir(my_cwd);
+        if(p != invalid_pid)
+            proc->system->getProcessControl(p)->chdir(my_cwd);
     }
     return pids;
 }

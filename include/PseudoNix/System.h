@@ -248,10 +248,14 @@ struct System : public PseudoNix::FileSystem
             if(new_dir.is_relative())
             {
                 cwd = cwd / new_dir;
+                env["OLDPWD"] = env["PWD"];
+                env["PWD"] = cwd.generic_string();
             }
             else
             {
                 cwd = new_dir;
+                env["OLDPWD"] = env["PWD"];
+                env["PWD"] = cwd.generic_string();
             }
             return true;
         }
@@ -627,6 +631,7 @@ struct System : public PseudoNix::FileSystem
         auto T = it->second(proc_control);
 
         auto pid = registerProcess(std::move(T), std::move(proc_control), parent);
+        getProcessControl(pid)->chdir("/");
 
         return pid;
     }
@@ -1766,16 +1771,60 @@ public:
         DEF_FUNC("mount")
         {
             PSEUDONIX_PROC_START(ctrl);
-            for(auto & n : SYSTEM.m_nodes)
+
+            if(ARGS.size() == 1)
             {
-                if( std::holds_alternative<NodeMount>(n.second) )
+                for(auto & n : SYSTEM.m_nodes)
                 {
-                    COUT << std::format("{} on {}\n", n.first.c_str(), std::get<NodeMount>(n.second).host_path.c_str());
+                    if( std::holds_alternative<NodeMount>(n.second) )
+                    {
+                        COUT << std::format("{} on {}\n", n.first.c_str(), std::get<NodeMount>(n.second).host_path.c_str());
+                    }
+                }
+                co_return 0;
+            }
+            if(ARGS.size() == 3)
+            {
+                if( std::filesystem::is_directory(ARGS[1]) )
+                {
+                    auto er = SYSTEM.mount(ARGS[1], ARGS[2]);
+                    if(er.has_value())
+                    {
+                        co_return er.value();
+                    }
+                    else
+                    {
+                        COUT << std::format("Error\n");
+                        co_return 1;
+                    }
+                }
+                else
+                {
+                    COUT << std::format("Directory {} does not exist on the host", ARGS[1]);
+                    co_return 1;
                 }
             }
-            co_return 0;
+            COUT << std::format("Unknown error\n");
+
+            co_return 1;
         };
 
+        DEF_FUNC("umount")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+
+            if(ARGS.size() == 2)
+            {
+                path_type p = ARGS[1];
+                if(p.is_relative())
+                    p = CWD / p;
+                SYSTEM.umount(p);
+                co_return 0;
+            }
+            COUT << std::format("Unknown error\nUsage:\n umount <mount point>\n");
+
+            co_return 1;
+        };
         #undef DEF_FUNC
     }
 };
