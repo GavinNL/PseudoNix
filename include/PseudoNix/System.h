@@ -1825,6 +1825,27 @@ public:
 
             co_return 1;
         };
+
+        DEF_FUNC("cat")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+
+            if(ARGS.size() == 2)
+            {
+                path_type path = ARGS[1];
+                if(path.is_relative()) path = CWD / path;
+                path = SYSTEM.host_path(path);
+                if(path.empty())
+                {
+                    COUT << std::format("Cannot find file: {}\n", ARGS[1]);
+                    co_return 1;
+                }
+                COUT << SYSTEM.to_string(ARGS[1]);
+                COUT << "\n";
+                co_return 0;
+            }
+            co_return 1;
+        };
         #undef DEF_FUNC
     }
 };
