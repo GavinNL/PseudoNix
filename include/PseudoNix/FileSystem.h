@@ -450,6 +450,27 @@ struct FileSystem
         }
         throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
     }
+
+    path_type host_path(path_type path) const
+    {
+        auto mnt = find_parent_mount(path);
+        if(mnt.empty())
+            return {};
+
+        auto mnt_i = m_nodes.find(mnt);
+        return std::get<NodeMount>(mnt_i->second).host_path / path.lexically_relative(mnt_i->first);
+    }
+
+    std::string to_string(path_type path)
+    {
+        std::ifstream file( host_path(path) );
+        if (!file) {
+            return {};
+        }
+
+        return std::string((std::istreambuf_iterator<char>(file)),
+                             std::istreambuf_iterator<char>());
+    }
 };
 
 }

@@ -74,7 +74,6 @@ SCENARIO("Custom file")
     REQUIRE( F.get_custom("/test").as<int>() == 32);
 }
 
-
 SCENARIO("Mount")
 {
     FileSystem F;
@@ -101,6 +100,8 @@ SCENARIO("Mount")
                 REQUIRE(F.exists("/src/conanfile.py"));
                 REQUIRE(F.is_file("/src/conanfile.py"));
                 REQUIRE(F.is_dir("/src/examples"));
+
+                REQUIRE(F.host_path("/src/conanfile.py") == CMAKE_SOURCE_DIR "/conanfile.py");
             }
             THEN("We can loop through all the folders")
             {
