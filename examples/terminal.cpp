@@ -24,7 +24,7 @@ public:
         // cmd1 || cmd2
         // echo "Hello ${USER}"
         //
-        m_mini.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
+        m_mini.setFunction("sh", PseudoNix::shell_coro);
 
         // an ImGui Terminal function has been created if you want to
         // add a terminal to your projects. It is fairly simple
@@ -122,19 +122,39 @@ public:
 
         m_mini.mkdir("/bin");
         m_mini.touch("/bin/hello.sh");
-        m_mini.get<PseudoNix::NodeFile>("/bin/hello.sh").filedata =
+        m_mini.get<PseudoNix::NodeFile>("/bin/hello.sh").filedata.str(
 R"foo(
 echo Hello World!
 echo "this is a script defined inside the virtual file system"
 echo "I'm going to sleep now for a few seconds"
 sleep 3
 echo "Hey! I'm awake!"
-)foo";
+)foo");
+
+
+        // Create the /etc/profile file so that
+        // every instance of the sh command will execute
+        // those commands first
+        m_mini.mkdir("/etc");
+        m_mini.touch("/etc/profile");
+        m_mini.get<PseudoNix::NodeFile>("/etc/profile").filedata.str(R"foo(
+echo "###################################"
+echo "Welcome to the shell!"
+echo ""
+echo "The shell process automatically sources the"
+echo "/etc/profile" in the Virtual File System"
+echo ""
+echo "You are user: ${USER}
+echo "This is SHELL_PID: ${SHELL_PID}
+echo "###################################"
+)foo");
 
         m_mini.mkdir("/src");
         m_mini.mkdir("/build");
-        m_mini.mount("/src", CMAKE_SOURCE_DIR);
-        m_mini.mount("/build", CMAKE_BINARY_DIR);
+        m_mini.mkdir("/home");
+        m_mini.mount(CMAKE_SOURCE_DIR, "/src");
+        m_mini.mount(CMAKE_BINARY_DIR, "/build");
+        m_mini.mount("/home/gavin", "/home");
 
         // Createa  new task queue called "THREAD"
         // This can be executed at a different

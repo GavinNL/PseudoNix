@@ -68,7 +68,7 @@ std::pair<std::string, System::exit_code_type> testS(std::string script)
 {
     System M;
 
-    M.setFunction("sh", std::bind(shell_coro, std::placeholders::_1, ShellEnv{}));
+   M.setFunction("sh", PseudoNix::shell_coro);
 
 
     auto E = System::parseArguments({"sh"});

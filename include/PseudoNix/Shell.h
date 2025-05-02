@@ -228,7 +228,7 @@ inline std::string var_sub1(std::string_view str, std::map<std::string,std::stri
 }
 
 
-inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv)
+inline System::task_type shell_coro(System::e_type ctrl)
 {
     PSEUDONIX_PROC_START(ctrl);
 
@@ -246,14 +246,20 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv)
     //===========================================================================
     auto _args = ARGS;
     auto no_profile = std::find(_args.begin(), _args.end(), "--noprofile");
-    if(_args.end() != no_profile)
+    if(_args.end() == no_profile)
     {
         // Copy the rc_text into the
         // the input stream so that
         // it will be executed first
-        script += shellEnv.rc_text;
+        //script += shellEnv.rc_text;
         _args.erase(no_profile);
+
+        if(SYSTEM.exists("/etc/profile"))
+        {
+            script += SYSTEM.file_to_string("/etc/profile");
+        }
     }
+
 
 
     auto dash_c = std::find(_args.begin(), _args.end(), "-c");
@@ -262,7 +268,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv)
         auto cmd_i = std::next(dash_c);
         if(cmd_i != ARGS.end())
         {
-            script = *cmd_i;
+            script += *cmd_i;
             // make sure there is an exit statement at the
             // end of the script so that it will
             // exit the the process when done

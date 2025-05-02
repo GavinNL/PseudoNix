@@ -1907,6 +1907,24 @@ public:
             co_return 0;
         };
 
+        DEF_FUNC("touch")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            path_type path = "/";
+            if(ARGS.size() >= 2)
+            {
+                path = ARGS[1];
+                HANDLE_PATH(CWD, path);
+                SYSTEM.touch(path);
+            }
+            else
+            {
+                COUT << std::format("touch: missing operand\n");
+                co_return 1;
+            }
+
+            co_return 0;
+        };
         DEF_FUNC("mount")
         {
             PSEUDONIX_PROC_START(ctrl);

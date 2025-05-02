@@ -19,7 +19,7 @@ int main(int argc, char** argv)
 
     // add our coroutine to the list of functions to be
     // called
-    M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, ShellEnv{}));
+    M.setFunction("sh", PseudoNix::shell_coro);
     M.setFunction("launcher", PseudoNix::launcher_coro);
 
     // We can manually create a pipeline. This will

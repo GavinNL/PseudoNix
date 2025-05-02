@@ -53,7 +53,7 @@ export HOME
 
 )foo";
     // bind the shellEnv input to the shell function
-    M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, shellEnv));
+    M.setFunction("sh", PseudoNix::shell_coro);
 
     M.setFunction("launcher", PseudoNix::launcher_coro);
     //=============================================================================
