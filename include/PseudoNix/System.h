@@ -888,64 +888,80 @@ struct System : public PseudoNix::FileSystem
         return found;
     }
 
-    std::mutex _m;
-    size_t taskQueueExecute(std::string const & queue_name = "MAIN")
+
+    /**
+     * @brief taskQueueExecute
+     * @param queue_name
+     * @param maxComputeTime
+     * @param maxIter
+     * @return
+     *
+     * Execute all the tasks on a particular queue.
+     *
+     * Keep processing the queue until the maxComputeTime has elapsed or maxIterations
+     * has been reached.
+     */
+    size_t taskQueueExecute(std::string const & queue_name = "MAIN", std::chrono::milliseconds maxComputeTime=std::chrono::milliseconds(15), size_t maxIter = 1)
     {
         m_main_thread_id = std::this_thread::get_id();
-
-        // Execute all the processes in order of their PID
-        //
-        // Nothing is removed from the container until all
-        // of the objects have been processed
-        auto & POP_Q  = m_awaiters.at(queue_name).get();
-        auto & PUSH_Q = m_awaiters.at(queue_name).get2();
+        auto T0 = std::chrono::system_clock::now();
+        while(maxIter > 0 && (std::chrono::system_clock::now()-T0) < maxComputeTime )
         {
-            //std::lock_guard L(_m);
-            m_awaiters.at(queue_name).swap();
-        }
-
-        std::pair<Awaiter*, std::shared_ptr<Process> > a;
-
-        // Process everything on the queue
-        // New tasks will not be added to this queue
-        // because of the double buffering
-        while(_processQueue(POP_Q, PUSH_Q,  queue_name));
-
-        if(queue_name != "MAIN")
-            return PUSH_Q.size_approx() + POP_Q.size_approx();
-
-        // Remove any processes that:
-        //   1. whose task has completed
-        //   2. who is force terminated
-        //
-        auto _end = m_procs2.end();
-        for(auto it = m_procs2.begin(); it!=_end;)
-        {
-            auto & coro = *it->second;
-
-            if(coro.task.done() && !coro.is_complete)
+            maxIter--;
+            // Execute all the processes in order of their PID
+            //
+            // Nothing is removed from the container until all
+            // of the objects have been processed
+            auto & POP_Q  = m_awaiters.at(queue_name).get();
+            auto & PUSH_Q = m_awaiters.at(queue_name).get2();
             {
-                auto exit_code = coro.task();
-                coro.is_complete = true;
-                *coro.exit_code = !coro.force_terminate ? exit_code : -1;
-                coro.should_remove = true;
-                coro.force_terminate = true;
+                m_awaiters.at(queue_name).swap();
             }
 
-            // did someone call kill on the PID?
-            if(coro.force_terminate)
-            {
-                it->second->control->queue_name = queue_name;
-                _finalizePID(it->first);
-            }
+            std::pair<Awaiter*, std::shared_ptr<Process> > a;
 
-            if(coro.should_remove)
+            // Process everything on the queue
+            // New tasks will not be added to this queue
+            // because of the double buffering
+            DEBUG_INFO("{}: Total size: {}", queue_name, POP_Q.size_approx());
+            while(_processQueue(POP_Q, PUSH_Q,  queue_name));
+            DEBUG_INFO(": {}Finished Total size: {}", queue_name, POP_Q.size_approx());
+            if(queue_name != "MAIN")
+                return PUSH_Q.size_approx() + POP_Q.size_approx();
+
+            // Remove any processes that:
+            //   1. whose task has completed
+            //   2. who is force terminated
+            //
+            auto _end = m_procs2.end();
+            for(auto it = m_procs2.begin(); it!=_end;)
             {
-                it = m_procs2.erase(it);
-            }
-            else
-            {
-                ++it;
+                auto & coro = *it->second;
+
+                if(coro.task.done() && !coro.is_complete)
+                {
+                    auto exit_code = coro.task();
+                    coro.is_complete = true;
+                    *coro.exit_code = !coro.force_terminate ? exit_code : -1;
+                    coro.should_remove = true;
+                    coro.force_terminate = true;
+                }
+
+                // did someone call kill on the PID?
+                if(coro.force_terminate)
+                {
+                    it->second->control->queue_name = queue_name;
+                    _finalizePID(it->first);
+                }
+
+                if(coro.should_remove)
+                {
+                    it = m_procs2.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
             }
         }
         m_main_thread_id = {};

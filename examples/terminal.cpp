@@ -168,7 +168,7 @@ echo "Hey! I'm awake!"
         // all coroutines once. Because we are running the
         // coroutines within the imguiRender() functions
         // the coroutines can also draw ImGui objects
-        m_mini.taskQueueExecute();
+        m_mini.taskQueueExecute("MAIN", std::chrono::milliseconds(1), 15);
     }
 };
 
