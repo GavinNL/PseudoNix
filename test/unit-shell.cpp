@@ -8,6 +8,15 @@ using namespace PseudoNix;
 
 SCENARIO("Tokenizer 3")
 {
+    std::stringstream ss;
+    char c;
+    ss.put('a');
+    ss.put('b');
+    ss.put('c');
+    ss.get(c); REQUIRE(c == 'a');
+    ss.get(c); REQUIRE(c == 'b');
+    ss.get(c); REQUIRE(c == 'c');
+
     {
         auto v = Tokenizer3::to_vector("\\$\\(sleep");
         REQUIRE(v[0] == "$(sleep");
@@ -45,6 +54,12 @@ SCENARIO("Tokenizer 3")
         REQUIRE(v[1] == "echo");
         REQUIRE(v[2] == "hello");
         REQUIRE(v[3] == "world");
+    }
+    {
+        auto v = Tokenizer3::to_vector("sh -c \"echo hello world;\"");
+        REQUIRE(v[0] == "sh");
+        REQUIRE(v[1] == "-c");
+        REQUIRE(v[2] == "echo hello world;");
     }
 }
 
