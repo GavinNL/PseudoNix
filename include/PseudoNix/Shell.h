@@ -370,23 +370,54 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
     PSEUDONIX_PROC_START(ctrl);
 
     std::string _current;
-
+    bool from_script = false;
+    std::string script = "";
     int ret_value = 0;
-
 
     auto & shellEnv = _shells[PID];
 
     shellEnv = shellEnv1;
     ShellEnv::setFuncs(&SYSTEM);
 
-    if(ARGS.end() == std::find(ARGS.begin(), ARGS.end(), "--noprofile"))
+    auto _args = ARGS;
+    auto pos_args = _args.begin() + 1;
+
+    //===========================================================================
+    // Parse arguments. Probably should use an external library for this
+    // but didn't want to add the dependnecy
+    //===========================================================================
+    auto no_profile = std::find(pos_args, _args.end(), "--noprofile");
+    if(_args.end() != no_profile)
     {
         // Copy the rc_text into the
         // the input stream so that
         // it will be executed first
         CIN << shellEnv.rc_text;
+        _args.erase(no_profile);
     }
 
+
+    auto dash_c = std::find(_args.begin(), _args.end(), "-c");
+    if(dash_c != _args.end())
+    {
+        auto cmd_i = std::next(dash_c);
+        if(cmd_i != ARGS.end())
+        {
+            script = *cmd_i;
+            from_script = true;
+            _args.erase(dash_c, dash_c + 2);
+        }
+    }
+
+    if(_args.size() > 1)
+    {
+        if(SYSTEM.exists(_args[1]))
+        {
+            script = SYSTEM.to_string(_args[1]);
+            from_script = true;
+        }
+    }
+    //===========================================================================
     // Copy the additional environment variables
     // into our workinv variables
     for(auto & [var, val] : ENV)
@@ -398,54 +429,55 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
 
     std::string shell_name = ARGS[0];
 
-
     std::vector<System::pid_type> subProcess;
+
+    std::istringstream i_script(script);
+    char c;
+    bool quoted=false;
+    std::stringstream ss;
 
     while(!shellEnv.exitShell)
     {
-        HANDLE_AWAIT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
-
-        char c;
-#if 1
-        while(true)
+        if(from_script)
         {
-            auto r = CIN.get(&c);
-            if(r == System::stream_type::Result::END_OF_STREAM)
-                shellEnv.exitShell = true;
-            else if(r == System::stream_type::Result::SUCCESS)
+            while(!i_script.eof())
             {
-                _current += c;
+                i_script.get(c);
+                _current.push_back(c);
                 if(_current.back() == ';' || _current.back() == '\n')
                 {
                     _current.pop_back();
                     break;
                 }
             }
-            else
-            {
+            if(i_script.eof() && _current.empty())
                 break;
+        }
+        else
+        {
+            HANDLE_AWAIT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
+            while(true)
+            {
+                auto r = CIN.get(&c);
+                if(r == System::stream_type::Result::END_OF_STREAM)
+                    shellEnv.exitShell = true;
+                else if(r == System::stream_type::Result::SUCCESS)
+                {
+                    _current += c;
+                    if(c=='"') quoted = !quoted;
+                    if(!quoted && (_current.back() == ';' || _current.back() == '\n') )
+                    {
+                        _current.pop_back();
+                        break;
+                    }
+                }
+                else
+                {
+                    break;
+                }
             }
         }
-#else
-        auto r = CIN.get(&c);
-        if(r == System::stream_type::Result::END_OF_STREAM)
-        {
-            shellEnv.exitShell = true;
-            break;
-        }
-        else if(r == System::stream_type::Result::EMPTY)
-        {
-            // unlikely this would happen because of
-            // the await
-            break;
-        }
-        _current += c;
-        if(c != ';' && c != '\n')
-        {
-            continue;
-        }
-        _current.pop_back();
-#endif
+
         if(_current.empty())
         {
             continue;
