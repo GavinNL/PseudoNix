@@ -234,6 +234,7 @@ struct System : public PseudoNix::FileSystem
         std::shared_ptr<stream_type>       in;
         std::shared_ptr<stream_type>       out;
         std::map<std::string, std::string> env;
+        std::map<std::string, bool>        exported;
         System * system = nullptr;
         std::string queue_name;
         path_type cwd = "/";
@@ -601,6 +602,7 @@ struct System : public PseudoNix::FileSystem
                 throw std::runtime_error("Cannot execute new commands on a separate thread");
             }
         }
+        assert(args.args.size() > 0);
         // Try to find the name of the function to run
         auto it = m_funcs.find(args.args[0]);
         if(it ==  m_funcs.end())
@@ -625,6 +627,21 @@ struct System : public PseudoNix::FileSystem
         proc_control->in   = args.in;
         proc_control->out  = args.out;
         proc_control->env  = args.env;
+
+
+        if(parent != invalid_pid)
+        {
+            auto & exported = m_procs2.at(parent)->control->exported;
+            auto & parent_env= m_procs2.at(parent)->control->env;
+
+            for(auto & [var, exp] : exported)
+            {
+                if(parent_env.count(var) && proc_control->env.count(var) == 0)
+                {
+                    proc_control->env[var] = parent_env[var];
+                }
+            }
+        }
 
         // run the function, it is a coroutine:
         // it will return a task}
@@ -1241,9 +1258,13 @@ public:
             auto const PID  = control->get_pid(); (void)PID;\
             auto & SYSTEM = *control->system; (void)SYSTEM;\
             auto const & ARGS = control->args; (void)ARGS;\
-            auto const & ENV = control->env; (void)ENV; \
+            auto & ENV = control->env; (void)ENV; \
             auto const & QUEUE = control->queue_name; (void)QUEUE; \
-            auto const & CWD = control->cwd; (void)CWD
+            auto const & CWD = control->cwd; (void)CWD;\
+            auto const PARENT_SHELL_PID = ENV.count("SHELL_PID") ? static_cast<PseudoNix::System::pid_type>(std::stoul(ENV["SHELL_PID"])) : PseudoNix::invalid_pid; (void)PARENT_SHELL_PID;\
+            auto SHELL_PROC = PARENT_SHELL_PID != PseudoNix::invalid_pid ? SYSTEM.getProcessControl(PARENT_SHELL_PID) : nullptr; (void)SHELL_PROC
+
+
 
 #define HANDLE_PATH(CWD, path)\
         {\
@@ -1506,6 +1527,114 @@ public:
             co_return 0;
         };
 
+
+        //========================
+        // Functions for shells
+        //========================
+        DEF_FUNC("exit")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+
+            // Not running in a shell
+            if(!SHELL_PROC)
+                co_return 0;
+
+            // the shell process will
+            // look at this variable to determine
+            // when to quit
+            SHELL_PROC->env["EXIT_SHELL"] = "1";
+
+            co_return 0;
+        };
+
+        DEF_FUNC("")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            // Not running in a shell
+            if(!SHELL_PROC)
+               co_return 0;
+            // This function will be called, if we set environment variables
+            // but didn't call an actual function, eg:
+            //     VAR=value VAR2=value2
+            for(auto & [var,val] : ENV)
+            {
+               SHELL_PROC->env[var] = val;
+            }
+            co_return 0;
+        };
+
+        DEF_FUNC("export")
+        {
+           PSEUDONIX_PROC_START(ctrl);
+
+           // Not running in a shell
+           if(!SHELL_PROC)
+               co_return 0;
+           for(size_t i=1;i<ARGS.size();i++)
+           {
+               auto [var, val] = splitVar(ARGS[i]);
+               if(!var.empty() && !val.empty())
+               {
+                   // if the arg looked like: VAR=VAL
+                   // then set the variable as well as
+                   // export it
+                   SHELL_PROC->exported[std::string(var)] = true;
+                   SHELL_PROC->env[std::string(var)] = val;
+               }
+               else
+               {
+                   // just export the variable
+                   SHELL_PROC->exported[std::string(ARGS[i])] = true;
+               }
+           }
+           co_return 0;
+        };
+
+        DEF_FUNC("exported")
+        {
+           PSEUDONIX_PROC_START(ctrl);
+           // Not running in a shell
+           if(!SHELL_PROC)
+               co_return 0;
+           for(auto & x : SHELL_PROC->exported)
+           {
+               COUT << x.first << '\n';
+           }
+           co_return 0;
+        };
+
+        DEF_FUNC("cd")
+        {
+           PSEUDONIX_PROC_START(ctrl);
+
+           // Not running in a shell
+           if(!SHELL_PROC)
+               co_return 0;
+
+           if(ARGS.size() == 1)
+           {
+               SHELL_PROC->chdir("/");
+               co_return 0;
+           }
+
+           System::path_type p = ARGS[1];
+           if(p.is_relative())
+               p = SHELL_PROC->cwd / p;
+
+           p = p.lexically_normal();
+           if(!SYSTEM.exists(p))
+           {
+               COUT << std::format("cd: {}: No such file or directory\n", ARGS[1]);
+               co_return 1;
+           }
+
+           if(SHELL_PROC->chdir(p))
+               co_return 0;
+
+           COUT << std::format("Unknown error\n");
+           co_return 1;
+
+        };
 
         DEF_FUNC("spawn")
         {
