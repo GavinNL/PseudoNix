@@ -850,25 +850,24 @@ struct System : public PseudoNix::FileSystem
 
 
     /**
-     * @brief executeAll
+     * @brief _processQueue
+     * @param POP_Q
+     * @param PUSH_Q
+     * @param queue_name
      * @return
      *
-     * Executes all the processes and returns the total
-     * number of processes still in the scheduler
-     *
-     * Executes all the processes in a specific queue.
-     *
-     * The MAIN queue is the only queue that will finalize a
-     * process.
+     * Process a single item on the queue and returns true if it was able to
+     * other wise, return false if no items are on the queue
      *
      */
-
     bool _processQueue(auto & POP_Q, auto & PUSH_Q, std::string queue_name)
     {
         std::pair<Awaiter*, std::shared_ptr<Process> > a;
         auto found = POP_Q.try_dequeue(a);
         if(found)
         {
+            if(!a.first->handle_)
+                return false;
             // its possible that the process had been forcefully killed
             // and the handle to the coroutine no longer valid. So make sure
             // that we do not resume any of those coroutines
