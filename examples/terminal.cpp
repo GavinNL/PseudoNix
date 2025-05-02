@@ -120,6 +120,17 @@ public:
         // in our System
         setupFunctions();
 
+        m_mini.mkdir("/bin");
+        m_mini.touch("/bin/hello.sh");
+        m_mini.get<PseudoNix::NodeFile>("/bin/hello.sh").filedata =
+R"foo(
+echo Hello World!
+echo "this is a script defined inside the virtual file system"
+echo "I'm going to sleep now for a few seconds"
+sleep 3
+echo "Hey! I'm awake!"
+)foo";
+
         m_mini.mkdir("/src");
         m_mini.mkdir("/build");
         m_mini.mount("/src", CMAKE_SOURCE_DIR);
