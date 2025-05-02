@@ -369,8 +369,8 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
 {
     PSEUDONIX_PROC_START(ctrl);
 
+    std::string const &shell_name = ARGS[0];
     std::string _current;
-    bool from_script = false;
     std::string script = "";
     int ret_value = 0;
 
@@ -379,14 +379,13 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
     shellEnv = shellEnv1;
     ShellEnv::setFuncs(&SYSTEM);
 
-    auto _args = ARGS;
-    auto pos_args = _args.begin() + 1;
 
     //===========================================================================
     // Parse arguments. Probably should use an external library for this
     // but didn't want to add the dependnecy
     //===========================================================================
-    auto no_profile = std::find(pos_args, _args.end(), "--noprofile");
+    auto _args = ARGS;
+    auto no_profile = std::find(_args.begin(), _args.end(), "--noprofile");
     if(_args.end() != no_profile)
     {
         // Copy the rc_text into the
@@ -404,7 +403,6 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
         if(cmd_i != ARGS.end())
         {
             script = *cmd_i;
-            from_script = true;
             _args.erase(dash_c, dash_c + 2);
         }
     }
@@ -414,27 +412,30 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
         if(SYSTEM.exists(_args[1]))
         {
             script = SYSTEM.to_string(_args[1]);
-            from_script = true;
+        }
+        else
+        {
+            COUT << std::format("{}: {}: no such file or directory\n", ARGS[0], _args[1]);
         }
     }
     //===========================================================================
     // Copy the additional environment variables
     // into our workinv variables
-    for(auto & [var, val] : ENV)
     {
-        shellEnv.env[var] = val;
+        for(auto & [var, val] : ENV)
+        {
+            shellEnv.env[var] = val;
+        }
+        shellEnv.shellPID = PID;
+        assert(shellEnv.shellPID != 0xFFFFFFFF);
     }
-    shellEnv.shellPID = PID;
-    assert(shellEnv.shellPID != 0xFFFFFFFF);
-
-    std::string shell_name = ARGS[0];
 
     std::vector<System::pid_type> subProcess;
 
     std::istringstream i_script(script);
+    bool from_script = script.size() > 0;
     char c;
     bool quoted=false;
-    std::stringstream ss;
 
     while(!shellEnv.exitShell)
     {
