@@ -1245,6 +1245,13 @@ public:
             auto const & QUEUE = control->queue_name; (void)QUEUE; \
             auto const & CWD = control->cwd; (void)CWD
 
+#define HANDLE_PATH(CWD, path)\
+        {\
+            if(path.is_relative())\
+                path = CWD / path;\
+            path = path.lexically_normal();\
+        }
+
 
         #define DEF_FUNC(A) m_funcs[A] = [](e_type ctrl) -> task_type
         DEF_FUNC("false")
@@ -1499,15 +1506,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("ls")
-        {
-            PSEUDONIX_PROC_START(ctrl);
 
-            COUT << std::format("This function is a placeholder. PsuedoNix does not support a filesystem yet.");
-
-            co_return 0;
-        };
-#if 1
         DEF_FUNC("spawn")
         {
             // Executes a command N times.
@@ -1604,7 +1603,7 @@ public:
 
             co_return 0;
         };
-#endif
+
         DEF_FUNC("queue")
         {
             // Lists all the queues and the number of tasks
@@ -1742,26 +1741,23 @@ public:
         {
             PSEUDONIX_PROC_START(ctrl);
             path_type path = CWD;
+
             if(ARGS.size() >= 2)
             {
-                path = ARGS[1];
+                path_type p = ARGS[1];
+                HANDLE_PATH(CWD, p)
+                path = p;
             }
 
-            if(!path.is_absolute())
-            {
-                COUT << "Need an absolute path\n";
-                co_return 1;
-            }
+            assert(path.is_absolute());
 
             for(auto u : SYSTEM.list_dir(path))
             {
-                COUT << std::format("{}\n", u.c_str());
+                COUT << std::format("{}\n", u.lexically_relative(path).c_str());
             }
 
             co_return 0;
         };
-
-
 
         DEF_FUNC("mkdir")
         {
@@ -1770,15 +1766,14 @@ public:
             if(ARGS.size() >= 2)
             {
                 path = ARGS[1];
+                HANDLE_PATH(CWD, path);
+                SYSTEM.mkdir(path);
             }
-
-            if(!path.is_absolute())
+            else
             {
-                COUT << "Need an absolute path\n";
+                COUT << std::format("mkdir: missing operand\n");
                 co_return 1;
             }
-
-            SYSTEM.mkdir(path);
 
             co_return 0;
         };
@@ -1802,7 +1797,10 @@ public:
             {
                 if( std::filesystem::is_directory(ARGS[1]) )
                 {
-                    auto er = SYSTEM.mount(ARGS[1], ARGS[2]);
+                    path_type vfs_path = ARGS[2];
+                    HANDLE_PATH(CWD, vfs_path);
+
+                    auto er = SYSTEM.mount(ARGS[1], vfs_path);
                     if(er.has_value())
                     {
                         co_return er.value();
@@ -1848,14 +1846,42 @@ public:
             if(ARGS.size() == 2)
             {
                 path_type path = ARGS[1];
-                if(path.is_relative()) path = CWD / path;
-                path = SYSTEM.host_path(path);
-                if(path.empty())
+                if(path.is_relative())
+                    path = CWD / path;
+
+                switch(SYSTEM.get_type(path))
                 {
-                    COUT << std::format("Cannot find file: {}\n", ARGS[1]);
-                    co_return 1;
+                    case Type::MEM_FILE:
+                    case Type::HOST_FILE:
+                    {
+                        auto file = SYSTEM.open(path);
+                        if (!file) {
+                            co_return 1;
+                        }
+                        auto T0 = std::chrono::system_clock::now();
+                        std::string line;
+                        while(true)
+                        {
+                            while(!file.eof() && (std::chrono::system_clock::now()-T0 < std::chrono::microseconds(250)) )
+                            {
+                                std::getline(file, line);
+                                COUT << line;
+                                COUT << "\n";
+                            }
+                            if(file.eof())
+                                break;
+                            co_await ctrl->await_yield();
+                            T0 = std::chrono::system_clock::now();
+                        }
+                        co_return 0;
+                    }
+                    default:
+                    {
+                        COUT << std::format("cat: {}: Not a regular file", ARGS[1]);
+                        co_return 1;
+                    }
                 }
-                COUT << SYSTEM.to_string(ARGS[1]);
+
                 COUT << "\n";
                 co_return 0;
             }

@@ -134,14 +134,6 @@ struct ShellEnv
     System::pid_type                   shellPID = 0;
     bool                               isSigTerm = false;
 
-    // child PIDs
-    struct Internal_
-    {
-        std::vector<System::pid_type>   pids;
-    };
-    std::shared_ptr<Internal_> internal = std::make_shared<Internal_>();
-
-
     static void setFuncs(System * L)
     {
         #define _GET_SHELL \
@@ -411,7 +403,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
     {
         if(SYSTEM.exists(_args[1]))
         {
-            script = SYSTEM.to_string(_args[1]);
+            script = SYSTEM.file_to_string(_args[1]);
         }
         else
         {
@@ -441,13 +433,20 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
     {
         if(from_script)
         {
-            while(!i_script.eof())
+            while(true)
             {
                 i_script.get(c);
-                _current.push_back(c);
-                if(_current.back() == ';' || _current.back() == '\n')
+                if(!i_script.eof())
                 {
-                    _current.pop_back();
+                    _current.push_back(c);
+                    if(_current.back() == ';' || _current.back() == '\n')
+                    {
+                        _current.pop_back();
+                        break;
+                    }
+                }
+                else
+                {
                     break;
                 }
             }

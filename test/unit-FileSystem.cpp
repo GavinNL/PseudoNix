@@ -90,11 +90,11 @@ SCENARIO("Mount")
 
         WHEN("We mount a host directory")
         {
-            REQUIRE(F.mount("/src", CMAKE_SOURCE_DIR));
-            REQUIRE(F.mount("/build", CMAKE_BINARY_DIR));
+            REQUIRE(F.mount(CMAKE_SOURCE_DIR, "/src"  ));
+            REQUIRE(F.mount(CMAKE_BINARY_DIR, "/build"));
 
             // cannot mount on the same spot
-            REQUIRE(F.mount("/src", CMAKE_SOURCE_DIR).error() == FSResult::NOT_VALID_MOUNT);
+            REQUIRE(F.mount(CMAKE_SOURCE_DIR, "/src").error() == FSResult::NOT_VALID_MOUNT);
 
             THEN("We can query the files as if they were in the VFS")
             {
@@ -109,7 +109,7 @@ SCENARIO("Mount")
                 for(auto  i : F.list_dir("/build"))
                 {
                     (void)i;
-                    std::cout << i << std::endl;
+                    //std::cout << i << std::endl;
                 }
             }
 
@@ -123,7 +123,7 @@ SCENARIO("Mount")
                 REQUIRE(F.is_file("/build/test-folder/noexist.txt") == false);
 
                 // Cannot mount within a host tree
-                REQUIRE(F.mount("/build/test-folder", CMAKE_SOURCE_DIR).error() == FSResult::NOT_VALID_MOUNT);
+                REQUIRE(F.mount(CMAKE_SOURCE_DIR, "/build/test-folder").error() == FSResult::NOT_VALID_MOUNT);
                 {
                     REQUIRE(std::filesystem::is_directory(CMAKE_BINARY_DIR "/test-folder"));
                     REQUIRE(F.is_empty("/build/test-folder") == true);
@@ -141,4 +141,35 @@ SCENARIO("Mount")
     }
 }
 
+SCENARIO("Opening Files")
+{
+    FileSystem F;
+    F.mkdir("/src");
+    F.mount(CMAKE_SOURCE_DIR, "/src");
 
+    REQUIRE(F.touch("/test.txt") == true);
+
+    REQUIRE_NOTHROW( F.get<NodeFile>("/test.txt") );
+    F.get<NodeFile>("/test.txt").filedata.str("Hello world\nGoodbye world");
+
+    std::string str;
+    THEN("We can open the host file")
+    {
+        auto f = F.open("/src/conanfile.py");
+        REQUIRE(f);
+        std::getline(f, str);
+        REQUIRE(str == "from conan.tools.files import copy");
+        std::getline(f, str);
+        REQUIRE(str == "from conan import ConanFile");
+    }
+    THEN("We can open the memory file")
+    {
+        auto f = F.open("/test.txt");
+        REQUIRE(f);
+        std::getline(f, str);
+        REQUIRE(str == "Hello world");
+        std::getline(f, str);
+        REQUIRE(str == "Goodbye world");
+    }
+
+}

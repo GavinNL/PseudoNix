@@ -41,6 +41,50 @@ template <typename E>
 using unexpected  = tl::unexpected<E>;
 #endif
 
+class FlexibleInputStream {
+public:
+    FlexibleInputStream()
+    {
+    }
+
+    operator bool() const
+    {
+        if(!activeStream)
+            return false;
+        return static_cast<bool>(*activeStream);
+    }
+    // Constructors for each stream type
+    explicit FlexibleInputStream(const std::filesystem::path& filename)
+        : fileStream(std::make_unique<std::ifstream>(filename)),
+        stringStream(nullptr)
+    {
+        if (!fileStream->is_open()) {
+            throw std::runtime_error("Failed to open file: " + filename.string());
+        }
+        activeStream = fileStream.get();
+    }
+
+    explicit FlexibleInputStream(std::stringstream &stringData)
+        : fileStream(nullptr),
+        stringStream(&stringData) {
+        activeStream = stringStream;
+    }
+    operator std::istream&() {
+        if (!activeStream) {
+            throw std::runtime_error("No valid stream.");
+        }
+        return *activeStream;
+    }
+    bool eof() const
+    {
+        return activeStream->eof();
+        stringStream->rdbuf();
+    }
+protected:
+    std::unique_ptr<std::ifstream> fileStream;
+    std::stringstream * stringStream = nullptr;
+    std::istream* activeStream = nullptr;
+};
 
 enum class FSResult
 {
@@ -49,6 +93,7 @@ enum class FSResult
     DOES_NOT_EXIST,
     NOT_EMPTY,
     NOT_VALID_MOUNT,
+    HOST_DOES_NOT_EXIST,
     CANNOT_CREATE
 };
 
@@ -65,7 +110,7 @@ enum class Type
 
 struct NodeFile
 {
-    std::string filedata;
+    std::stringstream filedata;
 };
 
 struct NodeCustom
@@ -438,8 +483,13 @@ struct FileSystem
         }
     }
 
-    expected<bool, FSResult> mount(path_type path, path_type host_path)
+    expected<bool, FSResult> mount( path_type host_path, path_type path)
     {
+        if( !std::filesystem::is_directory(host_path))
+        {
+            return unexpected(FSResult::HOST_DOES_NOT_EXIST);
+        }
+
         auto mnt = find_parent_mount(path);
         if(!mnt.empty())
             return unexpected(FSResult::NOT_VALID_MOUNT);
@@ -493,6 +543,7 @@ struct FileSystem
         }
         throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
     }
+
     path_type host_path(path_type path) const
     {
         auto mnt = find_parent_mount(path);
@@ -501,6 +552,21 @@ struct FileSystem
 
         auto mnt_i = m_nodes.find(mnt);
         return std::get<NodeMount>(mnt_i->second).host_path / path.lexically_relative(mnt_i->first);
+    }
+
+    FlexibleInputStream open(path_type path)
+    {
+        assert(path.is_absolute());
+        auto typ = get_type(path);
+        if(typ == Type::HOST_FILE)
+        {
+            return FlexibleInputStream(host_path(path));
+        }
+        else if( typ == Type::MEM_FILE)
+        {
+            return FlexibleInputStream(get<NodeFile>(path).filedata);
+        }
+        return {};
     }
 
     Type get_type(path_type path) const
@@ -528,7 +594,8 @@ struct FileSystem
         }
         return Type::UNKNOWN;
     }
-    std::string to_string(path_type path)
+
+    std::string file_to_string(path_type path) const
     {
         auto typ = get_type(path);
         if(typ == Type::HOST_FILE)
@@ -542,11 +609,27 @@ struct FileSystem
         }
         if( typ == Type::MEM_FILE)
         {
-            return get<NodeFile>(path).filedata;
+            return get<NodeFile>(path).filedata.str();
         }
         return {};
     }
+
 };
 
 }
+
+namespace std
+{
+
+template<typename _CharT, typename _Traits, typename _Alloc>
+basic_istream<_CharT, _Traits>&
+getline(PseudoNix::FlexibleInputStream & __in,
+        std::basic_string<_CharT, _Traits, _Alloc>& __str, _CharT __delim = '\n')
+{
+    std::istream & i = __in;
+    return std::getline(i, __str, __delim);
+}
+
+}
+
 #endif
