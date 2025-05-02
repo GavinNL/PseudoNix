@@ -52,6 +52,17 @@ enum class FSResult
     CANNOT_CREATE
 };
 
+enum class Type
+{
+    MEM_FILE,
+    MEM_DIR,
+    MOUNT,
+    HOST_FILE,
+    HOST_DIR,
+    CUSTOM,
+    UNKNOWN
+};
+
 struct NodeFile
 {
     std::string filedata;
@@ -185,6 +196,20 @@ struct FileSystem
         if(it->first == "/")
             return path_type();
         return find_parent_mount(it->first.parent_path());
+    }
+
+    std::pair<path_type, path_type> find_parent_mount_split(path_type p) const
+    {
+        auto mnt = find_parent_mount(p);
+        if(mnt.empty())
+        {
+            return {{}, p};
+        }
+        else
+        {
+            auto mnt_i = m_nodes.find(mnt);
+            return {mnt, p.lexically_relative(mnt_i->first)};
+        }
     }
 
     expected<bool, FSResult> is_dir(path_type p)
@@ -438,21 +463,36 @@ struct FileSystem
         return unexpected(FSResult::NOT_VALID_MOUNT);
     }
 
-    NodeCustom& get_custom(path_type path)
+    template<typename T>
+    T& get(path_type path)
     {
         _clean(path);
         auto it = m_nodes.find(path);
         if(it != m_nodes.end())
         {
-            if(std::holds_alternative<NodeCustom>(it->second))
+            if(std::holds_alternative<T>(it->second))
             {
-                return std::get<NodeCustom>(it->second);
+                return std::get<T>(it->second);
             }
             throw std::out_of_range(std::format("{} is not a custom file", path.c_str()).c_str());
         }
         throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
     }
-
+    template<typename T>
+    T const & get(path_type path) const
+    {
+        _clean(path);
+        auto it = m_nodes.find(path);
+        if(it != m_nodes.end())
+        {
+            if(std::holds_alternative<T>(it->second))
+            {
+                return std::get<T>(it->second);
+            }
+            throw std::out_of_range(std::format("{} is not a custom file", path.c_str()).c_str());
+        }
+        throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
+    }
     path_type host_path(path_type path) const
     {
         auto mnt = find_parent_mount(path);
@@ -463,15 +503,48 @@ struct FileSystem
         return std::get<NodeMount>(mnt_i->second).host_path / path.lexically_relative(mnt_i->first);
     }
 
+    Type get_type(path_type path) const
+    {
+        assert(path.is_absolute());
+
+        auto it = m_nodes.find(path);
+        if(it!=m_nodes.end())
+        {
+            return std::visit([](auto &&v) {
+                        using value_type = std::decay_t<decltype(v)>;
+                            if constexpr (std::is_same_v<value_type, NodeFile>) return Type::MEM_FILE;
+                            if constexpr (std::is_same_v<value_type, NodeDir >)  return Type::MEM_DIR;
+                            if constexpr (std::is_same_v<value_type, NodeMount>) return Type::MOUNT;
+                            if constexpr (std::is_same_v<value_type, NodeCustom>) return Type::CUSTOM;
+                        },
+                       it->second);
+        }
+        auto [mnt, sub] = find_parent_mount_split(path);
+        if(!mnt.empty())
+        {
+            auto & MNT = get<NodeMount>(mnt);
+            if( MNT.is_dir(sub) ) return Type::HOST_DIR;
+            if( MNT.is_file(sub) ) return Type::HOST_FILE;
+        }
+        return Type::UNKNOWN;
+    }
     std::string to_string(path_type path)
     {
-        std::ifstream file( host_path(path) );
-        if (!file) {
-            return {};
+        auto typ = get_type(path);
+        if(typ == Type::HOST_FILE)
+        {
+            std::ifstream file( host_path(path) );
+            if (!file) {
+                return {};
+            }
+            return std::string((std::istreambuf_iterator<char>(file)),
+                               std::istreambuf_iterator<char>());
         }
-
-        return std::string((std::istreambuf_iterator<char>(file)),
-                             std::istreambuf_iterator<char>());
+        if( typ == Type::MEM_FILE)
+        {
+            return get<NodeFile>(path).filedata;
+        }
+        return {};
     }
 };
 
