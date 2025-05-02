@@ -85,6 +85,7 @@ SCENARIO("Mount")
         REQUIRE(F.mkdir("/build"));
         REQUIRE(F.mkdir("/a/b/c/d"));
 
+        REQUIRE(F.find_parent_mount("") == "");
         REQUIRE(F.find_parent_mount("/a/b/c/d") == "");
 
         WHEN("We mount a host directory")

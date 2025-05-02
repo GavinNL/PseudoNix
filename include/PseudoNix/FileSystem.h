@@ -174,6 +174,8 @@ struct FileSystem
     path_type find_parent_mount(path_type p) const
     {
         auto it = m_nodes.find(p);
+        if(p.empty())
+            return p;
         if(std::holds_alternative<NodeMount>(it->second))
             return it->first;
         if(it == m_nodes.end())
