@@ -251,7 +251,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv)
         // Copy the rc_text into the
         // the input stream so that
         // it will be executed first
-        CIN << shellEnv.rc_text;
+        script += shellEnv.rc_text;
         _args.erase(no_profile);
     }
 
@@ -263,6 +263,10 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv)
         if(cmd_i != ARGS.end())
         {
             script = *cmd_i;
+            // make sure there is an exit statement at the
+            // end of the script so that it will
+            // exit the the process when done
+            script += "\nexit;";
             _args.erase(dash_c, dash_c + 2);
         }
     }
@@ -309,7 +313,12 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv)
                 }
             }
             if(i_script.eof() && _current.empty())
-                break;
+            {
+                // if we're done reading from the input script
+                // continue as normal.
+                from_script = false;
+                continue;
+            }
         }
         else
         {
@@ -457,7 +466,6 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv)
         }
     }
 
-    //OUT << std::format("exit");
     co_return std::move(ret_value);
 }
 
