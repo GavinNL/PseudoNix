@@ -342,38 +342,10 @@ struct FileSystem
         }
     }
 
-    template<typename node_type>
-    expected<bool, FSResult> mknode(path_type path)
-    {
-        _clean(path);
-        if(exists(path))
-            return false;
-
-        auto parent_mount_path = find_parent_mount(path);
-        if(!parent_mount_path.empty())
-        {
-            auto mnt_i = m_nodes.find(parent_mount_path);
-            return std::get<NodeMount>(mnt_i->second).mkdir( path.lexically_relative(mnt_i->first) );
-        }
-        else
-        {
-            if(!exists(path.parent_path()))
-            {
-                mkdir(path.parent_path());
-            }
-            if(!is_dir(path.parent_path()))
-            {
-                return false;
-            }
-            m_nodes[path] = node_type{};
-            return true;
-        }
-        return unexpected(FSResult::EXISTS);
-    }
-
     expected<bool, FSResult> mkdir(path_type path)
     {
         _clean(path);
+        assert(path.is_absolute());
         if(exists(path))
             return false;
 
