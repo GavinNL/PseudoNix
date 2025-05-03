@@ -200,6 +200,13 @@ void _clean(std::filesystem::path & p)
         p = p.parent_path();
     }
 }
+
+struct NodeRef
+{
+    Node * n;
+    std::filesystem::path path;
+};
+
 struct FileSystem
 {
     using node_type = Node;
@@ -513,6 +520,32 @@ struct FileSystem
         return unexpected(FSResult::NOT_VALID_MOUNT);
     }
 
+    NodeRef fs(path_type path)
+    {
+        return getNode(path);
+    }
+    NodeRef getNode(path_type path)
+    {
+        _clean(path);
+        auto [mnt_path, file_path] = find_parent_mount_split(path);
+        if(!mnt_path.empty())
+        {
+            auto it = m_nodes.find(mnt_path);
+            return NodeRef {
+                &it->second, file_path
+            };
+        }
+        auto it = m_nodes.find(path);
+        if(it != m_nodes.end())
+        {
+            return NodeRef {
+                &it->second,
+                {}
+            };
+        }
+        throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
+    }
+
     template<typename T>
     T& get(path_type path)
     {
@@ -630,6 +663,18 @@ getline(PseudoNix::FlexibleInputStream & __in,
     return std::getline(i, __str, __delim);
 }
 
+}
+
+void operator << (PseudoNix::NodeRef left, std::string_view right)
+{
+    (void)left;
+    (void)right;
+    if(std::holds_alternative<PseudoNix::NodeFile>(*left.n))
+    {
+        auto & F = std::get<PseudoNix::NodeFile>(*left.n);
+        for(auto &r:right)
+            F.filedata.put(r);
+    }
 }
 
 #endif
