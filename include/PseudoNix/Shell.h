@@ -246,21 +246,20 @@ inline System::task_type shell_coro(System::e_type ctrl)
     //===========================================================================
     auto _args = ARGS;
     auto no_profile = std::find(_args.begin(), _args.end(), "--noprofile");
-    if(_args.end() == no_profile)
+    bool load_etc_profile = true;
+    if(_args.end() != no_profile)
     {
         // Copy the rc_text into the
         // the input stream so that
         // it will be executed first
         //script += shellEnv.rc_text;
         _args.erase(no_profile);
-
-        if(SYSTEM.exists("/etc/profile"))
-        {
-            script += SYSTEM.file_to_string("/etc/profile");
-        }
+        load_etc_profile = false;
     }
-
-
+    if(load_etc_profile && SYSTEM.exists("/etc/profile"))
+    {
+        script += SYSTEM.file_to_string("/etc/profile");
+    }
 
     auto dash_c = std::find(_args.begin(), _args.end(), "-c");
     if(dash_c != _args.end())
