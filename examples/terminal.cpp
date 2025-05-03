@@ -122,14 +122,14 @@ public:
 
         m_mini.mkdir("/bin");
         m_mini.touch("/bin/hello.sh");
-        m_mini.get<PseudoNix::NodeFile>("/bin/hello.sh").filedata.str(
+        m_mini.fs("/bin/hello.sh") <<
 R"foo(
 echo Hello World!
 echo "this is a script defined inside the virtual file system"
 echo "I'm going to sleep now for a few seconds"
 sleep 3
 echo "Hey! I'm awake!"
-)foo");
+)foo";
 
 
         // Create the /etc/profile file so that
@@ -137,7 +137,7 @@ echo "Hey! I'm awake!"
         // those commands first
         m_mini.mkdir("/etc");
         m_mini.touch("/etc/profile");
-        m_mini.get<PseudoNix::NodeFile>("/etc/profile").filedata.str(R"foo(
+        m_mini.fs("/etc/profile") << R"foo(
 echo "###################################"
 echo "Welcome to the shell!"
 echo ""
@@ -146,8 +146,10 @@ echo "/etc/profile" in the Virtual File System"
 echo ""
 echo "You are user: ${USER}
 echo "This is SHELL_PID: ${SHELL_PID}
+echo ""
+echo "type 'help' for a list of commands"
 echo "###################################"
-)foo");
+)foo";
 
         m_mini.mkdir("/src");
         m_mini.mkdir("/build");
@@ -165,7 +167,7 @@ echo "###################################"
 
         // finally, execute the term command
         // and execute the system call
-        m_mini.spawnProcess({"SHELL=sh", "term", "sh"});
+        m_mini.spawnProcess({"term", "sh"});
         m_mini.spawnProcess({"bgrunner", "THREADPOOL"});
 
     }
