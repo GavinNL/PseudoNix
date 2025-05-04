@@ -1907,15 +1907,19 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("touch")
+
+        DEF_FUNC("rm")
         {
             PSEUDONIX_PROC_START(ctrl);
             path_type path = "/";
             if(ARGS.size() >= 2)
             {
-                path = ARGS[1];
-                HANDLE_PATH(CWD, path);
-                SYSTEM.touch(path);
+                for(size_t i=1; i < ARGS.size();i++)
+                {
+                    path = ARGS[i];
+                    HANDLE_PATH(CWD, path);
+                    SYSTEM.rm(path);
+                }
             }
             else
             {
@@ -1925,6 +1929,54 @@ public:
 
             co_return 0;
         };
+
+        DEF_FUNC("touch")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            path_type path = "/";
+            if(ARGS.size() >= 2)
+            {
+                for(size_t i=1; i < ARGS.size();i++)
+                {
+                    path = ARGS[i];
+                    HANDLE_PATH(CWD, path);
+                    SYSTEM.touch(path);
+                }
+            }
+            else
+            {
+                COUT << std::format("touch: missing operand\n");
+                co_return 1;
+            }
+
+            co_return 0;
+        };
+
+        DEF_FUNC("cp")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            if(ARGS.size() >= 3)
+            {
+                path_type cpy_to = ARGS.back();
+                HANDLE_PATH(CWD, cpy_to);
+
+                for(size_t i=1; i<ARGS.size()-1;i++)
+                {
+                    path_type path = ARGS[i];
+                    _clean(path);
+                    HANDLE_PATH(CWD, path);
+                    SYSTEM.cp(path, cpy_to);
+                }
+            }
+            else
+            {
+                COUT << std::format("touch: missing operand\n");
+                co_return 1;
+            }
+
+            co_return 0;
+        };
+
         DEF_FUNC("mount")
         {
             PSEUDONIX_PROC_START(ctrl);

@@ -218,6 +218,11 @@ struct NodeMount
             return false;
         }
     }
+    bool remove(std::filesystem::path const & path) const
+    {
+        assert(path.is_relative());
+        return std::filesystem::remove(host_path / path);
+    }
     bool is_dir(std::filesystem::path const & path) const
     {
         assert(path.is_relative());
@@ -466,21 +471,97 @@ struct FileSystem
         return unexpected(FSResult::NOT_VALID_MOUNT);
     }
 
-    bool cp(path_type const & src, path_type const & dst)
+    /**
+     * @brief cp
+     * @param src
+     * @param dst
+     * @return
+     *
+     * Copies a single FILE to a destination.
+     * the src file must exist
+     *
+     * dst can be a file or a directory
+     */
+    bool cp(path_type src, path_type dst)
     {
-        if(!exists(dst))
+        _clean(src);
+        _clean(dst);
+        auto dst_type = get_type(dst);
+
+        if(dst_type == Type::MEM_DIR || dst_type == Type::HOST_DIR)
+        {
+            touch(dst / src.filename());
+            return copy(src, dst / src.filename());
+        }
+        else if(dst_type == Type::HOST_FILE || dst_type == Type::MEM_FILE)
+        {
+            return copy(src, dst);
+        }
+        else if(dst_type == Type::UNKNOWN)
         {
             if(exists(dst.parent_path()))
             {
                 touch(dst);
+                return copy(src, dst);
             }
-            else
-            {
-                return false;
-            }
+            return false;
         }
-        return copy(src, dst);
+
+        return false;
     }
+
+    /**
+     * @brief mv
+     * @param src
+     * @param dst
+     * @return
+     *
+     * Moves a single FILE from src to dst. src MUST exist
+     *
+     * Dst can be a file or a directory
+     */
+    bool mv(path_type const & src, path_type const & dst)
+    {
+        auto dst_type = get_type(dst);
+
+        if(dst_type == Type::MEM_DIR || dst_type == Type::HOST_DIR)
+        {
+            touch(dst / src.filename());
+            return move(src, dst / src.filename());
+        }
+        else if(dst_type == Type::HOST_FILE || dst_type == Type::MEM_FILE)
+        {
+            return move(src, dst);
+        }
+        else if(dst_type == Type::UNKNOWN)
+        {
+            if(exists(dst.parent_path()))
+            {
+                touch(dst);
+                return move(src, dst);
+            }
+            return false;
+        }
+        return false;
+    }
+
+    bool rm(path_type src)
+    {
+        _clean(src);
+        auto src_type = get_type(src);
+        if(src_type == Type::MEM_FILE )
+        {
+            m_nodes.erase(src);
+            return true;
+        }
+        else if(src_type == Type::HOST_FILE)
+        {
+            auto [it, sub] = find_parent_mount_split_it(src);
+            return std::get<NodeMount>(it->second).remove(sub);
+        }
+        return false;
+    }
+
     bool copy(path_type const & src, path_type const & dst)
     {
         auto src_type = get_type(src);
@@ -506,22 +587,6 @@ struct FileSystem
         }
 
         return false;
-    }
-
-    bool mv(path_type const & src, path_type const & dst)
-    {
-        //auto src_type = get_type(src);
-        auto dst_type = get_type(dst);
-        if(dst_type == Type::UNKNOWN)
-        {
-            auto parent_type = get_type(dst.parent_path());
-            if(parent_type == Type::HOST_DIR || parent_type == Type::MEM_DIR)
-            {
-                touch(dst);
-                return move(src,dst);
-            }
-        }
-        return move(src,dst);
     }
 
     bool move(path_type const & src, path_type const & dst)
