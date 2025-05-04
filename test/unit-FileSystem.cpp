@@ -144,6 +144,22 @@ SCENARIO("Mount")
 }
 
 
+SCENARIO("get_type")
+{
+    FileSystem F;
+    F.mkdir("/src");
+    F.mkdir("/tmp");
+    F.touch("/file.txt");
+
+    F.mount(CMAKE_SOURCE_DIR, "/src");
+    REQUIRE(F.get_type("/src/conanfile.py") == Type::HOST_FILE);
+    REQUIRE(F.get_type("/src/include") == Type::HOST_DIR);
+
+    REQUIRE(F.get_type("/file.txt") == Type::MEM_FILE);
+    REQUIRE(F.get_type("/tmp") == Type::MEM_DIR);
+
+    REQUIRE(F.get_type("/src") == Type::HOST_DIR);
+}
 SCENARIO("Opening Files")
 {
     FileSystem F;
@@ -197,3 +213,75 @@ SCENARIO("Opening Files")
         f << 32 << '\n';
     }
 }
+
+SCENARIO("Opening Files")
+{
+    FileSystem F;
+    F.mkdir("/src");
+    F.mkdir("/bin");
+    F.mount(CMAKE_SOURCE_DIR, "/src");
+    F.mount(CMAKE_BINARY_DIR, "/bin");
+
+    WHEN("We copy from the host to mem")
+    {
+        REQUIRE(F.cp("/src/conanfile.py", "/conanfile.py"));
+
+        THEN("The dst now exists")
+        {
+            REQUIRE( F.exists("/conanfile.py"));
+        }
+        THEN("The files contain the same data")
+        {
+            REQUIRE(F.file_to_string("/conanfile.py") == F.file_to_string("/src/conanfile.py"));
+        }
+
+        WHEN("We copy from the mem to host")
+        {
+            std::filesystem::remove(CMAKE_BINARY_DIR "/conanfile.py");
+            REQUIRE(!std::filesystem::exists(CMAKE_BINARY_DIR "/conanfile.py" ));
+            REQUIRE(F.cp("/conanfile.py", "/bin/conanfile.py"));
+
+            THEN("The dst now exists")
+            {
+                REQUIRE(std::filesystem::exists(CMAKE_BINARY_DIR "/conanfile.py" ));
+            }
+            THEN("The files contain the same data")
+            {
+                REQUIRE(F.file_to_string("/bin/conanfile.py") == F.file_to_string("/src/conanfile.py"));
+            }
+        }
+
+        WHEN("We move from mem to mem")
+        {
+            F.mv("/conanfile.py", "/conanfile2.py");
+            REQUIRE(F.exists("/conanfile2.py"));
+            REQUIRE(!F.exists("/conanfile.py"));
+            REQUIRE(F.file_to_string("/conanfile2.py") == F.file_to_string("/src/conanfile.py"));
+        }
+        WHEN("We move from mem to host")
+        {
+            std::filesystem::remove(CMAKE_BINARY_DIR "/conanfile2.py");
+            REQUIRE(!std::filesystem::exists(CMAKE_BINARY_DIR "/conanfile2.py" ));
+            F.mv("/conanfile.py", "/bin/conanfile2.py");
+
+#if 1
+            THEN("the dst exists")
+            {
+                REQUIRE(F.exists("/bin/conanfile2.py"));
+            }
+            THEN("The src doesn't exist")
+            {
+                REQUIRE(!F.exists("/conanfile.py"));
+            }
+            THEN("The data contains the same")
+            {
+                REQUIRE(F.file_to_string("/src/conanfile.py") == F.file_to_string("/bin/conanfile2.py"));
+            }
+#endif
+        }
+    }
+
+
+
+}
+

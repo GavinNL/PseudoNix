@@ -42,102 +42,60 @@ using unexpected  = tl::unexpected<E>;
 #endif
 
 
-class string_backed_streambuf : public std::streambuf {
+class vector_backed_streambuf : public std::streambuf {
 public:
-    explicit string_backed_streambuf(std::string& backing)
-        : buffer(backing)
+    explicit vector_backed_streambuf(std::vector<char>& buffer)
+        : buffer_(buffer)
     {
-        sync_with_string();
+        setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
+        setp(buffer_.data(), buffer_.data() + buffer_.size());
     }
 
-protected:
-    // Called when output buffer is full or a single char is put
-    int overflow(int ch) override {
-        if (ch != EOF) {
-            std::size_t pos = static_cast<size_t>(pptr() - pbase());
-            buffer.push_back(static_cast<char>(ch));
-            sync_with_string(pos + 1);
+    // Ensure output expansion if writing past current capacity
+    int_type overflow(int_type ch) override {
+        if (ch == traits_type::eof()) {
+            return traits_type::not_eof(ch);
         }
+
+        std::ptrdiff_t write_pos = pptr() - pbase();
+        buffer_.push_back(static_cast<char>(ch));
+        buffer_.resize(buffer_.size()); // Ensure capacity is correct
+
+        char* base = buffer_.data();
+        setp(base, base + buffer_.size());
+        pbump(static_cast<int>(write_pos + 1));
+
         return ch;
     }
 
-    // Called when input buffer is empty
-    int underflow() override {
-        if (gptr() >= egptr()) return EOF;
-        return static_cast<unsigned char>(*gptr());
+    // Called when input buffer is exhausted
+    int_type underflow() override {
+        if (gptr() >= egptr()) return traits_type::eof();
+        return traits_type::to_int_type(*gptr());
     }
 
-    // Called on seek operations
-    std::streampos seekoff(std::streamoff off, std::ios_base::seekdir way,
-                           std::ios_base::openmode which) override {
-        std::streamoff new_pos = -1;
-
-        if (which & std::ios_base::in) {
-            if (way == std::ios_base::beg)
-                new_pos = off;
-            else if (way == std::ios_base::cur)
-                new_pos = gptr() - eback() + off;
-            else if (way == std::ios_base::end)
-                new_pos = static_cast<std::streamoff>(buffer.size()) + off;
-
-            if (new_pos >= 0 && static_cast<std::size_t>(new_pos) <= buffer.size()) {
-                setg(&buffer[0], &buffer[0] + new_pos, &buffer[0] + buffer.size());
-                return new_pos;
-            }
-        }
-
-        if (which & std::ios_base::out) {
-            if (way == std::ios_base::beg)
-                new_pos = off;
-            else if (way == std::ios_base::cur)
-                new_pos = pptr() - pbase() + off;
-            else if (way == std::ios_base::end)
-                new_pos = static_cast<std::streamoff>(buffer.size()) + off;
-
-            if (new_pos >= 0) {
-                if (static_cast<std::size_t>(new_pos) > buffer.size())
-                    buffer.resize(static_cast<size_t>(new_pos), '\0');
-                sync_with_string(static_cast<std::size_t>(new_pos));
-                return new_pos;
-            }
-        }
-
-        return -1;
-    }
-
-    std::streampos seekpos(std::streampos sp, std::ios_base::openmode which) override {
-        return seekoff(sp, std::ios_base::beg, which);
-    }
-
+    // Sync not needed in memory buffer, but we can update get area
     int sync() override {
-        return 0;  // no-op, buffer is always in sync
+        std::ptrdiff_t size = pptr() - pbase();
+        buffer_.resize(static_cast<size_t>(size));
+        setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
+        return 0;
     }
 
 private:
-    std::string buffer;
-
-    void sync_with_string(std::size_t write_pos = 0) {
-        // Set up get area (input)
-        setg(&buffer[0], &buffer[0], &buffer[0] + buffer.size());
-
-        // Set up put area (output)
-        if (write_pos > buffer.size())
-            buffer.resize(write_pos, '\0');
-        setp(&buffer[0], &buffer[0] + buffer.size());
-        pbump(static_cast<int>(write_pos));
-    }
+    std::vector<char>& buffer_;
 };
 
 class string_backed_iostream : public std::iostream {
 public:
-    explicit string_backed_iostream(std::string& backing)
+    explicit string_backed_iostream(std::vector<char> & backing)
         : std::iostream(nullptr), buf(backing)
     {
         rdbuf(&buf);
     }
 
 private:
-    string_backed_streambuf buf;
+    vector_backed_streambuf buf;
 };
 
 class FileStream : public std::iostream {
@@ -147,7 +105,7 @@ public:
     }
 
     // String-based constructor (backed by stringstream)
-    explicit FileStream(std::string &initialContent)
+    explicit FileStream(std::vector<char> &initialContent)
         : std::iostream(nullptr)
     {
         backing = std::make_unique<string_backed_iostream>(initialContent);
@@ -188,7 +146,7 @@ enum class Type
 
 struct NodeFile
 {
-    std::string filedata;
+    std::vector<char> filedata;
 };
 
 struct NodeCustom
@@ -508,6 +466,104 @@ struct FileSystem
         return unexpected(FSResult::NOT_VALID_MOUNT);
     }
 
+    bool cp(path_type const & src, path_type const & dst)
+    {
+        if(!exists(dst))
+        {
+            if(exists(dst.parent_path()))
+            {
+                touch(dst);
+            }
+            else
+            {
+                return false;
+            }
+        }
+        return copy(src, dst);
+    }
+    bool copy(path_type const & src, path_type const & dst)
+    {
+        auto src_type = get_type(src);
+        auto dst_type = get_type(dst);
+
+        assert(src_type == Type::MEM_FILE || src_type == Type::HOST_FILE);
+        assert(dst_type == Type::MEM_FILE || dst_type == Type::HOST_FILE);
+
+        {
+
+            auto Fout = this->open(dst, std::ios::out);
+            auto Fin  = this->open(src, std::ios::in);
+            char _buff[1024*1024];
+            while(!Fin.eof())
+            {
+                auto s = Fin.readsome(_buff, 1024*1024-1);
+                if(s==0)
+                    break;
+                Fout.write(_buff,s);
+            }
+            //Fout << Fin.rdbuf();
+            return true;
+        }
+
+        return false;
+    }
+
+    bool mv(path_type const & src, path_type const & dst)
+    {
+        //auto src_type = get_type(src);
+        auto dst_type = get_type(dst);
+        if(dst_type == Type::UNKNOWN)
+        {
+            auto parent_type = get_type(dst.parent_path());
+            if(parent_type == Type::HOST_DIR || parent_type == Type::MEM_DIR)
+            {
+                touch(dst);
+                return move(src,dst);
+            }
+        }
+        return move(src,dst);
+    }
+
+    bool move(path_type const & src, path_type const & dst)
+    {
+        // requirements:
+        //   src must exist and must be a hostfile or a memfile
+        //   dst must exist and must be a hostfile or a memfile (can be empty)
+
+        auto src_type = get_type(src);
+        auto dst_type = get_type(dst);
+
+        assert(src_type == Type::MEM_FILE || src_type == Type::HOST_FILE);
+        assert(dst_type == Type::MEM_FILE || dst_type == Type::HOST_FILE);
+
+        if(src_type == Type::HOST_FILE && dst_type == Type::MEM_FILE)
+        {
+            // file exists on the host, so we'll have to
+            // copy the file into memory and delete the old
+            cp(src, dst);
+
+            // todo: delete src
+        }
+        else if(src_type == Type::HOST_FILE && dst_type == Type::HOST_FILE)
+        {
+            std::filesystem::rename(host_path(src), host_path(dst));
+        }
+        else if(src_type == Type::MEM_FILE && dst_type == Type::MEM_FILE)
+        {
+            auto & sn = get<NodeFile>(src);
+            auto & sd = get<NodeFile>(dst);
+            sd.filedata = std::move(sn.filedata);
+            m_nodes.erase(src);
+        }
+        else if(src_type == Type::MEM_FILE && dst_type == Type::HOST_FILE)
+        {
+            cp(src, dst);
+            m_nodes.erase(src);
+        }
+
+        return false;
+    }
+
     NodeRef fs(path_type path)
     {
         return getNode(path);
@@ -608,6 +664,7 @@ struct FileSystem
             auto & MNT = std::get<NodeMount>(it->second);
             if( MNT.is_dir(sub) ) return Type::HOST_DIR;
             if( MNT.is_file(sub) ) return Type::HOST_FILE;
+            return Type::UNKNOWN;
         }
 
         if(it!=m_nodes.end())
