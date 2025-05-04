@@ -24,14 +24,14 @@ public:
         // cmd1 || cmd2
         // echo "Hello ${USER}"
         //
-        m_mini.setFunction("sh", PseudoNix::shell_coro);
+        m_mini.setFunction("sh", "Default Shell", PseudoNix::shell_coro);
 
         // an ImGui Terminal function has been created if you want to
         // add a terminal to your projects. It is fairly simple
         // and can be copied/modified for extra features
-        m_mini.setFunction("term", PseudoNix::terminalWindow_coro);
+        m_mini.setFunction("term", "Opens a new ImGui Terminal", PseudoNix::terminalWindow_coro);
 
-        m_mini.setFunction("theme", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+        m_mini.setFunction("theme", "Sets the ImGui Theme", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -57,7 +57,7 @@ public:
             co_return 0;
         });
 
-        m_mini.setFunction("confirm", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+        m_mini.setFunction("confirm", "Example dialog box", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -158,7 +158,7 @@ echo "###################################"
         m_mini.mount(CMAKE_BINARY_DIR, "/build");
         m_mini.mount("/home/gavin", "/home");
 
-        // Createa  new task queue called "THREAD"
+        // Create a new task queue called "THREAD"
         // This can be executed at a different
         // time as the MAIN task queue.
         m_mini.taskQueueCreate("PRE_MAIN");

@@ -453,6 +453,13 @@ struct System : public PseudoNix::FileSystem
     void setFunction(std::string name, std::function< task_type(e_type) > _f)
     {
         m_funcs[name] = _f;
+
+        spawnProcess({"help", "set", "sh", "Default shell"});
+    }
+    void setFunction(std::string name, std::string description, std::function< task_type(e_type) > _f)
+    {
+        m_funcs[name] = _f;
+        spawnProcess({"help", "set", name, description});
     }
     void removeAllFunctions()
     {
@@ -1273,31 +1280,45 @@ public:
             path = path.lexically_normal();\
         }
 
+        std::shared_ptr< std::map<std::string, std::string>> funcDescs = std::make_shared< std::map<std::string, std::string> >();
+        #define DEF_FUNC_HELP(A, help) \
+        (*funcDescs)[A] = help;\
+            m_funcs[A] = [](e_type ctrl) -> task_type
 
-        #define DEF_FUNC(A) m_funcs[A] = [](e_type ctrl) -> task_type
-        DEF_FUNC("false")
+        #define DEF_FUNC(A) DEF_FUNC_HELP(A, "")
+
+        DEF_FUNC_HELP("false", "Returns with exit code 1")
         {
             (void)ctrl;
             co_return 1;
         };
 
-        DEF_FUNC("true")
+        DEF_FUNC_HELP("true", "Returns with exit code 0")
         {
             (void)ctrl;
             co_return 0;
         };
-        DEF_FUNC("help")
+
+        m_funcs["help"] = [funcDescs](e_type ctrl) -> task_type
         {
             PSEUDONIX_PROC_START(ctrl);
 
+            //
+            // help set <proc> <desc>
+            //
+            if(ARGS.size() == 4 && ARGS[1] == "set")
+            {
+                (*funcDescs)[ARGS[2]] = ARGS[3];
+                co_return 0;
+            }
             COUT << "List of commands:\n\n";
             for(auto & f : ctrl->system->m_funcs)
             {
-                COUT << f.first << '\n';
+                COUT << std::format("{:15}: {}\n", f.first, (*funcDescs)[f.first]);
             }
             co_return 0;
         };
-        DEF_FUNC("env")
+        DEF_FUNC_HELP("env", "Prints out all environment variables")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1307,7 +1328,7 @@ public:
             }
             co_return 0;
         };
-        DEF_FUNC("echo")
+        DEF_FUNC_HELP("echo", "Prints arguments to standard output")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1325,7 +1346,7 @@ public:
 
             co_return 0;
         };
-        DEF_FUNC("yes")
+        DEF_FUNC_HELP("yes", "Keeps printing y to stdout until interrupted")
         {
             // A very basic example of a forever running
             // process
@@ -1340,7 +1361,7 @@ public:
 
             co_return 0;
         };
-        DEF_FUNC("sleep")
+        DEF_FUNC_HELP("sleep", "Pauses for NUMBER seconds")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1359,6 +1380,7 @@ public:
             co_return 0;
         };
 
+        (*funcDescs)["uptime"] = "Number of milliseconds since started";
         m_funcs["uptime"] = [T0=std::chrono::system_clock::now()](e_type ctrl) -> task_type
         {
             PSEUDONIX_PROC_START(ctrl);
@@ -1366,7 +1388,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("rev")
+        DEF_FUNC_HELP("rev", "Reverses the input")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1393,7 +1415,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("wc")
+        DEF_FUNC_HELP("wc", "Counts the number of characters")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1426,7 +1448,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("ps")
+        DEF_FUNC_HELP("ps", "Shows the current process list")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1443,7 +1465,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("kill")
+        DEF_FUNC_HELP("kill", "Terminate a process")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1465,7 +1487,7 @@ public:
             co_return 1;
         };
 
-        DEF_FUNC("signal")
+        DEF_FUNC_HELP("signal", "Send a signal to a process")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1497,7 +1519,7 @@ public:
             co_return 1;
         };
 
-        DEF_FUNC("io_info")
+        DEF_FUNC_HELP("io_info", "Shows IO pointers")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1508,7 +1530,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("to_std_cout")
+        DEF_FUNC_HELP("to_std_cout", "Pipes input to std::cout")
         {
             PSEUDONIX_PROC_START(ctrl);
             std::string s;
@@ -1531,7 +1553,7 @@ public:
         //========================
         // Functions for shells
         //========================
-        DEF_FUNC("exit")
+        DEF_FUNC_HELP("exit", "Exits the shell")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1563,7 +1585,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("export")
+        DEF_FUNC_HELP("export", "Exports environment variables to new processes")
         {
            PSEUDONIX_PROC_START(ctrl);
 
@@ -1590,7 +1612,7 @@ public:
            co_return 0;
         };
 
-        DEF_FUNC("exported")
+        DEF_FUNC_HELP("exported", "Prints exported environment variables")
         {
            PSEUDONIX_PROC_START(ctrl);
            // Not running in a shell
@@ -1603,7 +1625,7 @@ public:
            co_return 0;
         };
 
-        DEF_FUNC("cd")
+        DEF_FUNC_HELP("cd", "Changes the current working directory")
         {
            PSEUDONIX_PROC_START(ctrl);
 
@@ -1636,7 +1658,7 @@ public:
 
         };
 
-        DEF_FUNC("spawn")
+        DEF_FUNC_HELP("spawn", "Spawns N instances of the same process")
         {
             // Executes a command N times.
             //
@@ -1666,7 +1688,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("bgrunner")
+        DEF_FUNC_HELP("bgrunner", "Spawn a background thread to process a Task Queue")
         {
             // Executes a Task Queue in a background thread
             // You can call this function on the same Task Queue
@@ -1733,7 +1755,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("queue")
+        DEF_FUNC_HELP("queue", "Create/List/Destroy task queues")
         {
             // Lists all the queues and the number of tasks
             // currently in the queue
@@ -1781,7 +1803,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("queueHopper")
+        DEF_FUNC_HELP("queueHopper", "Example process that hops to different task queues")
         {
             //
             // An example process which executes part of its
@@ -1858,7 +1880,7 @@ public:
         };
 
 
-        DEF_FUNC("pwd")
+        DEF_FUNC_HELP("pwd", "Prints the current working directory")
         {
             PSEUDONIX_PROC_START(ctrl);
             COUT << std::format("{}\n", ctrl->cwd.c_str());
@@ -1866,7 +1888,7 @@ public:
         };
 
 
-        DEF_FUNC("ls")
+        DEF_FUNC_HELP("ls", "Lists files and directories")
         {
             PSEUDONIX_PROC_START(ctrl);
             path_type path = CWD;
@@ -1888,7 +1910,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("mkdir")
+        DEF_FUNC_HELP("mkdir", "Create directories")
         {
             PSEUDONIX_PROC_START(ctrl);
             path_type path = "/";
@@ -1908,7 +1930,7 @@ public:
         };
 
 
-        DEF_FUNC("rm")
+        DEF_FUNC_HELP("rm", "Removes files and directories")
         {
             PSEUDONIX_PROC_START(ctrl);
             path_type path = "/";
@@ -1930,7 +1952,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("touch")
+        DEF_FUNC_HELP("touch", "Create files")
         {
             PSEUDONIX_PROC_START(ctrl);
             path_type path = "/";
@@ -1952,7 +1974,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("cp")
+        DEF_FUNC_HELP("cp", "Copies files and directories")
         {
             PSEUDONIX_PROC_START(ctrl);
             if(ARGS.size() >= 3)
@@ -1977,7 +1999,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("mount")
+        DEF_FUNC_HELP("mount", "Mounts host filesystems inside the VFS")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -2021,7 +2043,7 @@ public:
             co_return 1;
         };
 
-        DEF_FUNC("umount")
+        DEF_FUNC_HELP("umount", "Unmounts a host filesystem")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -2038,7 +2060,7 @@ public:
             co_return 1;
         };
 
-        DEF_FUNC("cat")
+        DEF_FUNC_HELP("cat", "Concatenates files to standard output")
         {
             PSEUDONIX_PROC_START(ctrl);
 
