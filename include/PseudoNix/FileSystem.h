@@ -129,6 +129,38 @@ struct NodeMount
         assert(path.is_relative());
         return std::filesystem::exists(host_path / path);
     }
+    template<typename T>
+    bool _is(std::filesystem::path const &p) const
+    {
+        if constexpr( std::is_same_v<T, NodeDir> )
+        {
+            return is_dir(p);
+        }
+        if constexpr( std::is_same_v<T, NodeFile> )
+        {
+            return is_file(p);
+        }
+        if constexpr( std::is_same_v<T, NodeCustom> )
+        {
+            return false;
+        }
+    }
+    template<typename T>
+    bool _mk(std::filesystem::path const &p)
+    {
+        if constexpr( std::is_same_v<T, NodeDir> )
+        {
+            return mkdir(p);
+        }
+        if constexpr( std::is_same_v<T, NodeFile> )
+        {
+            return touch(p);
+        }
+        if constexpr( std::is_same_v<T, NodeCustom> )
+        {
+            return false;
+        }
+    }
     bool is_dir(std::filesystem::path const & path) const
     {
         assert(path.is_relative());
@@ -268,55 +300,29 @@ struct FileSystem
         }
     }
 
+
+
     expected<bool, FSResult> is_dir(path_type p)
     {
-        _clean(p);
-        auto it = m_nodes.find(p);
-        if(it != m_nodes.end())
-        {
-            return std::holds_alternative<NodeDir>(it->second);
-        }
-
-        auto mnt = find_parent_mount(p);
-        if(mnt.empty())
-            return unexpected(FSResult::DOES_NOT_EXIST);
-
-        auto mnt_i = m_nodes.find(mnt);
-        return std::get<NodeMount>(mnt_i->second).is_dir( p.lexically_relative(mnt_i->first) );
+        return _is<NodeDir>(p);
     }
 
     expected<bool, FSResult> is_file(path_type p)
     {
-        _clean(p);
-        auto it = m_nodes.find(p);
-        if(it != m_nodes.end())
-        {
-            return std::holds_alternative<NodeFile>(it->second);
-        }
-
-        auto mnt = find_parent_mount(p);
-        if(mnt.empty())
-            return false;
-
-        auto mnt_i = m_nodes.find(mnt);
-        return std::get<NodeMount>(mnt_i->second).is_file( p.lexically_relative(mnt_i->first) );
+        return _is<NodeFile>(p);
     }
 
     expected<bool, FSResult> is_custom_file(path_type p)
     {
-        _clean(p);
-        auto it = m_nodes.find(p);
-        if(it != m_nodes.end())
-        {
-            return std::holds_alternative<NodeCustom>(it->second);
-        }
-        return false;
+        return _is<NodeCustom>(p);
     }
 
-    std::generator<path_type> list_dir(path_type path)
+    std::generator<path_type> list_dir(path_type path) const
     {
         _clean(path);
-        auto it = m_nodes.find(path);
+        auto [it, sub] = find_parent_mount_split_it(path);
+
+        //auto it = m_nodes.find(path);
         if(it != m_nodes.end())
         {
             if(std::holds_alternative<NodeDir>(it->second))
@@ -332,102 +338,66 @@ struct FileSystem
                 }
                 co_return;
             }
-        }
+            if( std::holds_alternative<NodeMount>(it->second) && !sub.empty())
+            {
+                auto ll = std::get<NodeMount>(it->second).list_dir( sub );
+                for(auto D : ll)
+                {
+                    co_yield it->first / D;
+                }
 
-        auto mnt = find_parent_mount(path);
-        if(mnt.empty())
-            co_return;
-
-        auto mnt_i = m_nodes.find(mnt);
-        auto ll = std::get<NodeMount>(mnt_i->second).list_dir( path.lexically_relative(mnt_i->first) );
-        for(auto D : ll)
-        {
-            co_yield mnt_i->first / D;
+            }
         }
+        co_return;
     }
 
     expected<bool, FSResult> mkdir(path_type path)
+    {
+        return _mk<NodeDir>(path, true);
+    }
+
+    template<typename T>
+    expected<bool, FSResult> _mk(path_type path, bool make_parent_dirs)
     {
         _clean(path);
         assert(path.is_absolute());
         if(exists(path))
             return false;
 
-        auto parent_mount_path = find_parent_mount(path);
-        if(!parent_mount_path.empty())
+        auto [it, sub] = find_parent_mount_split_it(path);
+        if(!sub.empty())
         {
-            auto mnt_i = m_nodes.find(parent_mount_path);
-            return std::get<NodeMount>(mnt_i->second).mkdir( path.lexically_relative(mnt_i->first) );
+            return std::get<NodeMount>(it->second)._mk<T>(sub);
         }
-        else
+        else if (it != m_nodes.end())
         {
-            if(!exists(path.parent_path()))
-            {
-                mkdir(path.parent_path());
-            }
-            if(!is_dir(path.parent_path()))
-            {
-                return false;
-            }
-            m_nodes[path] = NodeDir{};
-            return true;
+            // path exists
+            return unexpected(FSResult::EXISTS);
         }
-        return unexpected(FSResult::EXISTS);
+
+        // path doesn't exist
+        if(make_parent_dirs && !exists(path.parent_path()))
+        {
+            mkdir(path.parent_path());
+        }
+
+        if(!is_dir(path.parent_path()))
+        {
+            return false;
+        }
+
+        m_nodes[path] = T{};
+        return true;
     }
 
     expected<bool, FSResult> mkcustom(path_type path)
     {
-        _clean(path);
-        if(exists(path))
-            return false;
-
-        auto parent_mount_path = find_parent_mount(path);
-        if(!parent_mount_path.empty())
-        {
-            return unexpected(FSResult::CANNOT_CREATE);
-        }
-        else
-        {
-            if(!exists(path.parent_path()))
-            {
-                mkdir(path.parent_path());
-            }
-            if(!is_dir(path.parent_path()))
-            {
-                return false;
-            }
-            m_nodes[path] = NodeCustom{};
-            return true;
-        }
-        return unexpected(FSResult::EXISTS);
+        return _mk<NodeCustom>(path, false);
     }
 
     expected<bool, FSResult> touch(path_type path)
     {
-        _clean(path);
-        if(exists(path))
-            return false;
-
-        auto parent_mount_path = find_parent_mount(path);
-        if(!parent_mount_path.empty())
-        {
-            auto mnt_i = m_nodes.find(parent_mount_path);
-            return std::get<NodeMount>(mnt_i->second).touch( path.lexically_relative(mnt_i->first) );
-        }
-        else
-        {
-            if(!exists(path.parent_path()))
-            {
-                mkdir(path.parent_path());
-            }
-            if(!is_dir(path.parent_path()))
-            {
-                return false;
-            }
-            m_nodes[path] = NodeFile{};
-            return true;
-        }
-        return unexpected(FSResult::EXISTS);
+        return _mk<NodeFile>(path, false);
     }
 
     expected<bool, FSResult> is_empty(path_type path) const
@@ -484,6 +454,7 @@ struct FileSystem
         it->second = NodeMount{host_path};
         return true;
     }
+
     expected<bool, FSResult> umount(path_type path)
     {
         auto mnt = find_parent_mount(path);
@@ -537,6 +508,7 @@ struct FileSystem
         }
         throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
     }
+
     template<typename T>
     T const & get(path_type path) const
     {
@@ -622,47 +594,79 @@ struct FileSystem
         }
         return {};
     }
+protected:
+    template<typename T>
+    expected<bool, FSResult> _is(path_type p)
+    {
+        _clean(p);
+        auto [it, sub] = find_parent_mount_split_it(p);
+        if( it != m_nodes.end())
+        {
+            if(std::holds_alternative<NodeMount>(it->second))
+                return std::get<NodeMount>(it->second)._is<T>(sub);
+            return std::holds_alternative<T>(it->second);
+        }
+        return unexpected(FSResult::DOES_NOT_EXIST);
+    }
 
+    std::pair<decltype(m_nodes)::const_iterator, path_type> find_parent_mount_split_it(path_type path) const
+    {
+        _clean(path);
+        path = path.lexically_normal();
+        assert(path.is_absolute());
+
+        path_type root;
+        auto it = m_nodes.end();
+        for(auto & p : path)
+        {
+            root /= p;
+            it = m_nodes.find(root);
+            if(it != m_nodes.end())
+            {
+                // found
+                if(std::holds_alternative<NodeMount>(it->second))
+                {
+                    return {it, path.lexically_relative(root)};
+                }
+            }
+            else
+            {
+                return {it, {}};
+            }
+        }
+        return {it, {}};
+    }
+    std::pair<decltype(m_nodes)::iterator, path_type> find_parent_mount_split_it(path_type path)
+    {
+        _clean(path);
+        path = path.lexically_normal();
+        assert(path.is_absolute());
+
+        path_type root;
+        auto it = m_nodes.end();
+        for(auto & p : path)
+        {
+            root /= p;
+            it = m_nodes.find(root);
+            if(it != m_nodes.end())
+            {
+                // found
+                if(std::holds_alternative<NodeMount>(it->second))
+                {
+                    return {it, path.lexically_relative(root)};
+                }
+            }
+            else
+            {
+                return {it, {}};
+            }
+        }
+        return {it, {}};
+    }
 };
 
 }
 
-//namespace std
-//{
-//
-//template<typename _CharT, typename _Traits, typename _Alloc>
-//basic_istream<_CharT, _Traits>&
-//getline(PseudoNix::FlexibleInputStream & __in,
-//        std::basic_string<_CharT, _Traits, _Alloc>& __str, _CharT __delim = '\n')
-//{
-//    std::istream & i = __in;
-//    return std::getline(i, __str, __delim);
-//}
-//
-//}
-//
-//template<typename T>
-//PseudoNix::FlexibleInputStream& operator <<(PseudoNix::FlexibleInputStream& os,
-//           T const &_str)
-//{
-//    // _GLIBCXX_RESOLVE_LIB_DEFECTS
-//    // 586. string inserter not a formatted function
-//    std::ostream & in = os;
-//    in << _str;
-//    return os;
-//}
-//
-//template<typename T>
-//PseudoNix::FlexibleInputStream& operator >> (PseudoNix::FlexibleInputStream& os,
-//                                           T & _str)
-//{
-//    // _GLIBCXX_RESOLVE_LIB_DEFECTS
-//    // 586. string inserter not a formatted function
-//    std::istream & in = os;
-//    in >> _str;
-//    return os;
-//}
-//
 void operator << (PseudoNix::NodeRef left, std::string_view right)
 {
     (void)left;
