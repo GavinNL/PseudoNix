@@ -1,6 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
-
+#include<thread>
 #include <PseudoNix/FileSystem.h>
 
 using namespace PseudoNix;
@@ -38,6 +38,10 @@ SCENARIO("mkdir")
     F.mkdir("/usr");
     F.mkdir("/lib");
 
+    REQUIRE(F.exists("/home") == true);
+    REQUIRE(F.exists("/usr") == true);
+    REQUIRE(F.exists("/lib") == true);
+
     REQUIRE(F.is_empty("/home") == true);
     REQUIRE(F.is_empty("/usr") == true);
     REQUIRE(F.is_empty("/lib") == true);
@@ -58,7 +62,7 @@ SCENARIO("touch")
     REQUIRE(F.is_file("/home/file.txt"));
 
     REQUIRE(F.is_empty("/home/file2.txt").error() == FSResult::DOES_NOT_EXIST);
-    REQUIRE(F.is_file("/home/file2.txt") == false);
+    REQUIRE(F.is_file("/home/file2.txt").error() == FSResult::DOES_NOT_EXIST);
 }
 
 SCENARIO("Custom file")
@@ -84,9 +88,6 @@ SCENARIO("Mount")
         REQUIRE(F.mkdir("/src"));
         REQUIRE(F.mkdir("/build"));
         REQUIRE(F.mkdir("/a/b/c/d"));
-
-        REQUIRE(F.find_parent_mount("") == "");
-        REQUIRE(F.find_parent_mount("/a/b/c/d") == "");
 
         WHEN("We mount a host directory")
         {
@@ -131,6 +132,7 @@ SCENARIO("Mount")
 
                 {
                     F.touch("/build/test-folder/file.txt");
+
                     REQUIRE(std::filesystem::is_regular_file(CMAKE_BINARY_DIR "/test-folder/file.txt"));
                     REQUIRE(F.exists("/build/test-folder/file.txt") == true);
                     REQUIRE(F.is_file("/build/test-folder/file.txt") == true);

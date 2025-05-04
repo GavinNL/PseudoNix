@@ -270,38 +270,6 @@ struct FileSystem
         return true;
     }
 
-    path_type find_parent_mount(path_type p) const
-    {
-        auto it = m_nodes.find(p);
-        if(p.empty())
-            return p;
-        if(std::holds_alternative<NodeMount>(it->second))
-            return it->first;
-        if(it == m_nodes.end())
-        {
-            return find_parent_mount(p.parent_path());
-        }
-        if(it->first == "/")
-            return path_type();
-        return find_parent_mount(it->first.parent_path());
-    }
-
-    std::pair<path_type, path_type> find_parent_mount_split(path_type p) const
-    {
-        auto mnt = find_parent_mount(p);
-        if(mnt.empty())
-        {
-            return {{}, p};
-        }
-        else
-        {
-            auto mnt_i = m_nodes.find(mnt);
-            return {mnt, p.lexically_relative(mnt_i->first)};
-        }
-    }
-
-
-
     expected<bool, FSResult> is_dir(path_type p)
     {
         return _is<NodeDir>(p);
@@ -356,40 +324,6 @@ struct FileSystem
         return _mk<NodeDir>(path, true);
     }
 
-    template<typename T>
-    expected<bool, FSResult> _mk(path_type path, bool make_parent_dirs)
-    {
-        _clean(path);
-        assert(path.is_absolute());
-        if(exists(path))
-            return false;
-
-        auto [it, sub] = find_parent_mount_split_it(path);
-        if(!sub.empty())
-        {
-            return std::get<NodeMount>(it->second)._mk<T>(sub);
-        }
-        else if (it != m_nodes.end())
-        {
-            // path exists
-            return unexpected(FSResult::EXISTS);
-        }
-
-        // path doesn't exist
-        if(make_parent_dirs && !exists(path.parent_path()))
-        {
-            mkdir(path.parent_path());
-        }
-
-        if(!is_dir(path.parent_path()))
-        {
-            return false;
-        }
-
-        m_nodes[path] = T{};
-        return true;
-    }
-
     expected<bool, FSResult> mkcustom(path_type path)
     {
         return _mk<NodeCustom>(path, false);
@@ -403,16 +337,14 @@ struct FileSystem
     expected<bool, FSResult> is_empty(path_type path) const
     {
         _clean(path);
+        auto [it, sub] = find_parent_mount_split_it(path);
 
-        auto parent_mount_path = find_parent_mount(path);
-        if(!parent_mount_path.empty())
+        if(!sub.empty())
         {
-            auto mnt_i = m_nodes.find(parent_mount_path);
-            return std::get<NodeMount>(mnt_i->second).is_empty( path.lexically_relative(mnt_i->first) );
+            return std::get<NodeMount>(it->second).is_empty( sub );
         }
         else
         {
-            auto it = m_nodes.find(path);
             if(it != m_nodes.end())
             {
                 auto next = std::next(it);
@@ -443,25 +375,35 @@ struct FileSystem
             return unexpected(FSResult::HOST_DOES_NOT_EXIST);
         }
 
-        auto mnt = find_parent_mount(path);
-        if(!mnt.empty())
+        auto [it, sub] = find_parent_mount_split_it(path);
+
+        // that path already exists inside
+        // a mount point
+        if(!sub.empty())
             return unexpected(FSResult::NOT_VALID_MOUNT);
 
         if(!is_empty(path))
             return unexpected(FSResult::NOT_EMPTY);
 
-        auto it = m_nodes.find(path);
-        it->second = NodeMount{host_path};
-        return true;
+        if( std::holds_alternative<NodeDir>(it->second))
+        {
+            it->second = NodeMount{host_path};
+            return true;
+        }
+        return unexpected(FSResult::NOT_VALID_MOUNT);
     }
 
     expected<bool, FSResult> umount(path_type path)
     {
-        auto mnt = find_parent_mount(path);
-        if(mnt == path && !mnt.empty())
+        auto [it, sub] = find_parent_mount_split_it(path);
+        //auto mnt = find_parent_mount(path);
+        if(it != m_nodes.end() && sub.empty())
         {
-            m_nodes.find(mnt)->second = NodeDir{};
-            return true;
+            if(std::holds_alternative<NodeMount>(it->second))
+            {
+                it->second = NodeDir{};
+                return true;
+            }
         }
 
         return unexpected(FSResult::NOT_VALID_MOUNT);
@@ -474,15 +416,14 @@ struct FileSystem
     NodeRef getNode(path_type path)
     {
         _clean(path);
-        auto [mnt_path, file_path] = find_parent_mount_split(path);
-        if(!mnt_path.empty())
+        auto [it, sub] = find_parent_mount_split_it(path);
+        if(!sub.empty())
         {
-            auto it = m_nodes.find(mnt_path);
             return NodeRef {
-                &it->second, file_path
+                &it->second, sub
             };
         }
-        auto it = m_nodes.find(path);
+
         if(it != m_nodes.end())
         {
             return NodeRef {
@@ -527,12 +468,11 @@ struct FileSystem
 
     path_type host_path(path_type path) const
     {
-        auto mnt = find_parent_mount(path);
-        if(mnt.empty())
+        auto [it, sub] = find_parent_mount_split_it(path);
+        if(sub.empty())
             return {};
 
-        auto mnt_i = m_nodes.find(mnt);
-        return std::get<NodeMount>(mnt_i->second).host_path / path.lexically_relative(mnt_i->first);
+        return std::get<NodeMount>(it->second).host_path / path.lexically_relative(it->first);
     }
 
     FileStream open(path_type path,  std::ios::openmode openmode)
@@ -554,7 +494,15 @@ struct FileSystem
     {
         assert(path.is_absolute());
 
-        auto it = m_nodes.find(path);
+        auto [it, sub] = find_parent_mount_split_it(path);
+        //auto it = m_nodes.find(path);
+        if(!sub.empty())
+        {
+            auto & MNT = std::get<NodeMount>(it->second);
+            if( MNT.is_dir(sub) ) return Type::HOST_DIR;
+            if( MNT.is_file(sub) ) return Type::HOST_FILE;
+        }
+
         if(it!=m_nodes.end())
         {
             return std::visit([](auto &&v) {
@@ -566,13 +514,7 @@ struct FileSystem
                         },
                        it->second);
         }
-        auto [mnt, sub] = find_parent_mount_split(path);
-        if(!mnt.empty())
-        {
-            auto & MNT = get<NodeMount>(mnt);
-            if( MNT.is_dir(sub) ) return Type::HOST_DIR;
-            if( MNT.is_file(sub) ) return Type::HOST_FILE;
-        }
+
         return Type::UNKNOWN;
     }
 
@@ -607,6 +549,40 @@ protected:
             return std::holds_alternative<T>(it->second);
         }
         return unexpected(FSResult::DOES_NOT_EXIST);
+    }
+
+    template<typename T>
+    expected<bool, FSResult> _mk(path_type path, bool make_parent_dirs)
+    {
+        _clean(path);
+        assert(path.is_absolute());
+        if(exists(path))
+            return false;
+
+        auto [it, sub] = find_parent_mount_split_it(path);
+        if(!sub.empty())
+        {
+            return std::get<NodeMount>(it->second)._mk<T>(sub);
+        }
+        else if (it != m_nodes.end())
+        {
+            // path exists
+            return unexpected(FSResult::EXISTS);
+        }
+
+        // path doesn't exist
+        if(make_parent_dirs && !exists(path.parent_path()))
+        {
+            mkdir(path.parent_path());
+        }
+
+        if(!is_dir(path.parent_path()))
+        {
+            return false;
+        }
+
+        m_nodes[path] = T{};
+        return true;
     }
 
     std::pair<decltype(m_nodes)::const_iterator, path_type> find_parent_mount_split_it(path_type path) const
