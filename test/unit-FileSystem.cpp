@@ -141,16 +141,19 @@ SCENARIO("Mount")
     }
 }
 
+
 SCENARIO("Opening Files")
 {
     FileSystem F;
     F.mkdir("/src");
+    F.mkdir("/bin");
     F.mount(CMAKE_SOURCE_DIR, "/src");
+    F.mount(CMAKE_BINARY_DIR, "/bin");
 
     REQUIRE(F.touch("/test.txt") == true);
 
     REQUIRE_NOTHROW( F.get<NodeFile>("/test.txt") );
-    F.get<NodeFile>("/test.txt").filedata.str("Hello world\nGoodbye world");
+    F.fs("/test.txt") << "Hello world\nGoodbye world";
 
     std::string str;
     THEN("We can open the host file")
@@ -168,8 +171,17 @@ SCENARIO("Opening Files")
         REQUIRE(f);
         std::getline(f, str);
         REQUIRE(str == "Hello world");
-        std::getline(f, str);
-        REQUIRE(str == "Goodbye world");
-    }
 
+        f >> str;
+        REQUIRE(str == "Goodbye");
+    }
+    THEN("We can open the memory file")
+    {
+        F.touch("/bin/test.txt");
+        auto f = F.open("/bin/test.txt");
+        REQUIRE(f);
+
+        f << "test\n";
+        f << 32 << '\n';
+    }
 }

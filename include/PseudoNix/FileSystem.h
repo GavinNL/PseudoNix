@@ -43,8 +43,10 @@ using unexpected  = tl::unexpected<E>;
 
 class FlexibleInputStream {
 public:
+
     FlexibleInputStream()
     {
+
     }
 
     operator bool() const
@@ -55,8 +57,8 @@ public:
     }
     // Constructors for each stream type
     explicit FlexibleInputStream(const std::filesystem::path& filename)
-        : fileStream(std::make_unique<std::ifstream>(filename)),
-        stringStream(nullptr)
+        : fileStream(std::make_unique<std::fstream>(filename)),
+            stringStream(nullptr)
     {
         if (!fileStream->is_open()) {
             throw std::runtime_error("Failed to open file: " + filename.string());
@@ -75,15 +77,21 @@ public:
         }
         return *activeStream;
     }
+    operator std::ostream&() {
+        if (!activeStream) {
+            throw std::runtime_error("No valid stream.");
+        }
+        return *activeStream;
+    }
     bool eof() const
     {
         return activeStream->eof();
-        stringStream->rdbuf();
     }
+
 protected:
-    std::unique_ptr<std::ifstream> fileStream;
+    std::unique_ptr<std::fstream> fileStream;
     std::stringstream * stringStream = nullptr;
-    std::istream* activeStream = nullptr;
+    std::iostream* activeStream = nullptr;
 };
 
 enum class FSResult
@@ -99,6 +107,7 @@ enum class FSResult
 
 enum class Type
 {
+    DOES_NOT_EXIST,
     MEM_FILE,
     MEM_DIR,
     MOUNT,
@@ -143,6 +152,7 @@ struct NodeDir
 struct NodeMount
 {
     std::filesystem::path host_path;
+    bool read_only = false;
 
     bool exists(std::filesystem::path const & path) const
     {
@@ -162,11 +172,15 @@ struct NodeMount
     bool mkdir(std::filesystem::path const & path)
     {
         assert(path.is_relative());
+        if(read_only)
+            return false;
         return std::filesystem::create_directories(host_path / path);
     }
     bool touch(std::filesystem::path const & path)
     {
         assert(path.is_relative());
+        if(read_only)
+            return false;
         std::ofstream out(host_path/path);
         out.close();
         return true;
@@ -219,19 +233,39 @@ struct FileSystem
         m_nodes["/"] = NodeDir{ };
     }
 
-    bool exists(path_type p) const
+
+    /**
+     * @brief exists
+     * @param path
+     * @return
+     *
+     * Checks if a path exists
+     */
+    bool exists(path_type path) const
     {
-        _clean(p);
-        auto it = m_nodes.find(p);
-        if(it != m_nodes.end())
-            return true;
+        _clean(path);
+        path = path.lexically_normal();
+        assert(path.is_absolute());
 
-        auto mnt = find_parent_mount(p);
-        if(mnt.empty())
-            return false;
-
-        auto mnt_i = m_nodes.find(mnt);
-        return std::get<NodeMount>(mnt_i->second).exists( p.lexically_relative(mnt_i->first) );
+        path_type root;
+        for(auto & p : path)
+        {
+            root /= p;
+            auto it = m_nodes.find(root);
+            if(it != m_nodes.end())
+            {
+                // found
+                if(std::holds_alternative<NodeMount>(it->second))
+                {
+                    return std::get<NodeMount>(it->second).exists(path.lexically_relative(root));
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     path_type find_parent_mount(path_type p) const
@@ -635,6 +669,28 @@ getline(PseudoNix::FlexibleInputStream & __in,
     return std::getline(i, __str, __delim);
 }
 
+}
+
+template<typename T>
+PseudoNix::FlexibleInputStream& operator <<(PseudoNix::FlexibleInputStream& os,
+           T const &_str)
+{
+    // _GLIBCXX_RESOLVE_LIB_DEFECTS
+    // 586. string inserter not a formatted function
+    std::ostream & in = os;
+    in << _str;
+    return os;
+}
+
+template<typename T>
+PseudoNix::FlexibleInputStream& operator >> (PseudoNix::FlexibleInputStream& os,
+                                           T & _str)
+{
+    // _GLIBCXX_RESOLVE_LIB_DEFECTS
+    // 586. string inserter not a formatted function
+    std::istream & in = os;
+    in >> _str;
+    return os;
 }
 
 void operator << (PseudoNix::NodeRef left, std::string_view right)
