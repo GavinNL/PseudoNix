@@ -42,6 +42,104 @@ using unexpected  = tl::unexpected<E>;
 #endif
 
 
+class string_backed_streambuf : public std::streambuf {
+public:
+    explicit string_backed_streambuf(std::string& backing)
+        : buffer(backing)
+    {
+        sync_with_string();
+    }
+
+protected:
+    // Called when output buffer is full or a single char is put
+    int overflow(int ch) override {
+        if (ch != EOF) {
+            std::size_t pos = static_cast<size_t>(pptr() - pbase());
+            buffer.push_back(static_cast<char>(ch));
+            sync_with_string(pos + 1);
+        }
+        return ch;
+    }
+
+    // Called when input buffer is empty
+    int underflow() override {
+        if (gptr() >= egptr()) return EOF;
+        return static_cast<unsigned char>(*gptr());
+    }
+
+    // Called on seek operations
+    std::streampos seekoff(std::streamoff off, std::ios_base::seekdir way,
+                           std::ios_base::openmode which) override {
+        std::streamoff new_pos = -1;
+
+        if (which & std::ios_base::in) {
+            if (way == std::ios_base::beg)
+                new_pos = off;
+            else if (way == std::ios_base::cur)
+                new_pos = gptr() - eback() + off;
+            else if (way == std::ios_base::end)
+                new_pos = static_cast<std::streamoff>(buffer.size()) + off;
+
+            if (new_pos >= 0 && static_cast<std::size_t>(new_pos) <= buffer.size()) {
+                setg(&buffer[0], &buffer[0] + new_pos, &buffer[0] + buffer.size());
+                return new_pos;
+            }
+        }
+
+        if (which & std::ios_base::out) {
+            if (way == std::ios_base::beg)
+                new_pos = off;
+            else if (way == std::ios_base::cur)
+                new_pos = pptr() - pbase() + off;
+            else if (way == std::ios_base::end)
+                new_pos = static_cast<std::streamoff>(buffer.size()) + off;
+
+            if (new_pos >= 0) {
+                if (static_cast<std::size_t>(new_pos) > buffer.size())
+                    buffer.resize(static_cast<size_t>(new_pos), '\0');
+                sync_with_string(static_cast<std::size_t>(new_pos));
+                return new_pos;
+            }
+        }
+
+        return -1;
+    }
+
+    std::streampos seekpos(std::streampos sp, std::ios_base::openmode which) override {
+        return seekoff(sp, std::ios_base::beg, which);
+    }
+
+    int sync() override {
+        return 0;  // no-op, buffer is always in sync
+    }
+
+private:
+    std::string buffer;
+
+    void sync_with_string(std::size_t write_pos = 0) {
+        // Set up get area (input)
+        setg(&buffer[0], &buffer[0], &buffer[0] + buffer.size());
+
+        // Set up put area (output)
+        if (write_pos > buffer.size())
+            buffer.resize(write_pos, '\0');
+        setp(&buffer[0], &buffer[0] + buffer.size());
+        pbump(static_cast<int>(write_pos));
+    }
+};
+
+class string_backed_iostream : public std::iostream {
+public:
+    explicit string_backed_iostream(std::string& backing)
+        : std::iostream(nullptr), buf(backing)
+    {
+        rdbuf(&buf);
+    }
+
+private:
+    string_backed_streambuf buf;
+};
+
 class FileStream : public std::iostream {
 public:
     FileStream()
@@ -49,19 +147,20 @@ public:
     }
 
     // String-based constructor (backed by stringstream)
-    FileStream(std::stringstream * initialContent)
-        : std::iostream(nullptr) {
-        backing = initialContent;
-        this->rdbuf(initialContent->rdbuf());
+    explicit FileStream(std::string &initialContent)
+        : std::iostream(nullptr)
+    {
+        backing = std::make_unique<string_backed_iostream>(initialContent);
+        this->rdbuf(std::get<0>(backing)->rdbuf());
     }
 
     // File-based constructor (backed by fstream)
-    FileStream(const std::filesystem::path& filePath, std::ios::openmode mode)
+    explicit FileStream(const std::filesystem::path& filePath, std::ios::openmode mode)
         : std::iostream(nullptr), backing(std::fstream(filePath, mode)) {
         this->rdbuf(std::get<std::fstream>(backing).rdbuf());
     }
 private:
-    std::variant<std::stringstream*, std::fstream> backing;
+    std::variant<std::unique_ptr<string_backed_iostream>, std::fstream> backing;
 };
 
 enum class FSResult
@@ -89,7 +188,7 @@ enum class Type
 
 struct NodeFile
 {
-    std::stringstream filedata;
+    std::string filedata;
 };
 
 struct NodeCustom
@@ -434,6 +533,7 @@ struct FileSystem
         throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
     }
 
+
     template<typename T>
     T& get(path_type path)
     {
@@ -478,15 +578,22 @@ struct FileSystem
     FileStream open(path_type path,  std::ios::openmode openmode)
     {
         assert(path.is_absolute());
-        auto typ = get_type(path);
-        if(typ == Type::HOST_FILE)
+
+        auto [it, sub] = find_parent_mount_split_it(path);
+        if(it == m_nodes.end())
         {
-            return FileStream(host_path(path), openmode);
+            return {};
         }
-        else if( typ == Type::MEM_FILE)
+        if(!sub.empty())
         {
-            return FileStream(&get<NodeFile>(path).filedata);
+            // host file
+            return FileStream( std::get<NodeMount>(it->second).host_path / sub, openmode);
         }
+        if( std::holds_alternative<NodeFile>(it->second) )
+        {
+            return FileStream(std::get<NodeFile>(it->second).filedata);
+        }
+
         return {};
     }
 
@@ -518,24 +625,16 @@ struct FileSystem
         return Type::UNKNOWN;
     }
 
-    std::string file_to_string(path_type path) const
+    std::string file_to_string(path_type path)
     {
-        auto typ = get_type(path);
-        if(typ == Type::HOST_FILE)
-        {
-            std::ifstream file( host_path(path) );
-            if (!file) {
-                return {};
-            }
-            return std::string((std::istreambuf_iterator<char>(file)),
-                               std::istreambuf_iterator<char>());
-        }
-        if( typ == Type::MEM_FILE)
-        {
-            return get<NodeFile>(path).filedata.str();
-        }
-        return {};
+        auto in = this->open(path, std::ios::in);
+        if(!in)
+            return {};
+
+        return std::string((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
     }
+
 protected:
     template<typename T>
     expected<bool, FSResult> _is(path_type p)
@@ -651,7 +750,7 @@ void operator << (PseudoNix::NodeRef left, std::string_view right)
     {
         auto & F = std::get<PseudoNix::NodeFile>(*left.n);
         for(auto &r:right)
-            F.filedata.put(r);
+            F.filedata.push_back(r);
     }
 }
 
