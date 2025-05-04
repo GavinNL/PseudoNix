@@ -156,9 +156,18 @@ SCENARIO("Opening Files")
     F.fs("/test.txt") << "Hello world\nGoodbye world";
 
     std::string str;
+
+    THEN("test")
+    {
+        std::stringstream SS;
+        SS.str("Hello world");
+        SS >> str;
+        REQUIRE( str == "Hello" );
+        REQUIRE( SS.str() == "Hello world");
+    }
     THEN("We can open the host file")
     {
-        auto f = F.open("/src/conanfile.py");
+        auto f = F.open("/src/conanfile.py", std::ios::in);
         REQUIRE(f);
         std::getline(f, str);
         REQUIRE(str == "from conan.tools.files import copy");
@@ -167,7 +176,7 @@ SCENARIO("Opening Files")
     }
     THEN("We can open the memory file")
     {
-        auto f = F.open("/test.txt");
+        auto f = F.open("/test.txt", std::ios::in);
         REQUIRE(f);
         std::getline(f, str);
         REQUIRE(str == "Hello world");
@@ -178,9 +187,10 @@ SCENARIO("Opening Files")
     THEN("We can open the memory file")
     {
         F.touch("/bin/test.txt");
-        auto f = F.open("/bin/test.txt");
+        auto f = F.open("/bin/test.txt", std::ios::app | std::ios::out);
         REQUIRE(f);
 
+        std::ofstream FF("/asdfasdf");
         f << "test\n";
         f << 32 << '\n';
     }

@@ -2001,7 +2001,7 @@ public:
                     case Type::MEM_FILE:
                     case Type::HOST_FILE:
                     {
-                        auto file = SYSTEM.open(path);
+                        auto file = SYSTEM.open(path, std::ios::in);
                         if (!file) {
                             co_return 1;
                         }

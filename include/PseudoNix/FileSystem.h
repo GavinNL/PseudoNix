@@ -41,57 +41,27 @@ template <typename E>
 using unexpected  = tl::unexpected<E>;
 #endif
 
-class FlexibleInputStream {
+
+class FileStream : public std::iostream {
 public:
-
-    FlexibleInputStream()
+    FileStream()
     {
-
     }
 
-    operator bool() const
-    {
-        if(!activeStream)
-            return false;
-        return static_cast<bool>(*activeStream);
-    }
-    // Constructors for each stream type
-    explicit FlexibleInputStream(const std::filesystem::path& filename)
-        : fileStream(std::make_unique<std::fstream>(filename)),
-            stringStream(nullptr)
-    {
-        if (!fileStream->is_open()) {
-            throw std::runtime_error("Failed to open file: " + filename.string());
-        }
-        activeStream = fileStream.get();
+    // String-based constructor (backed by stringstream)
+    FileStream(std::stringstream * initialContent)
+        : std::iostream(nullptr) {
+        backing = initialContent;
+        this->rdbuf(initialContent->rdbuf());
     }
 
-    explicit FlexibleInputStream(std::stringstream &stringData)
-        : fileStream(nullptr),
-        stringStream(&stringData) {
-        activeStream = stringStream;
+    // File-based constructor (backed by fstream)
+    FileStream(const std::filesystem::path& filePath, std::ios::openmode mode)
+        : std::iostream(nullptr), backing(std::fstream(filePath, mode)) {
+        this->rdbuf(std::get<std::fstream>(backing).rdbuf());
     }
-    operator std::istream&() {
-        if (!activeStream) {
-            throw std::runtime_error("No valid stream.");
-        }
-        return *activeStream;
-    }
-    operator std::ostream&() {
-        if (!activeStream) {
-            throw std::runtime_error("No valid stream.");
-        }
-        return *activeStream;
-    }
-    bool eof() const
-    {
-        return activeStream->eof();
-    }
-
-protected:
-    std::unique_ptr<std::fstream> fileStream;
-    std::stringstream * stringStream = nullptr;
-    std::iostream* activeStream = nullptr;
+private:
+    std::variant<std::stringstream*, std::fstream> backing;
 };
 
 enum class FSResult
@@ -593,17 +563,17 @@ struct FileSystem
         return std::get<NodeMount>(mnt_i->second).host_path / path.lexically_relative(mnt_i->first);
     }
 
-    FlexibleInputStream open(path_type path)
+    FileStream open(path_type path,  std::ios::openmode openmode)
     {
         assert(path.is_absolute());
         auto typ = get_type(path);
         if(typ == Type::HOST_FILE)
         {
-            return FlexibleInputStream(host_path(path));
+            return FileStream(host_path(path), openmode);
         }
         else if( typ == Type::MEM_FILE)
         {
-            return FlexibleInputStream(get<NodeFile>(path).filedata);
+            return FileStream(&get<NodeFile>(path).filedata);
         }
         return {};
     }
@@ -657,42 +627,42 @@ struct FileSystem
 
 }
 
-namespace std
-{
-
-template<typename _CharT, typename _Traits, typename _Alloc>
-basic_istream<_CharT, _Traits>&
-getline(PseudoNix::FlexibleInputStream & __in,
-        std::basic_string<_CharT, _Traits, _Alloc>& __str, _CharT __delim = '\n')
-{
-    std::istream & i = __in;
-    return std::getline(i, __str, __delim);
-}
-
-}
-
-template<typename T>
-PseudoNix::FlexibleInputStream& operator <<(PseudoNix::FlexibleInputStream& os,
-           T const &_str)
-{
-    // _GLIBCXX_RESOLVE_LIB_DEFECTS
-    // 586. string inserter not a formatted function
-    std::ostream & in = os;
-    in << _str;
-    return os;
-}
-
-template<typename T>
-PseudoNix::FlexibleInputStream& operator >> (PseudoNix::FlexibleInputStream& os,
-                                           T & _str)
-{
-    // _GLIBCXX_RESOLVE_LIB_DEFECTS
-    // 586. string inserter not a formatted function
-    std::istream & in = os;
-    in >> _str;
-    return os;
-}
-
+//namespace std
+//{
+//
+//template<typename _CharT, typename _Traits, typename _Alloc>
+//basic_istream<_CharT, _Traits>&
+//getline(PseudoNix::FlexibleInputStream & __in,
+//        std::basic_string<_CharT, _Traits, _Alloc>& __str, _CharT __delim = '\n')
+//{
+//    std::istream & i = __in;
+//    return std::getline(i, __str, __delim);
+//}
+//
+//}
+//
+//template<typename T>
+//PseudoNix::FlexibleInputStream& operator <<(PseudoNix::FlexibleInputStream& os,
+//           T const &_str)
+//{
+//    // _GLIBCXX_RESOLVE_LIB_DEFECTS
+//    // 586. string inserter not a formatted function
+//    std::ostream & in = os;
+//    in << _str;
+//    return os;
+//}
+//
+//template<typename T>
+//PseudoNix::FlexibleInputStream& operator >> (PseudoNix::FlexibleInputStream& os,
+//                                           T & _str)
+//{
+//    // _GLIBCXX_RESOLVE_LIB_DEFECTS
+//    // 586. string inserter not a formatted function
+//    std::istream & in = os;
+//    in >> _str;
+//    return os;
+//}
+//
 void operator << (PseudoNix::NodeRef left, std::string_view right)
 {
     (void)left;
