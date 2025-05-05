@@ -176,7 +176,7 @@ struct NodeMount
 
     bool exists(std::filesystem::path const & path) const
     {
-        assert(path.is_relative());
+        assert(!path.has_root_directory());
         return std::filesystem::exists(host_path / path);
     }
     template<typename T>
@@ -213,22 +213,22 @@ struct NodeMount
     }
     bool remove(std::filesystem::path const & path) const
     {
-        assert(path.is_relative());
+        assert(!path.has_root_directory());
         return std::filesystem::remove(host_path / path);
     }
     bool is_dir(std::filesystem::path const & path) const
     {
-        assert(path.is_relative());
+        assert(!path.has_root_directory());
         return std::filesystem::is_directory(host_path / path);
     }
     bool is_file(std::filesystem::path const & path) const
     {
-        assert(path.is_relative());
+        assert(!path.has_root_directory());
         return std::filesystem::is_regular_file(host_path / path);
     }
     FSResult mkdir(std::filesystem::path const & path)
     {
-        assert(path.is_relative());
+        assert(!path.has_root_directory());
         if(read_only)
             return FSResult::ReadOnlyFileSystem;
         if(std::filesystem::create_directories(host_path / path))
@@ -239,7 +239,7 @@ struct NodeMount
     }
     FSResult touch(std::filesystem::path const & path)
     {
-        assert(path.is_relative());
+        assert(!path.has_root_directory());
 
         if(read_only)
             return FSResult::ReadOnlyFileSystem;;
@@ -268,12 +268,24 @@ struct NodeMount
 };
 using Node = std::variant<NodeDir, NodeFile, NodeCustom, NodeMount>;
 
-void _clean(std::filesystem::path & p)
+void _clean(std::filesystem::path & P1)
 {
-    if(p.filename().empty())
+    auto str = P1.generic_string();
+    for(auto & s : str)
+    {
+        if(s=='\\') s = '/';
+    }
+    std::filesystem::path p = str;
+    if (p.filename().empty())
     {
         p = p.parent_path();
     }
+    if(p.has_root_directory())
+    {
+        P1 = std::filesystem::path("/") / p.lexically_normal().relative_path();
+        return;
+    }
+    P1 = p.lexically_normal().relative_path();
 }
 
 struct NodeRef
@@ -306,7 +318,7 @@ struct FileSystem
     {
         _clean(path);
         path = path.lexically_normal();
-        assert(path.is_absolute());
+        assert(path.has_root_directory());
 
         path_type root;
         for(auto const & p : path)
@@ -819,7 +831,7 @@ struct FileSystem
      */
     FileStream open(path_type path,  std::ios::openmode openmode)
     {
-        assert(path.is_absolute());
+        assert(path.has_root_directory());
 
         auto [it, sub] = find_parent_mount_split_it(path);
         if(it == m_nodes.end())
@@ -848,7 +860,7 @@ struct FileSystem
      */
     Type get_type(path_type path) const
     {
-        assert(path.is_absolute());
+        assert(path.has_root_directory());
 
         auto [it, sub] = find_parent_mount_split_it(path);
         //auto it = m_nodes.find(path);
@@ -903,7 +915,7 @@ protected:
             return FSResult::InvalidFileName;
         }
 
-        assert(path.is_absolute());
+        assert(path.has_root_directory());
         if(exists(path))
             return FSResult::PathExists;
 
@@ -937,7 +949,7 @@ protected:
     {
         _clean(path);
         path = path.lexically_normal();
-        assert(path.is_absolute());
+        assert(path.has_root_directory());
 
         path_type root;
         auto it = m_nodes.end();
@@ -964,7 +976,7 @@ protected:
     {
         _clean(path);
         path = path.lexically_normal();
-        assert(path.is_absolute());
+        assert(path.has_root_directory());
 
         path_type root;
         auto it = m_nodes.end();

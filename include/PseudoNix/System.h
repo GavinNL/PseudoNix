@@ -249,7 +249,7 @@ struct System : public PseudoNix::FileSystem
         bool chdir(path_type new_dir)
         {
             if(!system->exists(new_dir)) return false;
-            if(new_dir.is_relative())
+            if(!new_dir.has_root_directory())
             {
                 cwd = cwd / new_dir;
                 env["OLDPWD"] = env["PWD"];
@@ -1890,7 +1890,7 @@ public:
         DEF_FUNC_HELP("pwd", "Prints the current working directory")
         {
             PSEUDONIX_PROC_START(ctrl);
-            COUT << std::format("{}\n", ctrl->cwd.string());
+            COUT << std::format("{}\n", ctrl->cwd.generic_string());
             co_return 0;
         };
 
@@ -1920,11 +1920,11 @@ public:
                 path = p;
             }
 
-            assert(path.is_absolute());
+            assert(path.has_root_directory());
 
             for(auto u : SYSTEM.list_dir(path))
             {
-                COUT << std::format("{}\n", u.lexically_relative(path).string());
+                COUT << std::format("{}\n", u.lexically_relative(path).generic_string());
             }
 
             co_return 0;
@@ -1964,7 +1964,7 @@ public:
                     HANDLE_PATH(CWD, path);
                     if(!SYSTEM.rm(path))
                     {
-                        COUT << std::format("Error deleting file: {}", path.string());
+                        COUT << std::format("Error deleting file: {}", path.generic_string());
                         co_return 1;
                     }
                 }
@@ -2036,7 +2036,7 @@ public:
                 {
                     if( std::holds_alternative<NodeMount>(n.second) )
                     {
-                        COUT << std::format("{} on {}\n", n.first.string(), std::get<NodeMount>(n.second).host_path.string());
+                        COUT << std::format("{} on {}\n", n.first.generic_string(), std::get<NodeMount>(n.second).host_path.generic_string());
                     }
                 }
                 co_return 0;
@@ -2070,7 +2070,7 @@ public:
             if(ARGS.size() == 2)
             {
                 path_type p = ARGS[1];
-                if(p.is_relative())
+                if(!p.has_root_directory())
                     p = CWD / p;
                 auto res = SYSTEM.umount(p);
                 FS_PRINT_ERROR(res);
@@ -2088,7 +2088,7 @@ public:
             if(ARGS.size() == 2)
             {
                 path_type path = ARGS[1];
-                if(path.is_relative())
+                if(!path.has_root_directory())
                     path = CWD / path;
 
                 switch(SYSTEM.get_type(path))
