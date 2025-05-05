@@ -134,6 +134,7 @@ struct System : public PseudoNix::FileSystem
     using exit_code_type   = int32_t;
     using task_type        = Task_t<exit_code_type, std::suspend_always, std::suspend_always>;
 
+    constexpr static const char * const DEFAULT_QUEUE = "MAIN";
 
     struct Exec
     {
@@ -277,7 +278,7 @@ struct System : public PseudoNix::FileSystem
          * Yield the current process until the
          * next iteration of the scheduler
          */
-        System::Awaiter await_yield(std::string_view queue="MAIN")
+        System::Awaiter await_yield(std::string_view queue=DEFAULT_QUEUE)
         {
             return System::Awaiter{pid,
                                    system,
@@ -302,7 +303,7 @@ struct System : public PseudoNix::FileSystem
          *
          * Sleep for an amount of time.
          */
-        System::Awaiter await_yield_for(std::chrono::nanoseconds time, std::string_view queue="MAIN")
+        System::Awaiter await_yield_for(std::chrono::nanoseconds time, std::string_view queue=DEFAULT_QUEUE)
         {
             auto T1 = std::chrono::system_clock::now() + time;
             return System::Awaiter{get_pid(),
@@ -474,7 +475,7 @@ struct System : public PseudoNix::FileSystem
 
     System()
     {
-        taskQueueCreate("MAIN");
+        taskQueueCreate(DEFAULT_QUEUE);
 
         setDefaultFunctions();
     }
@@ -722,7 +723,7 @@ struct System : public PseudoNix::FileSystem
         // Create custom awaiter that will
         // be placed in the main thread pool
         DEBUG_INFO("Process Registered: {}", join(arg->args) );
-        Proc.first->second->initialAwaiter = Awaiter(_pid, this, [](Awaiter*){return true;}, "MAIN");
+        Proc.first->second->initialAwaiter = Awaiter(_pid, this, [](Awaiter*){return true;}, DEFAULT_QUEUE);
         Proc.first->second->initialAwaiter.handle_ = handle;
         Proc.first->second->initialAwaiter.await_suspend(handle);
 
@@ -830,7 +831,7 @@ struct System : public PseudoNix::FileSystem
     void _finalizePID(pid_type p)
     {
         auto & coro = *m_procs2.at(p);
-        coro.control->queue_name = "MAIN";
+        coro.control->queue_name = DEFAULT_QUEUE;
         if( coro.task.valid() )
         {
             coro.task.destroy();
@@ -922,7 +923,7 @@ struct System : public PseudoNix::FileSystem
      * Keep processing the queue until the maxComputeTime has elapsed or maxIterations
      * has been reached.
      */
-    size_t taskQueueExecute(std::string const & queue_name = "MAIN", std::chrono::milliseconds maxComputeTime=std::chrono::milliseconds(15), size_t maxIter = 1)
+    size_t taskQueueExecute(std::string const & queue_name = DEFAULT_QUEUE, std::chrono::milliseconds maxComputeTime=std::chrono::milliseconds(15), size_t maxIter = 1)
     {
         m_main_thread_id = std::this_thread::get_id();
         auto T0 = std::chrono::system_clock::now();
@@ -945,11 +946,11 @@ struct System : public PseudoNix::FileSystem
             // Process everything on the queue
             // New tasks will not be added to this queue
             // because of the double buffering
-            DEBUG_INFO("{}: Total size: {}", queue_name, POP_Q.size_approx());
+            DEBUG_TRACE("{}: Total size: {}", queue_name, POP_Q.size_approx());
             while(_processQueue(POP_Q, PUSH_Q,  queue_name))
                 ;
-            DEBUG_INFO(": {}Finished Total size: {}", queue_name, POP_Q.size_approx());
-            if(queue_name != "MAIN")
+            DEBUG_TRACE(": {}Finished Total size: {}", queue_name, POP_Q.size_approx());
+            if(queue_name != DEFAULT_QUEUE)
                 return PUSH_Q.size_approx() + POP_Q.size_approx();
 
             // Remove any processes that:
@@ -1009,7 +1010,7 @@ struct System : public PseudoNix::FileSystem
         else
         {
             DEBUG_ERROR("{} not found. Adding to MAIN", a->m_queueName);
-            m_awaiters.at("MAIN").enqueue({a,proc});
+            m_awaiters.at(DEFAULT_QUEUE).enqueue({a,proc});
         }
     }
 
@@ -1841,7 +1842,7 @@ public:
 
             // the QUEUE variable defined by PSEUDONIX_PROC_START(ctrl)
             // tells you what queue this process is being executed on
-            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), "MAIN"), ctrl);
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), DEFAULT_QUEUE), ctrl);
 
             {
                 auto _lock = COUT.lock();
@@ -1863,7 +1864,7 @@ public:
                     COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
                 }
 
-                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), "MAIN"), ctrl);
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), DEFAULT_QUEUE), ctrl);
 
                 {
                     auto _lock = COUT.lock();
@@ -1874,7 +1875,7 @@ public:
             // finally make sure we are on the main queue
             // when we exit so that the TRAP function will be executed
             // on that
-            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), "MAIN"), ctrl);
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), DEFAULT_QUEUE), ctrl);
             {
                 auto _lock = COUT.lock();
                 COUT << std::format("Last On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
