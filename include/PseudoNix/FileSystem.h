@@ -28,6 +28,9 @@
 namespace PseudoNix
 {
 
+template<typename T>
+using generator = Generator<T>;
+
 class vector_backed_streambuf : public std::streambuf {
 public:
     explicit vector_backed_streambuf(std::vector<char>& buffer)
@@ -257,7 +260,7 @@ struct NodeMount
         }
         return true;
     }
-    std::generator<std::filesystem::path> list_dir(std::filesystem::path path) const
+    generator<std::filesystem::path> list_dir(std::filesystem::path path) const
     {
         namespace fs = std::filesystem;
         auto abs_path = host_path / path;
@@ -378,7 +381,7 @@ struct FileSystem
      * Returns a generator which lists all files/directores
      * in the given paths
      */
-    std::generator<path_type> list_dir(path_type path) const
+    generator<path_type> list_dir(path_type path) const
     {
         _clean(path);
         auto [it, sub] = find_parent_mount_split_it(path);
