@@ -453,8 +453,6 @@ struct System : public PseudoNix::FileSystem
     void setFunction(std::string name, std::function< task_type(e_type) > _f)
     {
         m_funcs[name] = _f;
-
-        spawnProcess({"help", "set", "sh", "Default shell"});
     }
     void setFunction(std::string name, std::string description, std::function< task_type(e_type) > _f)
     {
@@ -1887,6 +1885,19 @@ public:
             co_return 0;
         };
 
+#define FS_PRINT_ERROR(_error) \
+        switch(_error)\
+            {\
+                case FSResult::PATH_EXISTS:        COUT << std::format("Directory already exists.\n"); co_return 1; break;\
+                case FSResult::DOES_NOT_EXIST:     COUT << std::format("Does not exist\n"); co_return 1; break;\
+                case FSResult::NOT_EMPTY:          COUT << std::format("Not Empty\n"); co_return 1; break;\
+                case FSResult::NOT_VALID_MOUNT:    COUT << std::format("Not a valid Mount\n"); co_return 1; break;\
+                case FSResult::HOST_DOES_NOT_EXIST:COUT << std::format("Host does not exist\n"); co_return 1; break;\
+                case FSResult::CANNOT_CREATE:      COUT << std::format("Cannot create\n"); co_return 1; break;\
+                case FSResult::INVALID_FILE_NAME:  COUT << std::format("Invalid Filename\n"); co_return 1; break;\
+                default: \
+                    break;\
+            }\
 
         DEF_FUNC_HELP("ls", "Lists files and directories")
         {
@@ -1918,7 +1929,9 @@ public:
             {
                 path = ARGS[1];
                 HANDLE_PATH(CWD, path);
-                SYSTEM.mkdir(path);
+
+                auto res = SYSTEM.mkdir(path);
+                FS_PRINT_ERROR(res);
             }
             else
             {
@@ -1940,7 +1953,11 @@ public:
                 {
                     path = ARGS[i];
                     HANDLE_PATH(CWD, path);
-                    SYSTEM.rm(path);
+                    if(!SYSTEM.rm(path))
+                    {
+                        COUT << std::format("Error deleting file: {}", path.c_str());
+                        co_return 1;
+                    }
                 }
             }
             else
@@ -1962,7 +1979,8 @@ public:
                 {
                     path = ARGS[i];
                     HANDLE_PATH(CWD, path);
-                    SYSTEM.touch(path);
+                    auto res = SYSTEM.touch(path);
+                    FS_PRINT_ERROR(res);
                 }
             }
             else
@@ -2022,15 +2040,8 @@ public:
                     HANDLE_PATH(CWD, vfs_path);
 
                     auto er = SYSTEM.mount(ARGS[1], vfs_path);
-                    if(er.has_value())
-                    {
-                        co_return er.value();
-                    }
-                    else
-                    {
-                        COUT << std::format("Error\n");
-                        co_return 1;
-                    }
+                    FS_PRINT_ERROR(er);
+                    co_return 0;
                 }
                 else
                 {
@@ -2052,7 +2063,8 @@ public:
                 path_type p = ARGS[1];
                 if(p.is_relative())
                     p = CWD / p;
-                SYSTEM.umount(p);
+                auto res = SYSTEM.umount(p);
+                FS_PRINT_ERROR(res);
                 co_return 0;
             }
             COUT << std::format("Unknown error\nUsage:\n umount <mount point>\n");
