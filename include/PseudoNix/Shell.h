@@ -820,7 +820,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
     System::exit_code_type ret_value=0;
     if(std::errc() != std::from_chars(ENV["?"].data(), ENV["?"].data() + ENV["?"].size(), ret_value).ec)
     {
-        co_return ret_value;
+        co_return 0;
     }
     co_return std::move(ret_value);
 }

@@ -2,7 +2,6 @@
 #include <doctest/doctest.h>
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
-#include <PseudoNix/Shell2.h>
 
 using namespace PseudoNix;
 
