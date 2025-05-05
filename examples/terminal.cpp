@@ -114,6 +114,7 @@ public:
 #if defined CMAKE_SOURCE_DIR
             E.env["CMAKE_SOURCE_DIR"] = CMAKE_SOURCE_DIR;
             E.env["CMAKE_BINARY_DIR"] = CMAKE_BINARY_DIR;
+            E.env["COMPILE_DATE"] = std::format("{} {}", __DATE__, __TIME__);
 #endif
         };
 
@@ -147,6 +148,7 @@ echo "/etc/profile" in the Virtual File System"
 echo ""
 echo "You are user: ${USER}
 echo "This is SHELL_PID: ${SHELL_PID}
+echo "Compiled Date: ${COMPILE_DATE}
 echo ""
 echo "type 'help' for a list of commands"
 echo "###################################"

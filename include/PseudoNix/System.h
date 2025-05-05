@@ -945,7 +945,8 @@ struct System : public PseudoNix::FileSystem
             // New tasks will not be added to this queue
             // because of the double buffering
             DEBUG_INFO("{}: Total size: {}", queue_name, POP_Q.size_approx());
-            while(_processQueue(POP_Q, PUSH_Q,  queue_name));
+            while(_processQueue(POP_Q, PUSH_Q,  queue_name))
+                ;
             DEBUG_INFO(": {}Finished Total size: {}", queue_name, POP_Q.size_approx());
             if(queue_name != "MAIN")
                 return PUSH_Q.size_approx() + POP_Q.size_approx();
@@ -1696,7 +1697,7 @@ public:
             //
             PSEUDONIX_PROC_START(ctrl);
             #if defined __EMSCRIPTEN__
-            COUT << "This command does not work on Emscripten at the moment.\n"
+            COUT << "This command does not work on Emscripten at the moment.\n";
             co_return 1;
             #endif
             std::string s;

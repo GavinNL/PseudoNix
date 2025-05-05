@@ -78,7 +78,7 @@ private:
 
 class FileStream : public std::iostream {
 public:
-    FileStream()
+    FileStream() : std::iostream(nullptr)
     {
     }
 
@@ -301,7 +301,7 @@ struct FileSystem
         assert(path.is_absolute());
 
         path_type root;
-        for(auto & p : path)
+        for(auto const & p : path)
         {
             root /= p;
             auto it = m_nodes.find(root);
@@ -931,7 +931,7 @@ protected:
 
         path_type root;
         auto it = m_nodes.end();
-        for(auto & p : path)
+        for(auto const & p : path)
         {
             root /= p;
             it = m_nodes.find(root);
@@ -958,7 +958,7 @@ protected:
 
         path_type root;
         auto it = m_nodes.end();
-        for(auto & p : path)
+        for(auto const & p : path)
         {
             root /= p;
             it = m_nodes.find(root);
