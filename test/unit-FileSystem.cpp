@@ -32,7 +32,12 @@ SCENARIO("Test FS linux/windows")
 
     auto _clean = [](path const& P1)
     {
-        auto p = P1;
+        auto str = P1.generic_string();
+        std::replace_copy_if(str.begin(), str.end(), str.begin(),[](auto &&C )
+        {
+            return C=='\\';
+        }, '/');
+        path p = str;
         if (p.filename().empty())
         {
             p = p.parent_path();
@@ -64,11 +69,23 @@ SCENARIO("Test FS linux/windows")
     REQUIRE(_clean("\\home\\gavin\\").generic_string() == "/home/gavin");
     REQUIRE(_clean("\\home\\gavin\\").has_root_directory() == true);
 
-    REQUIRE(_clean("\\home\\gavin").generic_string() == "/home/gavin");
-    REQUIRE(_clean("\\home\\gavin").has_root_directory() == true);
+    REQUIRE(_clean("\\home\\\\gavin").generic_string() == "/home/gavin");
+    REQUIRE(_clean("\\home\\\\gavin").has_root_directory() == true);
 
     REQUIRE(_clean("/home/gavin").generic_string() == "/home/gavin");
     REQUIRE(_clean("/home/gavin").has_root_directory() == true);
+
+    REQUIRE(_clean("/home///gavin").generic_string() == "/home/gavin");
+    REQUIRE(_clean("/home///gavin").has_root_directory() == true);
+
+    REQUIRE(_clean("/home/./gavin").generic_string() == "/home/gavin");
+    REQUIRE(_clean("/home/./gavin").has_root_directory() == true);
+
+    REQUIRE(_clean("/home/../home/gavin").generic_string() == "/home/gavin");
+    REQUIRE(_clean("/home/../home/gavin").has_root_directory() == true);
+
+    REQUIRE(_clean("\\home\\..\\home\\gavin").generic_string() == "/home/gavin");
+    REQUIRE(_clean("\\home\\..\\home\\gavin").has_root_directory() == true);
 
     REQUIRE(_clean("/home/gavin/").generic_string() == "/home/gavin");
     REQUIRE(_clean("/home/gavin/").has_root_directory() == true);
