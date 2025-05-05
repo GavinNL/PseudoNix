@@ -109,6 +109,7 @@ enum class FSResult
     NOT_EMPTY,
     NOT_VALID_MOUNT,
     NOT_VALID_PATH,
+    NOT_A_DIRECTORY,
     READ_ONLY_FILESYSTEM,
     HOST_DOES_NOT_EXIST,
     CANNOT_CREATE,
@@ -335,6 +336,14 @@ struct FileSystem
         return _is<NodeCustom>(p);
     }
 
+    /**
+     * @brief list_dir
+     * @param path
+     * @return
+     *
+     * Returns a generator which lists all files/directores
+     * in the given paths
+     */
     std::generator<path_type> list_dir(path_type path) const
     {
         _clean(path);
@@ -369,21 +378,49 @@ struct FileSystem
         co_return;
     }
 
+    /**
+     * @brief mkdir
+     * @param path
+     * @return
+     *
+     * Creates a directory
+     */
     FSResult mkdir(path_type path)
     {
         return _mk<NodeDir>(path, true);
     }
 
+    /**
+     * @brief mkcustom
+     * @param path
+     * @return
+     *
+     * Creates a custom file
+     */
     FSResult mkcustom(path_type path)
     {
         return _mk<NodeCustom>(path, false);
     }
 
+    /**
+     * @brief touch
+     * @param path
+     * @return
+     *
+     * Creates an empty file
+     */
     FSResult touch(path_type path)
     {
         return _mk<NodeFile>(path, false);
     }
 
+    /**
+     * @brief is_empty
+     * @param path
+     * @return
+     *
+     * Check if a directory is empty
+     */
     FSResult is_empty(path_type path) const
     {
         _clean(path);
@@ -393,6 +430,7 @@ struct FileSystem
         {
             if(std::get<NodeMount>(it->second).is_empty( sub ))
                 return FSResult::TRUE;
+            return FSResult::FALSE;
         }
         else
         {
@@ -404,7 +442,7 @@ struct FileSystem
 
                 if(!std::holds_alternative<NodeDir>(it->second))
                 {
-                    return FSResult::FALSE;
+                    return FSResult::NOT_A_DIRECTORY;
                 }
                 if(it->first.lexically_relative(next->first) == "..")
                 {
@@ -420,6 +458,14 @@ struct FileSystem
         return FSResult::UNKNOWN_ERROR;
     }
 
+    /**
+     * @brief mount
+     * @param host_path
+     * @param path
+     * @return
+     *
+     * Mounts a host directory into the virtual filesystem
+     */
     FSResult mount( path_type host_path, path_type path)
     {
         if( !std::filesystem::is_directory(host_path))
@@ -445,6 +491,13 @@ struct FileSystem
         return FSResult::NOT_VALID_MOUNT;
     }
 
+    /**
+     * @brief umount
+     * @param path
+     * @return
+     *
+     * Unmounts the host directory
+     */
     FSResult umount(path_type path)
     {
         auto [it, sub] = find_parent_mount_split_it(path);
@@ -535,6 +588,14 @@ struct FileSystem
         return FSResult::UNKNOWN_ERROR;
     }
 
+    /**
+     * @brief rm
+     * @param src
+     * @return
+     *
+     * Removes a file from the virtual filesystem
+     * If src points to file on the host, that file will be deleted
+     */
     bool rm(path_type src)
     {
         _clean(src);
@@ -552,6 +613,17 @@ struct FileSystem
         return false;
     }
 
+    /**
+     * @brief copy
+     * @param src
+     * @param dst
+     * @return
+     *
+     * Copy a file from one path to another. Both src and dst
+     * must exist and must be either  HOST_FILE or a MEM_FILE.
+     *
+     * Dont use this: use "cp"
+     */
     FSResult copy(path_type const & src, path_type const & dst)
     {
         auto src_type = get_type(src);
@@ -579,6 +651,17 @@ struct FileSystem
         return FSResult::UNKNOWN_ERROR;
     }
 
+    /**
+     * @brief move
+     * @param src
+     * @param dst
+     * @return
+     *
+     * Movies a file from one path to another. Both src and dst must
+     * exist and must be either a HOST_FILE or a MEM_FILE.
+     *
+     * Don't use this: use "mv"
+     */
     FSResult move(path_type const & src, path_type const & dst)
     {
         // requirements:
@@ -623,6 +706,13 @@ struct FileSystem
         return FSResult::UNKNOWN_ERROR;
     }
 
+    /**
+     * @brief fs
+     * @param path
+     * @return
+     *
+     * Gets a reference to a file in the system
+     */
     NodeRef fs(path_type path)
     {
         return getNode(path);
@@ -681,6 +771,13 @@ struct FileSystem
         throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
     }
 
+    /**
+     * @brief host_path
+     * @param path
+     * @return
+     *
+     * Returns the path on the host file system the file exists
+     */
     path_type host_path(path_type path) const
     {
         auto [it, sub] = find_parent_mount_split_it(path);
@@ -690,6 +787,14 @@ struct FileSystem
         return std::get<NodeMount>(it->second).host_path / path.lexically_relative(it->first);
     }
 
+    /**
+     * @brief open
+     * @param path
+     * @param openmode
+     * @return
+     *
+     * Opens a file for reading/writing
+     */
     FileStream open(path_type path,  std::ios::openmode openmode)
     {
         assert(path.is_absolute());
@@ -712,6 +817,13 @@ struct FileSystem
         return {};
     }
 
+    /**
+     * @brief get_type
+     * @param path
+     * @return
+     *
+     * Returns the type of the file
+     */
     Type get_type(path_type path) const
     {
         assert(path.is_absolute());
