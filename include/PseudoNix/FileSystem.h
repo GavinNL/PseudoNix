@@ -254,11 +254,7 @@ struct NodeMount
     {
         namespace fs = std::filesystem;
         auto abs_path = host_path / path;
-        for (const auto& entry : fs::directory_iterator(abs_path)) {
-            (void)entry;
-            return false;
-        }
-        return true;
+        return fs::is_empty(abs_path);
     }
     generator<std::filesystem::path> list_dir(std::filesystem::path path) const
     {
@@ -684,8 +680,6 @@ struct FileSystem
             //Fout << Fin.rdbuf();
             return FSResult::Success;
         }
-
-        return FSResult::UnknownError;
     }
 
     /**

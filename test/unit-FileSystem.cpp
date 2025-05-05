@@ -1,9 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
-//#include <PseudoNix/FileSystem.h>
+#include <PseudoNix/FileSystem.h>
 #include <filesystem>
-//using namespace PseudoNix;
+#include <coroutine>
 
+using namespace PseudoNix;
 
 SCENARIO("Test FS linux/windows")
 {
@@ -92,7 +93,7 @@ SCENARIO("Test FS linux/windows")
 
 }
 
-#if 0
+#if 1
 bool mkdir(FileSystem &F, std::filesystem::path const & p)
 {
     REQUIRE(F.mkdir(p)    == FSResult::Success);
