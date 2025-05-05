@@ -1,8 +1,6 @@
 #ifndef PSEUDONIX_FILESYSTEM_H
 #define PSEUDONIX_FILESYSTEM_H
 
-#define WIN32_LEAN_AND_MEAN
-#define NOBOOL
 #include <format>
 #include <map>
 #include <string>
@@ -12,18 +10,9 @@
 #include <filesystem>
 #include <fstream>
 #include <any>
+#include <vector>
+#include "generator.h"
 
-#ifndef _WIN32
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wold-style-cast" // Example: disable specific warning
-#pragma GCC diagnostic ignored "-Wshadow" // Example: disable specific warning
-#include "generator.h"
-#pragma GCC diagnostic pop
-#else
-#pragma warning(push, 0)
-#include "generator.h"
-#pragma warning(pop)
-#endif
 
 namespace PseudoNix
 {
