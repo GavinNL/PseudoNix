@@ -673,13 +673,14 @@ struct FileSystem
 
             auto Fout = this->open(dst, std::ios::out);
             auto Fin  = this->open(src, std::ios::in);
-            char _buff[1024*1024];
+            std::vector<char> _buff(1024 * 1024);
+
             while(!Fin.eof())
             {
-                auto s = Fin.readsome(_buff, 1024*1024-1);
+                auto s = Fin.readsome(&_buff[0], 1024*1024 - 1);
                 if(s==0)
                     break;
-                Fout.write(_buff,s);
+                Fout.write(&_buff[0], s);
             }
             //Fout << Fin.rdbuf();
             return FSResult::Success;
