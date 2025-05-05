@@ -5,6 +5,7 @@
 
 #include "System.h"
 #include "defer.h"
+#include <ranges>
 
 namespace PseudoNix
 {
@@ -204,7 +205,7 @@ inline std::string var_sub1(std::string_view str, std::map<std::string,std::stri
     {
         auto sub = str.substr(i,2);
 
-        if(sub == "$?" || sub == "${" || (sub[0]=='$' && std::isalpha(sub[1])) )
+        if(sub == "$?" || sub == "$!" || sub == "${" || (sub[0]=='$' && std::isalpha(sub[1])) )
         {
             std::string var_name;
             for(i=i+1; i<str.size(); i++)
@@ -281,6 +282,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
         if(SYSTEM.exists(_args[1]))
         {
             script = SYSTEM.file_to_string(_args[1]);
+            script += "\nexit;";
         }
         else
         {
@@ -376,6 +378,41 @@ inline System::task_type shell_coro(System::e_type ctrl)
             run_in_background = true;
         }
 
+        // Check the Path variable
+        {
+            auto & PATH = ENV["PATH"];
+            auto parts = PATH
+                         | std::views::split(':')
+                         | std::views::transform([](auto &&subrange) {
+                               return std::string_view(&*subrange.begin(), static_cast<size_t>(std::ranges::distance(subrange)));
+                           });
+            for(auto subPath : parts)
+            {
+                auto bin_loc = System::path_type(subPath) / args[0];
+                if(SYSTEM.exists(bin_loc))
+                {
+
+                    std::vector<std::string> newargs;
+
+                    // Set all the argument variables $0, $1, $2...
+                    // first
+                    for(size_t i=0;i<args.size();i++)
+                    {
+                        newargs.push_back(std::format("{}={}", i, args[i]));
+                    }
+                    // add the sh shell
+                    newargs.push_back("sh");
+
+                    // and the location of the script
+                    newargs.push_back(bin_loc.generic_string());
+
+                    args = newargs;
+                    break;
+                }
+            }
+        }
+
+
         if( run_in_background )
         {
             auto STDIN = System::make_stream();
@@ -392,6 +429,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
             auto pids = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), STDIN, ctrl->out);
 
             COUT << std::format("{}\n", pids[0]);
+            ENV["!"] = std::format("{}", pids[0]);
             continue;
         }
 
