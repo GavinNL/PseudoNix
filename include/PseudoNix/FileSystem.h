@@ -1,6 +1,8 @@
 #ifndef PSEUDONIX_FILESYSTEM_H
 #define PSEUDONIX_FILESYSTEM_H
 
+#define WIN32_LEAN_AND_MEAN
+#define NOBOOL
 #include <format>
 #include <map>
 #include <string>
@@ -11,11 +13,17 @@
 #include <fstream>
 #include <any>
 
+#ifndef _WIN32
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast" // Example: disable specific warning
 #pragma GCC diagnostic ignored "-Wshadow" // Example: disable specific warning
 #include "generator.h"
 #pragma GCC diagnostic pop
+#else
+#pragma warning(push, 0)
+#include "generator.h"
+#pragma warning(pop)
+#endif
 
 namespace PseudoNix
 {
@@ -102,8 +110,8 @@ private:
 enum class FSResult
 {
     SUCCESS,
-    TRUE,
-    FALSE,
+    True,
+    False,
     PATH_EXISTS,
     DOES_NOT_EXIST,
     NOT_EMPTY,
@@ -321,6 +329,20 @@ struct FileSystem
         return true;
     }
 
+    template<typename T>
+    bool _is(path_type p)
+    {
+        _clean(p);
+        auto [it, sub] = find_parent_mount_split_it(p);
+        if (it != m_nodes.end())
+        {
+            if (std::holds_alternative<NodeMount>(it->second))
+                return std::get<NodeMount>(it->second)._is<T>(sub);
+            return std::holds_alternative<T>(it->second);
+        }
+        return false;
+    }
+
     bool is_dir(path_type p)
     {
         return _is<NodeDir>(p);
@@ -429,8 +451,8 @@ struct FileSystem
         if(!sub.empty())
         {
             if(std::get<NodeMount>(it->second).is_empty( sub ))
-                return FSResult::TRUE;
-            return FSResult::FALSE;
+                return FSResult::True;
+            return FSResult::False;
         }
         else
         {
@@ -438,7 +460,7 @@ struct FileSystem
             {
                 auto next = std::next(it);
                 if(next == m_nodes.end())
-                    return FSResult::TRUE;
+                    return FSResult::True;
 
                 if(!std::holds_alternative<NodeDir>(it->second))
                 {
@@ -446,9 +468,9 @@ struct FileSystem
                 }
                 if(it->first.lexically_relative(next->first) == "..")
                 {
-                    return FSResult::FALSE;
+                    return FSResult::False;
                 }
-                return FSResult::TRUE;
+                return FSResult::True;
             }
             else
             {
@@ -480,7 +502,7 @@ struct FileSystem
         if(!sub.empty())
             return FSResult::NOT_VALID_MOUNT;
 
-        if(is_empty(path) != FSResult::TRUE)
+        if(is_empty(path) != FSResult::True)
             return FSResult::NOT_EMPTY;
 
         if( std::holds_alternative<NodeDir>(it->second))
@@ -735,7 +757,7 @@ struct FileSystem
                 {}
             };
         }
-        throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
+        throw std::out_of_range(std::format("{} does not exist", path.string()));
     }
 
 
@@ -750,9 +772,9 @@ struct FileSystem
             {
                 return std::get<T>(it->second);
             }
-            throw std::out_of_range(std::format("{} is not a custom file", path.c_str()).c_str());
+            throw std::out_of_range(std::format("{} is not a custom file", path.string()));
         }
-        throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
+        throw std::out_of_range(std::format("{} does not exist", path.string()));
     }
 
     template<typename T>
@@ -766,9 +788,9 @@ struct FileSystem
             {
                 return std::get<T>(it->second);
             }
-            throw std::out_of_range(std::format("{} is not a custom file", path.c_str()).c_str());
+            throw std::out_of_range(std::format("{} is not a custom file", path.string()));
         }
-        throw std::out_of_range(std::format("{} does not exist", path.c_str()).c_str());
+        throw std::out_of_range(std::format("{} does not exist", path.string()));
     }
 
     /**
@@ -864,19 +886,7 @@ struct FileSystem
     }
 
 protected:
-    template<typename T>
-    bool _is(path_type p)
-    {
-        _clean(p);
-        auto [it, sub] = find_parent_mount_split_it(p);
-        if( it != m_nodes.end())
-        {
-            if(std::holds_alternative<NodeMount>(it->second))
-                return std::get<NodeMount>(it->second)._is<T>(sub);
-            return std::holds_alternative<T>(it->second);
-        }
-        return false;
-    }
+
 
     template<typename T>
     FSResult _mk(path_type path, bool make_parent_dirs)

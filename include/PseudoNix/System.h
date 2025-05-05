@@ -1,6 +1,8 @@
 #ifndef PSEUDONIX_SYSTEM_H
 #define PSEUDONIX_SYSTEM_H
 
+#define WIN32_LEAN_AND_MEAN
+#define NOBOOL
 #include <vector>
 #include <string>
 #include <map>
@@ -1888,7 +1890,7 @@ public:
         DEF_FUNC_HELP("pwd", "Prints the current working directory")
         {
             PSEUDONIX_PROC_START(ctrl);
-            COUT << std::format("{}\n", ctrl->cwd.c_str());
+            COUT << std::format("{}\n", ctrl->cwd.string());
             co_return 0;
         };
 
@@ -1922,7 +1924,7 @@ public:
 
             for(auto u : SYSTEM.list_dir(path))
             {
-                COUT << std::format("{}\n", u.lexically_relative(path).c_str());
+                COUT << std::format("{}\n", u.lexically_relative(path).string());
             }
 
             co_return 0;
@@ -1962,7 +1964,7 @@ public:
                     HANDLE_PATH(CWD, path);
                     if(!SYSTEM.rm(path))
                     {
-                        COUT << std::format("Error deleting file: {}", path.c_str());
+                        COUT << std::format("Error deleting file: {}", path.string());
                         co_return 1;
                     }
                 }
@@ -2034,7 +2036,7 @@ public:
                 {
                     if( std::holds_alternative<NodeMount>(n.second) )
                     {
-                        COUT << std::format("{} on {}\n", n.first.c_str(), std::get<NodeMount>(n.second).host_path.c_str());
+                        COUT << std::format("{} on {}\n", n.first.string(), std::get<NodeMount>(n.second).host_path.string());
                     }
                 }
                 co_return 0;

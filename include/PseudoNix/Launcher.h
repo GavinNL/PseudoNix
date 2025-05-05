@@ -2,9 +2,10 @@
 #define PSUDONIX_LAUNCHER_H
 
 #include "System.h"
-//#include "defer.h"
 
 #if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOBOOL
 #include <windows.h>
 #include <conio.h>
 #include <cstddef>
