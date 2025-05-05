@@ -109,20 +109,20 @@ private:
 
 enum class FSResult
 {
-    SUCCESS,
+    Success,
     True,
     False,
-    PATH_EXISTS,
-    DOES_NOT_EXIST,
-    NOT_EMPTY,
-    NOT_VALID_MOUNT,
-    NOT_VALID_PATH,
-    NOT_A_DIRECTORY,
-    READ_ONLY_FILESYSTEM,
-    HOST_DOES_NOT_EXIST,
-    CANNOT_CREATE,
-    INVALID_FILE_NAME,
-    UNKNOWN_ERROR
+    PathExists,
+    DoesNotExist,
+    NotEmpty,
+    NotValidMount,
+    NotValidPath,
+    NotADirectory,
+    ReadOnlyFileSystem,
+    HostDoesNotExist,
+    CannotCreate,
+    InvalidFileName,
+    UnknownError
 };
 
 enum class Type
@@ -208,7 +208,7 @@ struct NodeMount
         }
         if constexpr( std::is_same_v<T, NodeCustom> )
         {
-            return FSResult::CANNOT_CREATE;
+            return FSResult::CannotCreate;
         }
     }
     bool remove(std::filesystem::path const & path) const
@@ -230,22 +230,22 @@ struct NodeMount
     {
         assert(path.is_relative());
         if(read_only)
-            return FSResult::READ_ONLY_FILESYSTEM;
+            return FSResult::ReadOnlyFileSystem;
         if(std::filesystem::create_directories(host_path / path))
         {
-            return FSResult::SUCCESS;
+            return FSResult::Success;
         }
-        return FSResult::CANNOT_CREATE;
+        return FSResult::CannotCreate;
     }
     FSResult touch(std::filesystem::path const & path)
     {
         assert(path.is_relative());
 
         if(read_only)
-            return FSResult::READ_ONLY_FILESYSTEM;;
+            return FSResult::ReadOnlyFileSystem;;
         std::ofstream out(host_path/path);
         out.close();
-        return FSResult::SUCCESS;
+        return FSResult::Success;
     }
     bool is_empty(std::filesystem::path const & path) const
     {
@@ -464,7 +464,7 @@ struct FileSystem
 
                 if(!std::holds_alternative<NodeDir>(it->second))
                 {
-                    return FSResult::NOT_A_DIRECTORY;
+                    return FSResult::NotADirectory;
                 }
                 if(it->first.lexically_relative(next->first) == "..")
                 {
@@ -474,10 +474,10 @@ struct FileSystem
             }
             else
             {
-                return FSResult::DOES_NOT_EXIST;
+                return FSResult::DoesNotExist;
             }
         }
-        return FSResult::UNKNOWN_ERROR;
+        return FSResult::UnknownError;
     }
 
     /**
@@ -492,7 +492,7 @@ struct FileSystem
     {
         if( !std::filesystem::is_directory(host_path))
         {
-            return FSResult::HOST_DOES_NOT_EXIST;
+            return FSResult::HostDoesNotExist;
         }
 
         auto [it, sub] = find_parent_mount_split_it(path);
@@ -500,17 +500,17 @@ struct FileSystem
         // that path already exists inside
         // a mount point
         if(!sub.empty())
-            return FSResult::NOT_VALID_MOUNT;
+            return FSResult::NotValidMount;
 
         if(is_empty(path) != FSResult::True)
-            return FSResult::NOT_EMPTY;
+            return FSResult::NotEmpty;
 
         if( std::holds_alternative<NodeDir>(it->second))
         {
             it->second = NodeMount{host_path};
-            return FSResult::SUCCESS;
+            return FSResult::Success;
         }
-        return FSResult::NOT_VALID_MOUNT;
+        return FSResult::NotValidMount;
     }
 
     /**
@@ -529,11 +529,11 @@ struct FileSystem
             if(std::holds_alternative<NodeMount>(it->second))
             {
                 it->second = NodeDir{};
-                return FSResult::SUCCESS;
+                return FSResult::Success;
             }
         }
 
-        return FSResult::NOT_VALID_MOUNT;
+        return FSResult::NotValidMount;
     }
 
     /**
@@ -569,10 +569,10 @@ struct FileSystem
                 touch(dst);
                 return copy(src, dst);
             }
-            return FSResult::NOT_VALID_PATH;
+            return FSResult::NotValidPath;
         }
 
-        return FSResult::UNKNOWN_ERROR;
+        return FSResult::UnknownError;
     }
 
     /**
@@ -605,9 +605,9 @@ struct FileSystem
                 touch(dst);
                 return move(src, dst);
             }
-            return FSResult::NOT_VALID_PATH;
+            return FSResult::NotValidPath;
         }
-        return FSResult::UNKNOWN_ERROR;
+        return FSResult::UnknownError;
     }
 
     /**
@@ -667,10 +667,10 @@ struct FileSystem
                 Fout.write(_buff,s);
             }
             //Fout << Fin.rdbuf();
-            return FSResult::SUCCESS;
+            return FSResult::Success;
         }
 
-        return FSResult::UNKNOWN_ERROR;
+        return FSResult::UnknownError;
     }
 
     /**
@@ -703,12 +703,12 @@ struct FileSystem
             cp(src, dst);
 
             // todo: delete src
-            return FSResult::SUCCESS;
+            return FSResult::Success;
         }
         else if(src_type == Type::HOST_FILE && dst_type == Type::HOST_FILE)
         {
             std::filesystem::rename(host_path(src), host_path(dst));
-            return FSResult::SUCCESS;
+            return FSResult::Success;
         }
         else if(src_type == Type::MEM_FILE && dst_type == Type::MEM_FILE)
         {
@@ -716,16 +716,16 @@ struct FileSystem
             auto & sd = get<NodeFile>(dst);
             sd.filedata = std::move(sn.filedata);
             m_nodes.erase(src);
-            return FSResult::SUCCESS;
+            return FSResult::Success;
         }
         else if(src_type == Type::MEM_FILE && dst_type == Type::HOST_FILE)
         {
             cp(src, dst);
             m_nodes.erase(src);
-            return FSResult::SUCCESS;
+            return FSResult::Success;
         }
 
-        return FSResult::UNKNOWN_ERROR;
+        return FSResult::UnknownError;
     }
 
     /**
@@ -900,12 +900,12 @@ protected:
             return true;
         }))
         {
-            return FSResult::INVALID_FILE_NAME;
+            return FSResult::InvalidFileName;
         }
 
         assert(path.is_absolute());
         if(exists(path))
-            return FSResult::PATH_EXISTS;
+            return FSResult::PathExists;
 
         auto [it, sub] = find_parent_mount_split_it(path);
         if(!sub.empty())
@@ -915,7 +915,7 @@ protected:
         else if (it != m_nodes.end())
         {
             // path exists
-            return FSResult::PATH_EXISTS;
+            return FSResult::PathExists;
         }
 
         // path doesn't exist
@@ -926,11 +926,11 @@ protected:
 
         if(!is_dir(path.parent_path()))
         {
-            return FSResult::NOT_VALID_PATH;
+            return FSResult::NotValidPath;
         }
 
         m_nodes[path] = T{};
-        return FSResult::SUCCESS;
+        return FSResult::Success;
     }
 
     std::pair<decltype(m_nodes)::const_iterator, path_type> find_parent_mount_split_it(path_type path) const

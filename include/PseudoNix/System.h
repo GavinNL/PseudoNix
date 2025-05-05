@@ -1897,13 +1897,13 @@ public:
 #define FS_PRINT_ERROR(_error) \
         switch(_error)\
             {\
-                case FSResult::PATH_EXISTS:        COUT << std::format("Directory already exists.\n"); co_return 1; break;\
-                case FSResult::DOES_NOT_EXIST:     COUT << std::format("Does not exist\n"); co_return 1; break;\
-                case FSResult::NOT_EMPTY:          COUT << std::format("Not Empty\n"); co_return 1; break;\
-                case FSResult::NOT_VALID_MOUNT:    COUT << std::format("Not a valid Mount\n"); co_return 1; break;\
-                case FSResult::HOST_DOES_NOT_EXIST:COUT << std::format("Host does not exist\n"); co_return 1; break;\
-                case FSResult::CANNOT_CREATE:      COUT << std::format("Cannot create\n"); co_return 1; break;\
-                case FSResult::INVALID_FILE_NAME:  COUT << std::format("Invalid Filename\n"); co_return 1; break;\
+                case FSResult::PathExists:        COUT << std::format("Directory already exists.\n"); co_return 1; break;\
+                case FSResult::DoesNotExist:     COUT << std::format("Does not exist\n"); co_return 1; break;\
+                case FSResult::NotEmpty:          COUT << std::format("Not Empty\n"); co_return 1; break;\
+                case FSResult::NotValidMount:    COUT << std::format("Not a valid Mount\n"); co_return 1; break;\
+                case FSResult::HostDoesNotExist: COUT << std::format("Host does not exist\n"); co_return 1; break;\
+                case FSResult::CannotCreate:      COUT << std::format("Cannot create\n"); co_return 1; break;\
+                case FSResult::InvalidFileName:  COUT << std::format("Invalid Filename\n"); co_return 1; break;\
                 default: \
                     break;\
             }\

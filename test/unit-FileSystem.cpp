@@ -1,16 +1,15 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
-#include<thread>
 #include <PseudoNix/FileSystem.h>
 
 using namespace PseudoNix;
 
 bool mkdir(FileSystem &F, std::filesystem::path const & p)
 {
-    REQUIRE(F.mkdir(p)    == FSResult::SUCCESS);
+    REQUIRE(F.mkdir(p)    == FSResult::Success);
     REQUIRE(F.is_dir(p)   == true);
     REQUIRE(F.is_file(p)  == false);
-    REQUIRE(F.is_empty(p) == FSResult::TRUE);
+    REQUIRE(F.is_empty(p) == FSResult::True);
     REQUIRE(F.exists(p)   == true);
     return true;
 }
@@ -27,7 +26,7 @@ SCENARIO("is_empty")
 {
     FileSystem F;
 
-    REQUIRE(F.is_empty("/") == FSResult::TRUE);
+    REQUIRE(F.is_empty("/") == FSResult::True);
 }
 
 SCENARIO("mkdir")
@@ -42,11 +41,11 @@ SCENARIO("mkdir")
     REQUIRE(F.exists("/usr") == true);
     REQUIRE(F.exists("/lib") == true);
 
-    REQUIRE(F.is_empty("/home") == FSResult::TRUE);
-    REQUIRE(F.is_empty("/usr") == FSResult::TRUE);
-    REQUIRE(F.is_empty("/lib") == FSResult::TRUE);
+    REQUIRE(F.is_empty("/home") == FSResult::True);
+    REQUIRE(F.is_empty("/usr") == FSResult::True);
+    REQUIRE(F.is_empty("/lib") == FSResult::True);
 
-    REQUIRE(F.is_empty("/var") == FSResult::DOES_NOT_EXIST);
+    REQUIRE(F.is_empty("/var") == FSResult::DoesNotExist);
 }
 
 SCENARIO("touch")
@@ -54,14 +53,14 @@ SCENARIO("touch")
     FileSystem F;
 
     F.mkdir("/home");
-    REQUIRE(F.is_empty("/home") == FSResult::TRUE);
+    REQUIRE(F.is_empty("/home") == FSResult::True);
 
     F.touch("/home/file.txt");
 
     REQUIRE(F.exists("/home/file.txt"));
     REQUIRE(F.is_file("/home/file.txt"));
 
-    REQUIRE(F.is_empty("/home/file2.txt") == FSResult::DOES_NOT_EXIST);
+    REQUIRE(F.is_empty("/home/file2.txt") == FSResult::DoesNotExist);
     REQUIRE(F.is_file("/home/file2.txt") == false);
 }
 
@@ -69,7 +68,7 @@ SCENARIO("Custom file")
 {
     FileSystem F;
 
-    REQUIRE(F.mkcustom("/test") == FSResult::SUCCESS);
+    REQUIRE(F.mkcustom("/test") == FSResult::Success);
 
     REQUIRE_NOTHROW( F.get<NodeCustom>("/test") );
     F.get<NodeCustom>("/test").data = 32;
@@ -85,17 +84,17 @@ SCENARIO("Mount")
     GIVEN("A filesystem and a directory")
     {
         REQUIRE(F.exists("/"));
-        REQUIRE(F.mkdir("/src") == FSResult::SUCCESS);
-        REQUIRE(F.mkdir("/build") == FSResult::SUCCESS );
-        REQUIRE(F.mkdir("/a/b/c/d") == FSResult::SUCCESS);
+        REQUIRE(F.mkdir("/src") == FSResult::Success);
+        REQUIRE(F.mkdir("/build") == FSResult::Success );
+        REQUIRE(F.mkdir("/a/b/c/d") == FSResult::Success);
 
         WHEN("We mount a host directory")
         {
-            REQUIRE(F.mount(CMAKE_SOURCE_DIR, "/src"  ) == FSResult::SUCCESS);
-            REQUIRE(F.mount(CMAKE_BINARY_DIR, "/build") == FSResult::SUCCESS);
+            REQUIRE(F.mount(CMAKE_SOURCE_DIR, "/src"  ) == FSResult::Success);
+            REQUIRE(F.mount(CMAKE_BINARY_DIR, "/build") == FSResult::Success);
 
             // cannot mount on the same spot
-            REQUIRE(F.mount(CMAKE_SOURCE_DIR, "/src") == FSResult::NOT_VALID_MOUNT);
+            REQUIRE(F.mount(CMAKE_SOURCE_DIR, "/src") == FSResult::NotValidMount);
 
             THEN("We can query the files as if they were in the VFS")
             {
@@ -118,16 +117,16 @@ SCENARIO("Mount")
             {
                 std::filesystem::remove_all(CMAKE_BINARY_DIR "/test-folder");
 
-                REQUIRE(F.mkdir("/build/test-folder") == FSResult::SUCCESS);
+                REQUIRE(F.mkdir("/build/test-folder") == FSResult::Success);
                 REQUIRE(F.exists("/build/test-folder") == true);
                 REQUIRE(F.exists("/build/test-folder/noexist.txt") == false);
                 REQUIRE(F.is_file("/build/test-folder/noexist.txt") == false);
 
                 // Cannot mount within a host tree
-                REQUIRE(F.mount(CMAKE_SOURCE_DIR, "/build/test-folder") == FSResult::NOT_VALID_MOUNT);
+                REQUIRE(F.mount(CMAKE_SOURCE_DIR, "/build/test-folder") == FSResult::NotValidMount);
                 {
                     REQUIRE(std::filesystem::is_directory(CMAKE_BINARY_DIR "/test-folder"));
-                    REQUIRE(F.is_empty("/build/test-folder") == FSResult::TRUE);
+                    REQUIRE(F.is_empty("/build/test-folder") == FSResult::True);
                 }
 
                 {
@@ -168,7 +167,7 @@ SCENARIO("Opening Files")
     F.mount(CMAKE_SOURCE_DIR, "/src");
     F.mount(CMAKE_BINARY_DIR, "/bin");
 
-    REQUIRE(F.touch("/test.txt") == FSResult::SUCCESS);
+    REQUIRE(F.touch("/test.txt") == FSResult::Success);
 
     REQUIRE_NOTHROW( F.get<NodeFile>("/test.txt") );
     F.fs("/test.txt") << "Hello world\nGoodbye world";
@@ -224,7 +223,7 @@ SCENARIO("Opening Files")
 
     WHEN("We copy from the host to mem")
     {
-        REQUIRE(F.cp("/src/conanfile.py", "/conanfile.py") == FSResult::SUCCESS);
+        REQUIRE(F.cp("/src/conanfile.py", "/conanfile.py") == FSResult::Success);
 
         THEN("The dst now exists")
         {
@@ -239,7 +238,7 @@ SCENARIO("Opening Files")
         {
             std::filesystem::remove(CMAKE_BINARY_DIR "/conanfile.py");
             REQUIRE(!std::filesystem::exists(CMAKE_BINARY_DIR "/conanfile.py" ));
-            REQUIRE(F.cp("/conanfile.py", "/bin/conanfile.py") == FSResult::SUCCESS);
+            REQUIRE(F.cp("/conanfile.py", "/bin/conanfile.py") == FSResult::Success);
 
             THEN("The dst now exists")
             {
