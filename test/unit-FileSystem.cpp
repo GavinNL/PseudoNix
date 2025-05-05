@@ -281,6 +281,17 @@ SCENARIO("Opening Files")
         std::getline(f, str);
         REQUIRE(str == "from conan import ConanFile");
     }
+    THEN("We can use read on the stream")
+    {
+        auto f = F.open("/src/conanfile.py", std::ios::in | std::ios::binary);
+        REQUIRE(f);
+
+        std::vector<char> bytes(1024 * 1024);
+        f.read(&bytes[0], 1024 * 1024);
+        auto count = f.gcount();
+        
+        REQUIRE(count > 0);
+    }
     THEN("We can open the memory file")
     {
         auto f = F.open("/test.txt", std::ios::in);
@@ -290,6 +301,17 @@ SCENARIO("Opening Files")
 
         f >> str;
         REQUIRE(str == "Goodbye");
+    }
+    THEN("We can use read on the stream")
+    {
+        auto f = F.open("/test.txt", std::ios::in | std::ios::binary);
+        REQUIRE(f);
+
+        std::vector<char> bytes(1024 * 1024);
+        f.read(&bytes[0], 1024 * 1024);
+        auto count = f.gcount();
+
+        REQUIRE(count > 0);
     }
     THEN("We can open the memory file")
     {
@@ -303,7 +325,7 @@ SCENARIO("Opening Files")
     }
 }
 
-SCENARIO("Opening Files")
+SCENARIO("Copying/Moving Files")
 {
     FileSystem F;
     F.mkdir("/src");

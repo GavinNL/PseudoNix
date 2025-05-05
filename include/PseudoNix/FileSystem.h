@@ -677,7 +677,8 @@ struct FileSystem
 
             while(!Fin.eof())
             {
-                auto s = Fin.readsome(&_buff[0], 1024*1024 - 1);
+                Fin.read(&_buff[0], 1024*1024 - 1);
+                auto s = Fin.gcount();
                 if(s==0)
                     break;
                 Fout.write(&_buff[0], s);
