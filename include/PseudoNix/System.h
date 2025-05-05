@@ -926,7 +926,8 @@ struct System : public PseudoNix::FileSystem
     {
         m_main_thread_id = std::this_thread::get_id();
         auto T0 = std::chrono::system_clock::now();
-        while(maxIter > 0 && (std::chrono::system_clock::now()-T0) < maxComputeTime )
+
+        while(maxIter > 0 )
         {
             maxIter--;
             // Execute all the processes in order of their PID
@@ -985,6 +986,9 @@ struct System : public PseudoNix::FileSystem
                     ++it;
                 }
             }
+
+            if(std::chrono::system_clock::now()-T0 > maxComputeTime)
+                break;
         }
         m_main_thread_id = {};
         return m_procs2.size();
