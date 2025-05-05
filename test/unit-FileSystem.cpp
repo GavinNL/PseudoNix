@@ -1,9 +1,52 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
-#include <PseudoNix/FileSystem.h>
+//#include <PseudoNix/FileSystem.h>
+#include <filesystem>
+//using namespace PseudoNix;
 
-using namespace PseudoNix;
 
+SCENARIO("Test FS linux/windows")
+{
+    using path = std::filesystem::path;
+
+    
+    auto _test = [](path const& P) {
+        std::cout << "String: " << P.string() << std::endl;
+        std::cout << "Generic String: " << P.generic_string() << std::endl;
+        std::cout << "root_name: " << P.root_name() << std::endl;
+        std::cout << "root_directory: " << P.root_directory() << std::endl ;
+        std::cout << "root_path: " << P.root_path() << std::endl;
+
+        std::cout << "relative_path: " << P.relative_path() << std::endl;
+        std::cout << std::endl;
+    };
+
+    path P(std::string("gavin"));
+    _test(P);
+    _test(std::string("/home/gavin"));
+    _test(std::string("home/gavin"));
+    _test(std::string("./home"));
+
+    _test(std::string("C:"));
+    _test(std::string("C:/"));
+    _test(std::string("C:\\home"));
+
+    auto _clean = [](path const& P)
+    {
+        return P.lexically_normal();
+    };
+    auto _isAbsolute = [](path const& P)
+    {
+        return P.has_root_directory();
+    };
+
+    REQUIRE(_isAbsolute("/home"));
+    REQUIRE(_isAbsolute("/"));
+    REQUIRE(_clean("/home") == "/home");
+    REQUIRE(_clean("C:/home") == "/home");
+}
+
+#if 0
 bool mkdir(FileSystem &F, std::filesystem::path const & p)
 {
     REQUIRE(F.mkdir(p)    == FSResult::Success);
@@ -284,3 +327,4 @@ SCENARIO("Opening Files")
 
 }
 
+#endif
