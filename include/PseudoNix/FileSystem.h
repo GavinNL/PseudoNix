@@ -665,11 +665,8 @@ struct FileSystem
      */
     FSResult copy(path_type const & src, path_type const & dst)
     {
-        auto src_type = get_type(src);
-        auto dst_type = get_type(dst);
-
-        assert(src_type == Type::MEM_FILE || src_type == Type::HOST_FILE);
-        assert(dst_type == Type::MEM_FILE || dst_type == Type::HOST_FILE);
+        assert(get_type(src) == Type::MEM_FILE || get_type(src) == Type::HOST_FILE);
+        assert(get_type(dst) == Type::MEM_FILE || get_type(dst) == Type::HOST_FILE);
 
         {
 
