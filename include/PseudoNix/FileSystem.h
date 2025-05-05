@@ -269,12 +269,7 @@ using Node = std::variant<NodeDir, NodeFile, NodeCustom, NodeMount>;
 
 void _clean(std::filesystem::path & P1)
 {
-    auto str = P1.generic_string();
-    for(auto & s : str)
-    {
-        if(s=='\\') s = '/';
-    }
-    std::filesystem::path p = str;
+    auto& p = P1;
     if (p.filename().empty())
     {
         p = p.parent_path();
@@ -282,9 +277,17 @@ void _clean(std::filesystem::path & P1)
     if(p.has_root_directory())
     {
         P1 = std::filesystem::path("/") / p.lexically_normal().relative_path();
-        return;
     }
-    P1 = p.lexically_normal().relative_path();
+    else
+    {
+        P1 = p.lexically_normal().relative_path();
+    }
+    auto str = P1.generic_string();
+    for (auto& s : str)
+    {
+        if (s == '\\') s = '/';
+    }
+    P1 = std::filesystem::path(str);
 }
 
 struct NodeRef
@@ -505,6 +508,7 @@ struct FileSystem
         {
             return FSResult::HostDoesNotExist;
         }
+        _clean(path);
 
         auto [it, sub] = find_parent_mount_split_it(path);
 
@@ -857,6 +861,7 @@ struct FileSystem
      */
     Type get_type(path_type path) const
     {
+        _clean(path);
         assert(path.has_root_directory());
 
         auto [it, sub] = find_parent_mount_split_it(path);
