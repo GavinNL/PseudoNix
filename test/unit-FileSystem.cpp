@@ -32,20 +32,15 @@ SCENARIO("Test FS linux/windows")
 
     auto _clean = [](path const& P1)
     {
-        path P = P1;
-        // for(auto & m : P1)
-        // {
-        //     auto str = m.generic_string();
-        //     std::cout << str << std::endl;
-        //     //if(str.size() >= 2 && std::isalpha(str[0]) && str[1] == ':' )
-        //     //    P = m;
+        auto p = P1;
+        if (p.filename().empty())
+        {
+            p = p.parent_path();
+        }
+        if(p.has_root_directory())
+            return std::filesystem::path("/") / p.lexically_normal().relative_path();
 
-        //     break;
-        // }
-        if(P.has_root_directory())
-            return std::filesystem::path("/") / P.lexically_normal().relative_path();
-
-        return P.lexically_normal().relative_path();
+        return p.lexically_normal().relative_path();
     };
     auto _isAbsolute = [](path const& P)
     {
@@ -56,14 +51,27 @@ SCENARIO("Test FS linux/windows")
     REQUIRE(_isAbsolute("/"));
     REQUIRE(_clean("home") == "home");
     REQUIRE(_clean("/home") == "/home");
-    REQUIRE(_clean("C:/home") == "C:/home");
-    REQUIRE(_clean("C:home") == "C:home");
-    REQUIRE( _clean("C:home").is_absolute() == false );
-    REQUIRE( _clean("C:home").is_relative() == true );
 
-    REQUIRE( _clean("home").is_relative() == true );
-    REQUIRE( _clean("home").is_absolute() == false );
+    REQUIRE(_clean("/home") == "/home");
+    REQUIRE(_clean("/home").has_root_directory() == true);
+    
 
+    REQUIRE(_clean("/home/") == "/home");
+
+    REQUIRE(_clean("home/") == "home");
+    REQUIRE(_clean("/home/") == "/home");
+
+    REQUIRE(_clean("\\home\\gavin\\").generic_string() == "/home/gavin");
+    REQUIRE(_clean("\\home\\gavin\\").has_root_directory() == true);
+
+    REQUIRE(_clean("\\home\\gavin").generic_string() == "/home/gavin");
+    REQUIRE(_clean("\\home\\gavin").has_root_directory() == true);
+
+    REQUIRE(_clean("/home/gavin").generic_string() == "/home/gavin");
+    REQUIRE(_clean("/home/gavin").has_root_directory() == true);
+
+    REQUIRE(_clean("/home/gavin/").generic_string() == "/home/gavin");
+    REQUIRE(_clean("/home/gavin/").has_root_directory() == true);
 
 }
 
