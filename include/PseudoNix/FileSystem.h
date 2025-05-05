@@ -267,13 +267,17 @@ struct NodeMount
 };
 using Node = std::variant<NodeDir, NodeFile, NodeCustom, NodeMount>;
 
-void _clean(std::filesystem::path & P1)
+inline void _clean(std::filesystem::path & P1)
 {
     auto& p = P1;
-    if (p.filename().empty())
+
+    auto str = P1.generic_string();
+    for (auto& s : str)
     {
-        p = p.parent_path();
+        if (s == '\\') s = '/';
     }
+    P1 = std::filesystem::path(str);
+
     if(p.has_root_directory())
     {
         P1 = std::filesystem::path("/") / p.lexically_normal().relative_path();
@@ -282,12 +286,12 @@ void _clean(std::filesystem::path & P1)
     {
         P1 = p.lexically_normal().relative_path();
     }
-    auto str = P1.generic_string();
-    for (auto& s : str)
+
+
+    if (P1.filename().empty())
     {
-        if (s == '\\') s = '/';
+        P1 = p.parent_path();
     }
-    P1 = std::filesystem::path(str);
 }
 
 struct NodeRef
@@ -308,7 +312,16 @@ struct FileSystem
         m_nodes["/"] = NodeDir{ };
     }
 
-
+    auto find_node(path_type path)
+    {
+        _clean(path);
+        return m_nodes.find(path);
+    }
+    auto find_node(path_type path) const
+    {
+        _clean(path);
+        return m_nodes.find(path);
+    }
     /**
      * @brief exists
      * @param path
@@ -326,7 +339,7 @@ struct FileSystem
         for(auto const & p : path)
         {
             root /= p;
-            auto it = m_nodes.find(root);
+            auto it = find_node(root);
             if(it != m_nodes.end())
             {
                 // found
@@ -342,6 +355,7 @@ struct FileSystem
         }
         return true;
     }
+
 
     template<typename T>
     bool _is(path_type p)
@@ -385,7 +399,7 @@ struct FileSystem
         _clean(path);
         auto [it, sub] = find_parent_mount_split_it(path);
 
-        //auto it = m_nodes.find(path);
+        //auto it = find_node(path);
         if(it != m_nodes.end())
         {
             if(std::holds_alternative<NodeDir>(it->second))
@@ -780,7 +794,7 @@ struct FileSystem
     T& get(path_type path)
     {
         _clean(path);
-        auto it = m_nodes.find(path);
+        auto it = find_node(path);
         if(it != m_nodes.end())
         {
             if(std::holds_alternative<T>(it->second))
@@ -796,7 +810,7 @@ struct FileSystem
     T const & get(path_type path) const
     {
         _clean(path);
-        auto it = m_nodes.find(path);
+        auto it = find_node(path);
         if(it != m_nodes.end())
         {
             if(std::holds_alternative<T>(it->second))
@@ -867,7 +881,7 @@ struct FileSystem
         assert(path.has_root_directory());
 
         auto [it, sub] = find_parent_mount_split_it(path);
-        //auto it = m_nodes.find(path);
+        //auto it = find_node(path);
         if(!sub.empty())
         {
             auto & MNT = std::get<NodeMount>(it->second);
@@ -960,13 +974,15 @@ protected:
         for(auto const & p : path)
         {
             root /= p;
-            it = m_nodes.find(root);
+            it = find_node(root);
             if(it != m_nodes.end())
             {
                 // found
                 if(std::holds_alternative<NodeMount>(it->second))
                 {
-                    return {it, path.lexically_relative(root)};
+                    auto outpath =path.lexically_relative(root);
+                    _clean(outpath);
+                    return {it, outpath};
                 }
             }
             else
@@ -987,7 +1003,7 @@ protected:
         for(auto const & p : path)
         {
             root /= p;
-            it = m_nodes.find(root);
+            it = find_node(root);
             if(it != m_nodes.end())
             {
                 // found

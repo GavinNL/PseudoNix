@@ -1,8 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 #include <PseudoNix/FileSystem.h>
-#include <filesystem>
-#include <coroutine>
 
 using namespace PseudoNix;
 
@@ -31,65 +29,54 @@ SCENARIO("Test FS linux/windows")
     _test(std::string("C:\\home"));
     _test(std::string("C:/home"));
 
-    auto _clean = [](path const& P1)
-    {
-        auto str = P1.generic_string();
-        std::replace_copy_if(str.begin(), str.end(), str.begin(),[](auto &&C )
-        {
-            return C=='\\';
-        }, '/');
-        path p = str;
-        if (p.filename().empty())
-        {
-            p = p.parent_path();
-        }
-        if(p.has_root_directory())
-            return std::filesystem::path("/") / p.lexically_normal().relative_path();
-
-        return p.lexically_normal().relative_path();
-    };
     auto _isAbsolute = [](path const& P)
     {
         return P.has_root_directory();
     };
 
+    auto CLEAN = [](path P)
+    {
+        _clean(P);
+        return P;
+    };
+
     REQUIRE(_isAbsolute("/home"));
     REQUIRE(_isAbsolute("/"));
-    REQUIRE(_clean("home") == "home");
-    REQUIRE(_clean("/home") == "/home");
+    REQUIRE(CLEAN("home") == "home");
+    REQUIRE(CLEAN("/home") == "/home");
 
-    REQUIRE(_clean("/home") == "/home");
-    REQUIRE(_clean("/home").has_root_directory() == true);
+    REQUIRE(CLEAN("/home") == "/home");
+    REQUIRE(CLEAN("/home").has_root_directory() == true);
     
 
-    REQUIRE(_clean("/home/") == "/home");
+    REQUIRE(CLEAN("/home/") == "/home");
 
-    REQUIRE(_clean("home/") == "home");
-    REQUIRE(_clean("/home/") == "/home");
+    REQUIRE(CLEAN("home/") == "home");
+    REQUIRE(CLEAN("/home/") == "/home");
 
-    REQUIRE(_clean("\\home\\gavin\\").generic_string() == "/home/gavin");
-    REQUIRE(_clean("\\home\\gavin\\").has_root_directory() == true);
+    REQUIRE(CLEAN("\\home\\gavin\\").generic_string() == "/home/gavin");
+    REQUIRE(CLEAN("\\home\\gavin\\").has_root_directory() == true);
 
-    REQUIRE(_clean("\\home\\\\gavin").generic_string() == "/home/gavin");
-    REQUIRE(_clean("\\home\\\\gavin").has_root_directory() == true);
+    REQUIRE(CLEAN("\\home\\\\gavin").generic_string() == "/home/gavin");
+    REQUIRE(CLEAN("\\home\\\\gavin").has_root_directory() == true);
 
-    REQUIRE(_clean("/home/gavin").generic_string() == "/home/gavin");
-    REQUIRE(_clean("/home/gavin").has_root_directory() == true);
+    REQUIRE(CLEAN("/home/gavin").generic_string() == "/home/gavin");
+    REQUIRE(CLEAN("/home/gavin").has_root_directory() == true);
 
-    REQUIRE(_clean("/home///gavin").generic_string() == "/home/gavin");
-    REQUIRE(_clean("/home///gavin").has_root_directory() == true);
+    REQUIRE(CLEAN("/home///gavin").generic_string() == "/home/gavin");
+    REQUIRE(CLEAN("/home///gavin").has_root_directory() == true);
 
-    REQUIRE(_clean("/home/./gavin").generic_string() == "/home/gavin");
-    REQUIRE(_clean("/home/./gavin").has_root_directory() == true);
+    REQUIRE(CLEAN("/home/./gavin").generic_string() == "/home/gavin");
+    REQUIRE(CLEAN("/home/./gavin").has_root_directory() == true);
 
-    REQUIRE(_clean("/home/../home/gavin").generic_string() == "/home/gavin");
-    REQUIRE(_clean("/home/../home/gavin").has_root_directory() == true);
+    REQUIRE(CLEAN("/home/../home/gavin").generic_string() == "/home/gavin");
+    REQUIRE(CLEAN("/home/../home/gavin").has_root_directory() == true);
 
-    REQUIRE(_clean("\\home\\..\\home\\gavin").generic_string() == "/home/gavin");
-    REQUIRE(_clean("\\home\\..\\home\\gavin").has_root_directory() == true);
+    REQUIRE(CLEAN("\\home\\..\\home\\gavin").generic_string() == "/home/gavin");
+    REQUIRE(CLEAN("\\home\\..\\home\\gavin").has_root_directory() == true);
 
-    REQUIRE(_clean("/home/gavin/").generic_string() == "/home/gavin");
-    REQUIRE(_clean("/home/gavin/").has_root_directory() == true);
+    REQUIRE(CLEAN("/home/gavin/").generic_string() == "/home/gavin");
+    REQUIRE(CLEAN("/home/gavin/").has_root_directory() == true);
 
 }
 
