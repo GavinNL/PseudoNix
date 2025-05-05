@@ -32,33 +32,13 @@ int main(int argc, char** argv)
     // Add the shell function to System
     // This isn't added by default because it's quite a large
     // function and you might want to add your own
-    //
-    //
-    // This function also allows you to customize how the shell behaves
-    // by binding an initial ShellEnv
-    //
-    PseudoNix::ShellEnv shellEnv;
-    shellEnv.rc_text = R"foo(
-echo "========================================================"
-echo "Welcome to the shell"
-echo " "
-echo "use the [help] command to see all the commands available
-echo "========================================================"
-SHELL=sh
-USER=bob
-echo Hello ${USER}. Welcome to ${SHELL}
-export USER
-export SHELL
-export HOME
+    M.setFunction("sh"      , "The default shell", PseudoNix::shell_coro);
+    M.setFunction("launcher", "Launches another process and redirects stdin/out to the process.", PseudoNix::launcher_coro);
 
-)foo";
-    // bind the shellEnv input to the shell function
-    M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, shellEnv));
-
-    M.setFunction("launcher", PseudoNix::launcher_coro);
     //=============================================================================
 
-    M.setFunction("guess", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+    // Here's a very simple guessing game process
+    M.setFunction("guess", "A simple guessing game", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
     {
         // Macro to define a few variables such as
         // IN, OUT, ENV, SYSTEM, ARGS, PID
@@ -106,6 +86,30 @@ export HOME
 
         co_return 0;
     });
+
+
+    //=============================================================================
+    // The shell process reads teh virtual file system for the /etc/profile
+    // file and reads that in if it exists. lets create one so that
+    // all shells have some initial information set
+    M.mkdir("/etc");
+    M.touch("/etc/profile"); // create a file in the VFS
+    M.fs("/etc/profile") << std::string(R"foo(
+USER=bob
+HOME="/"
+export USER
+echo "###################################"
+echo "Welcome to the shell!"
+echo ""
+echo "The shell process automatically sources the"
+echo "/etc/profile" in the Virtual File System"
+echo ""
+echo "You are user: ${USER}
+echo "This is SHELL_PID: ${SHELL_PID}
+echo ""
+echo "type 'help' for a list of commands"
+echo "###################################"
+)foo");
 
     // If we start our main process, "sh", then it will create its own
     // input and output streams, but we have no way write to the input stream
@@ -158,8 +162,13 @@ export HOME
                        + M.taskQueueExecute("MAIN")
                        + M.taskQueueExecute("POST_MAIN");
 
+
+    // This while loop is basically your system's gameloop
+    // You should call taskQueueExecute("MAIN")
+    // in somwhere
+    //
     while(true)
-    {
+    {       
         auto total_tasks =  M.taskQueueExecute("PRE_MAIN") +
                           + M.taskQueueExecute("MAIN")
                           + M.taskQueueExecute("POST_MAIN");

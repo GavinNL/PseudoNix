@@ -10,20 +10,12 @@ namespace PseudoNix
 
 inline System::task_type terminalWindow_coro(System::e_type ctrl)
 {
+    PSEUDONIX_PROC_START(ctrl);
 
     static int term_count=1;
     std::string terminal_name = std::format("Terminal {}", term_count++);
 
     ConsoleWindow console;
-
-    console.AddLog("# Try the following commands:");
-    console.AddLog("# ");
-    console.AddLog("# help");
-    console.AddLog("# echo hello ${USER}");
-    console.AddLog("# env");
-    console.AddLog("# env | rev");
-    console.AddLog("# true && echo");
-    console.AddLog("# ps");
 
     // This is going to be an ImGui process and we are
     // going to get command line inputs from the ImGui::TextEdit
@@ -34,25 +26,23 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
     // and place it into the stream manually
     std::string _cmdline;
 
-    auto & m_mini = *ctrl->system;
-
 #if 0
     auto shell_stdin = System::make_stream();
     auto shell_stdout = System::make_stream();
     System::pid_type sh_pid = 0xFFFFFFFF;
 #else
-    std::vector<std::string> args(ctrl->args.begin()+1, ctrl->args.end());
+    std::vector<std::string> args(ARGS.begin()+1, ARGS.end());
     if(args.empty())
         args.push_back("sh");
     auto sh_pid = ctrl->executeSubProcess(System::parseArguments(args));
     // Grab the input and output streams for the shell
     // command
-    auto [shell_stdin, shell_stdout] = m_mini.getIO(sh_pid);
+    auto [shell_stdin, shell_stdout] = SYSTEM.getIO(sh_pid);
 #endif
 
     bool open = true;
-    bool show_buttons = !(ctrl->env.count("NO_SHOW_BUTTONS") == 1);
-    bool exit_if_subprocess_exits = !(ctrl->env.count("NO_AUTO_CLOSE") == 1);
+    bool show_buttons = !(ENV.count("NO_SHOW_BUTTONS") == 1);
+    bool exit_if_subprocess_exits = !(ENV.count("NO_AUTO_CLOSE") == 1);
     //bool exit_if_subprocess_exits = true;
 
 
@@ -78,12 +68,12 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
             {
                 if( ImGui::Button("New Terminal") )
                 {
-                    m_mini.runRawCommand({ctrl->args});
+                    SYSTEM.runRawCommand({ARGS});
                 }
                 ImGui::SameLine();
                 if( ImGui::Button("Sig-Int (Ctrl+C)") )
                 {
-                    m_mini.signal(sh_pid, PseudoNix::sig_interrupt);
+                    SYSTEM.signal(sh_pid, PseudoNix::sig_interrupt);
                 }
                 ImGui::SameLine();
                 if( ImGui::Button("End Stream (Ctrl+D)") )
@@ -93,7 +83,7 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
                 ImGui::SameLine();
                 if( ImGui::Button("Sig-Term") )
                 {
-                    m_mini.signal(sh_pid, PseudoNix::sig_terminate);
+                    SYSTEM.signal(sh_pid, PseudoNix::sig_terminate);
                 }
             }
             // Draw the console and invoke the callback if
@@ -110,13 +100,13 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
         }
         //--------------------------------------------------------------
 
-        if(exit_if_subprocess_exits && !ctrl->system->isRunning(sh_pid)) break;
+        if(exit_if_subprocess_exits && !SYSTEM.isRunning(sh_pid)) break;
 
         auto returned_signal = co_await ctrl->await_yield();
 
         switch(returned_signal)
         {
-            case PseudoNix::AwaiterResult::SIGNAL_INTERRUPT:   ctrl->system->clearSignal(ctrl->get_pid()); break;
+            case PseudoNix::AwaiterResult::SIGNAL_INTERRUPT:   SYSTEM.clearSignal(PID); break;
             case PseudoNix::AwaiterResult::SIGNAL_TERMINATE: { co_return static_cast<int>(PseudoNix::exit_terminated);}
                 default: break;
         }
@@ -128,9 +118,9 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
         }
     }
 
-    if(ctrl->system->isRunning(sh_pid))
+    if(SYSTEM.isRunning(sh_pid))
     {
-        ctrl->system->kill(sh_pid);
+        SYSTEM.kill(sh_pid);
         co_await ctrl->await_finished(sh_pid);
     }
 

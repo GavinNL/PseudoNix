@@ -49,9 +49,9 @@ Def operator << (Def::tmp, T && v)
     return Def{v};
 }
 
-#define _bl_defer(id) _bl_defer_##id
-#define bl_defer auto _bl_defer(__COUNTER__) = PseudoNix::Def::tmp() << [&]()
-#define PSEUDONIX_TRAP bl_defer
+#define PN_CONCAT_IMPL( x, y ) x##y
+#define PN_MACRO_CONCAT( x, y ) PN_CONCAT_IMPL( x, y )
+#define PSEUDONIX_TRAP auto PN_MACRO_CONCAT( deferVar, __COUNTER__ ) = PseudoNix::Def::tmp() << [&]()
 
 }
 //==========================================================================

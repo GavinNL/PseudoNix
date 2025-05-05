@@ -121,98 +121,13 @@ struct Tokenizer3
 };
 
 
-
-struct ShellEnv;
-inline std::map<uint32_t, ShellEnv> _shells;
-
 struct ShellEnv
 {
     std::string                        rc_text;
-    std::map<std::string, bool>        exportedVar;
-    std::map<std::string, std::string> env;
-    bool                               exitShell = false;
-    System::pid_type                   shellPID = 0;
-    bool                               isSigTerm = false;
-
-    // child PIDs
-    struct Internal_
-    {
-        std::vector<System::pid_type>   pids;
-    };
-    std::shared_ptr<Internal_> internal = std::make_shared<Internal_>();
-
-
-    static void setFuncs(System * L)
-    {
-        #define _GET_SHELL \
-                System::pid_type shell_pid = static_cast<System::pid_type>(std::stoul(ex->env["SHELL_PID"]));\
-                    auto *shell = &_shells[shell_pid];\
-                    if(!shell)\
-                    co_return 0;\
-
-        L->setFunction("exit", [](System::e_type ex) -> System::task_type
-            {
-                _GET_SHELL
-
-                shell->exitShell = true;
-                co_return 0;
-        });
-        L->setFunction("", [](System::e_type ex) -> System::task_type
-        {
-            _GET_SHELL
-            (void)ex;
-            // This function will be called, if we set environment variables
-            // but didn't call an actual function, eg:
-            //     VAR=value VAR2=value2
-            for(auto & [var,val] : ex->env)
-            {
-                shell->env[var] = val;
-            }
-            co_return 0;
-        });
-        L->setFunction("export", [](System::e_type ex) -> System::task_type
-        {
-            _GET_SHELL
-
-            // used to export variables
-            for(size_t i=1;i<ex->args.size();i++)
-            {
-                auto [var,val] = splitVar(ex->args[i]);
-                if(!var.empty() && !val.empty())
-                {
-                    // if the arg looked like: VAR=VAL
-                    // then set the variable as well as
-                    // export it
-                    shell->exportedVar[std::string(var)] = true;
-                    shell->env[std::string(var)] = val;
-                }
-                else
-                {
-                    // just export the variable
-                    shell->exportedVar[std::string(ex->args[i])] = true;
-                }
-            }
-            co_return 0;
-        });
-
-        L->setFunction("exported", [](System::e_type ex) -> System::task_type
-        {
-            _GET_SHELL
-            // used to export variables
-            (void)ex;
-            for(auto & x : shell->exportedVar)
-            {
-                *ex->out << x.first << '\n';
-            }
-            co_return 0;
-        });
-    }
 };
-
 
 inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> tokens,
                              System::ProcessControl * proc,
-                             ShellEnv * exported_environment,
                              std::shared_ptr<System::stream_type> in={},
                              std::shared_ptr<System::stream_type> out={})
 {
@@ -234,35 +149,22 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
     E.front().in = in;
     E.back().out = out;
 
-    // Copy all the exported varaibles to
-    // each of the processes we're going to be running
-    for(auto & [name, exp] : exported_environment->exportedVar)
-    {
-        if(exported_environment->env.count(name))
-        {
-            for(auto & e : E)
-                e.env[name] = exported_environment->env[name];
-        }
-    }
-
     for(auto & e : E)
     {
-        // Copy the SHELL_PID value so that
-        // calling functions can know which shell its running under
-        e.env["SHELL_PID"] = std::to_string(exported_environment->shellPID);
-
-        // we set variables, but didnt call a function, eg: CC=gcc CXX=g++
-        //
-        // We can use this to set environment variables for the shell
-        //
-        if(e.args.empty())
+        if(e.env.size() > 0 && e.args.size() == 0)
         {
             e.args.push_back("");
         }
     }
 
     auto pids = proc->executeSubProcess(E);
-
+    auto me = proc->get_pid();//exported_environment->shellPID;
+    auto my_cwd = proc->system->getProcessControl(me)->cwd;
+    for(auto p : pids)
+    {
+        if(p != invalid_pid)
+            proc->system->getProcessControl(p)->chdir(my_cwd);
+    }
     return pids;
 }
 
@@ -326,93 +228,134 @@ inline std::string var_sub1(std::string_view str, std::map<std::string,std::stri
 }
 
 
-inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
+inline System::task_type shell_coro(System::e_type ctrl)
 {
     PSEUDONIX_PROC_START(ctrl);
 
+    std::string const &shell_name = ARGS[0];
     std::string _current;
-
+    std::string script = "";
     int ret_value = 0;
 
 
-    auto & shellEnv = _shells[PID];
-
-    shellEnv = shellEnv1;
-    ShellEnv::setFuncs(&SYSTEM);
-
-    if(ARGS.end() == std::find(ARGS.begin(), ARGS.end(), "--noprofile"))
+    ctrl->exported["SHELL_PID"] = true;
+    ctrl->env["SHELL_PID"] = std::to_string(PID);
+    //===========================================================================
+    // Parse arguments. Probably should use an external library for this
+    // but didn't want to add the dependnecy
+    //===========================================================================
+    auto _args = ARGS;
+    auto no_profile = std::find(_args.begin(), _args.end(), "--noprofile");
+    bool load_etc_profile = true;
+    if(_args.end() != no_profile)
     {
         // Copy the rc_text into the
         // the input stream so that
         // it will be executed first
-        CIN << shellEnv.rc_text;
+        //script += shellEnv.rc_text;
+        _args.erase(no_profile);
+        load_etc_profile = false;
     }
-
-    // Copy the additional environment variables
-    // into our workinv variables
-    for(auto & [var, val] : ENV)
+    if(load_etc_profile && SYSTEM.exists("/etc/profile"))
     {
-        shellEnv.env[var] = val;
+        script += SYSTEM.file_to_string("/etc/profile");
     }
-    shellEnv.shellPID = PID;
-    assert(shellEnv.shellPID != 0xFFFFFFFF);
 
-    std::string shell_name = ARGS[0];
+    auto dash_c = std::find(_args.begin(), _args.end(), "-c");
+    if(dash_c != _args.end())
+    {
+        auto cmd_i = std::next(dash_c);
+        if(cmd_i != ARGS.end())
+        {
+            script += *cmd_i;
+            // make sure there is an exit statement at the
+            // end of the script so that it will
+            // exit the the process when done
+            script += "\nexit;";
+            _args.erase(dash_c, dash_c + 2);
+        }
+    }
 
+    if(_args.size() > 1)
+    {
+        if(SYSTEM.exists(_args[1]))
+        {
+            script = SYSTEM.file_to_string(_args[1]);
+        }
+        else
+        {
+            COUT << std::format("{}: {}: no such file or directory\n", ARGS[0], _args[1]);
+        }
+    }
 
     std::vector<System::pid_type> subProcess;
 
-    while(!shellEnv.exitShell)
-    {
-        HANDLE_AWAIT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
+    std::istringstream i_script(script);
+    bool from_script = script.size() > 0;
+    char c;
+    bool quoted=false;
 
-        char c;
-#if 1
-        while(true)
+    auto & EXIT_SHELL = ENV["EXIT_SHELL"];
+    while(EXIT_SHELL.empty())
+    {
+        if(from_script)
         {
-            auto r = CIN.get(&c);
-            if(r == System::stream_type::Result::END_OF_STREAM)
-                shellEnv.exitShell = true;
-            else if(r == System::stream_type::Result::SUCCESS)
+            while(true)
             {
-                _current += c;
-                if(_current.back() == ';' || _current.back() == '\n')
+                i_script.get(c);
+                if(!i_script.eof())
                 {
-                    _current.pop_back();
+                    _current.push_back(c);
+                    if(_current.back() == ';' || _current.back() == '\n')
+                    {
+                        _current.pop_back();
+                        break;
+                    }
+                }
+                else
+                {
                     break;
                 }
             }
-            else
+            if(i_script.eof() && _current.empty())
             {
-                break;
+                // if we're done reading from the input script
+                // continue as normal.
+                from_script = false;
+                continue;
             }
         }
-#else
-        auto r = CIN.get(&c);
-        if(r == System::stream_type::Result::END_OF_STREAM)
+        else
         {
-            shellEnv.exitShell = true;
-            break;
+            HANDLE_AWAIT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
+            while(true)
+            {
+                auto r = CIN.get(&c);
+                if(r == System::stream_type::Result::END_OF_STREAM)
+                    EXIT_SHELL = "1";
+                else if(r == System::stream_type::Result::SUCCESS)
+                {
+                    _current += c;
+                    if(c=='"') quoted = !quoted;
+                    if(!quoted && (_current.back() == ';' || _current.back() == '\n') )
+                    {
+                        _current.pop_back();
+                        break;
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            }
         }
-        else if(r == System::stream_type::Result::EMPTY)
-        {
-            // unlikely this would happen because of
-            // the await
-            break;
-        }
-        _current += c;
-        if(c != ';' && c != '\n')
-        {
-            continue;
-        }
-        _current.pop_back();
-#endif
+
         if(_current.empty())
         {
             continue;
         }
 
-        auto args = Tokenizer3::to_vector(var_sub1(_current, shellEnv.env));
+        auto args = Tokenizer3::to_vector(var_sub1(_current, ENV));
         _current.clear();
 
         auto first_comment = std::find(args.begin(), args.end(), "#");
@@ -446,7 +389,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
             }
             *STDIN << std::format(";");
             STDIN->set_eof();
-            auto pids = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), &shellEnv, STDIN, ctrl->out);
+            auto pids = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), STDIN, ctrl->out);
 
             COUT << std::format("{}\n", pids[0]);
             continue;
@@ -485,7 +428,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
                     // so execute this as a new shell
                     auto STDIN = System::make_stream();
                     auto STDOUT = System::make_stream();
-                    subProcess = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), &shellEnv, STDIN, STDOUT);
+                    subProcess = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), STDIN, STDOUT);
                     *STDIN << it->substr(2, it->size()-3);
                     *STDIN << ';';
                     STDIN->set_eof(); // make sure to set the eof of the output stream otherwise
@@ -507,7 +450,7 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
 
             //======================================================================
 
-            subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), ctrl.get(), &shellEnv, ctrl->in, ctrl->out);
+            subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), ctrl.get(), ctrl->in, ctrl->out);
             auto f_exit_code = SYSTEM.getProcessExitCode(subProcess.back());
 
             HANDLE_AWAIT_TERM(co_await ctrl->await_finished(subProcess), ctrl)
@@ -522,13 +465,12 @@ inline System::task_type shell_coro(System::e_type ctrl, ShellEnv shellEnv1)
                 ret_value = *f_exit_code;
             }
 
-            shellEnv.env["?"] = std::to_string(ret_value);
+            ENV["?"] = std::to_string(ret_value);
 
             op_args.pop_back();
         }
     }
 
-    //OUT << std::format("exit");
     co_return std::move(ret_value);
 }
 

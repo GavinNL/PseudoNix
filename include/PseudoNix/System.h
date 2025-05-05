@@ -1,6 +1,8 @@
 #ifndef PSEUDONIX_SYSTEM_H
 #define PSEUDONIX_SYSTEM_H
 
+#define WIN32_LEAN_AND_MEAN
+#define NOBOOL
 #include <vector>
 #include <string>
 #include <map>
@@ -12,6 +14,7 @@
 #include <span>
 #include <thread>
 #include <semaphore>
+#include "FileSystem.h"
 
 #define PSEUDONIX_VERSION_MAJOR 0
 #define PSEUDONIX_VERSION_MINOR 1
@@ -126,13 +129,14 @@ enum class AwaiterResult
 };
 
 
-struct System
+struct System : public PseudoNix::FileSystem
 {
     using stream_type      = ReaderWriterStream_t<char>;
     using pid_type         = uint32_t;
     using exit_code_type   = int32_t;
     using task_type        = Task_t<exit_code_type, std::suspend_always, std::suspend_always>;
 
+    constexpr static const char * const DEFAULT_QUEUE = "MAIN";
 
     struct Exec
     {
@@ -233,13 +237,32 @@ struct System
         std::shared_ptr<stream_type>       in;
         std::shared_ptr<stream_type>       out;
         std::map<std::string, std::string> env;
+        std::map<std::string, bool>        exported;
         System * system = nullptr;
         std::string queue_name;
+        path_type cwd = "/";
 
     protected:
         pid_type    pid = invalid_pid;
     public:
 
+        bool chdir(path_type new_dir)
+        {
+            if(!system->exists(new_dir)) return false;
+            if(!new_dir.has_root_directory())
+            {
+                cwd = cwd / new_dir;
+                env["OLDPWD"] = env["PWD"];
+                env["PWD"] = cwd.generic_string();
+            }
+            else
+            {
+                cwd = new_dir;
+                env["OLDPWD"] = env["PWD"];
+                env["PWD"] = cwd.generic_string();
+            }
+            return true;
+        }
         void setSignalHandler(std::function<void(int)> f)
         {
             system->m_procs2.at(pid)->signal = f;
@@ -257,7 +280,7 @@ struct System
          * Yield the current process until the
          * next iteration of the scheduler
          */
-        System::Awaiter await_yield(std::string_view queue="MAIN")
+        System::Awaiter await_yield(std::string_view queue=DEFAULT_QUEUE)
         {
             return System::Awaiter{pid,
                                    system,
@@ -282,7 +305,7 @@ struct System
          *
          * Sleep for an amount of time.
          */
-        System::Awaiter await_yield_for(std::chrono::nanoseconds time, std::string_view queue="MAIN")
+        System::Awaiter await_yield_for(std::chrono::nanoseconds time, std::string_view queue=DEFAULT_QUEUE)
         {
             auto T1 = std::chrono::system_clock::now() + time;
             return System::Awaiter{get_pid(),
@@ -434,6 +457,11 @@ struct System
     {
         m_funcs[name] = _f;
     }
+    void setFunction(std::string name, std::string description, std::function< task_type(e_type) > _f)
+    {
+        m_funcs[name] = _f;
+        spawnProcess({"help", "set", name, description});
+    }
     void removeAllFunctions()
     {
         m_funcs.clear();
@@ -449,7 +477,7 @@ struct System
 
     System()
     {
-        taskQueueCreate("MAIN");
+        taskQueueCreate(DEFAULT_QUEUE);
 
         setDefaultFunctions();
     }
@@ -582,6 +610,7 @@ struct System
                 throw std::runtime_error("Cannot execute new commands on a separate thread");
             }
         }
+        assert(args.args.size() > 0);
         // Try to find the name of the function to run
         auto it = m_funcs.find(args.args[0]);
         if(it ==  m_funcs.end())
@@ -607,11 +636,27 @@ struct System
         proc_control->out  = args.out;
         proc_control->env  = args.env;
 
+
+        if(parent != invalid_pid)
+        {
+            auto & exported = m_procs2.at(parent)->control->exported;
+            auto & parent_env= m_procs2.at(parent)->control->env;
+
+            for(auto & [var, exp] : exported)
+            {
+                if(parent_env.count(var) && proc_control->env.count(var) == 0)
+                {
+                    proc_control->env[var] = parent_env[var];
+                }
+            }
+        }
+
         // run the function, it is a coroutine:
         // it will return a task}
         auto T = it->second(proc_control);
 
         auto pid = registerProcess(std::move(T), std::move(proc_control), parent);
+        getProcessControl(pid)->chdir("/");
 
         return pid;
     }
@@ -680,7 +725,7 @@ struct System
         // Create custom awaiter that will
         // be placed in the main thread pool
         DEBUG_INFO("Process Registered: {}", join(arg->args) );
-        Proc.first->second->initialAwaiter = Awaiter(_pid, this, [](Awaiter*){return true;}, "MAIN");
+        Proc.first->second->initialAwaiter = Awaiter(_pid, this, [](Awaiter*){return true;}, DEFAULT_QUEUE);
         Proc.first->second->initialAwaiter.handle_ = handle;
         Proc.first->second->initialAwaiter.await_suspend(handle);
 
@@ -788,7 +833,7 @@ struct System
     void _finalizePID(pid_type p)
     {
         auto & coro = *m_procs2.at(p);
-        coro.control->queue_name = "MAIN";
+        coro.control->queue_name = DEFAULT_QUEUE;
         if( coro.task.valid() )
         {
             coro.task.destroy();
@@ -830,25 +875,24 @@ struct System
 
 
     /**
-     * @brief executeAll
+     * @brief _processQueue
+     * @param POP_Q
+     * @param PUSH_Q
+     * @param queue_name
      * @return
      *
-     * Executes all the processes and returns the total
-     * number of processes still in the scheduler
-     *
-     * Executes all the processes in a specific queue.
-     *
-     * The MAIN queue is the only queue that will finalize a
-     * process.
+     * Process a single item on the queue and returns true if it was able to
+     * other wise, return false if no items are on the queue
      *
      */
-
     bool _processQueue(auto & POP_Q, auto & PUSH_Q, std::string queue_name)
     {
         std::pair<Awaiter*, std::shared_ptr<Process> > a;
         auto found = POP_Q.try_dequeue(a);
         if(found)
         {
+            if(!a.first->handle_)
+                return false;
             // its possible that the process had been forcefully killed
             // and the handle to the coroutine no longer valid. So make sure
             // that we do not resume any of those coroutines
@@ -868,65 +912,86 @@ struct System
         return found;
     }
 
-    std::mutex _m;
-    size_t taskQueueExecute(std::string const & queue_name = "MAIN")
+
+    /**
+     * @brief taskQueueExecute
+     * @param queue_name
+     * @param maxComputeTime
+     * @param maxIter
+     * @return
+     *
+     * Execute all the tasks on a particular queue.
+     *
+     * Keep processing the queue until the maxComputeTime has elapsed or maxIterations
+     * has been reached.
+     */
+    size_t taskQueueExecute(std::string const & queue_name = DEFAULT_QUEUE, std::chrono::milliseconds maxComputeTime=std::chrono::milliseconds(15), size_t maxIter = 1)
     {
         m_main_thread_id = std::this_thread::get_id();
+        auto T0 = std::chrono::system_clock::now();
 
-        // Execute all the processes in order of their PID
-        //
-        // Nothing is removed from the container until all
-        // of the objects have been processed
-        auto & POP_Q  = m_awaiters.at(queue_name).get();
-        auto & PUSH_Q = m_awaiters.at(queue_name).get2();
+        while(maxIter > 0 )
         {
-            //std::lock_guard L(_m);
-            m_awaiters.at(queue_name).swap();
-        }
-
-        std::pair<Awaiter*, std::shared_ptr<Process> > a;
-
-        // Process everything on the queue
-        // New tasks will not be added to this queue
-        // because of the double buffering
-        while(_processQueue(POP_Q, PUSH_Q,  queue_name));
-
-        if(queue_name != "MAIN")
-            return PUSH_Q.size_approx() + POP_Q.size_approx();
-
-        // Remove any processes that:
-        //   1. whose task has completed
-        //   2. who is force terminated
-        //
-        auto _end = m_procs2.end();
-        for(auto it = m_procs2.begin(); it!=_end;)
-        {
-            auto & coro = *it->second;
-
-            if(coro.task.done() && !coro.is_complete)
+            maxIter--;
+            // Execute all the processes in order of their PID
+            //
+            // Nothing is removed from the container until all
+            // of the objects have been processed
+            auto & POP_Q  = m_awaiters.at(queue_name).get();
+            auto & PUSH_Q = m_awaiters.at(queue_name).get2();
             {
-                auto exit_code = coro.task();
-                coro.is_complete = true;
-                *coro.exit_code = !coro.force_terminate ? exit_code : -1;
-                coro.should_remove = true;
-                coro.force_terminate = true;
+                m_awaiters.at(queue_name).swap();
             }
 
-            // did someone call kill on the PID?
-            if(coro.force_terminate)
+            std::pair<Awaiter*, std::shared_ptr<Process> > a;
+
+            // Process everything on the queue
+            // New tasks will not be added to this queue
+            // because of the double buffering
+            DEBUG_TRACE("{}: Total size: {}", queue_name, POP_Q.size_approx());
+            while(_processQueue(POP_Q, PUSH_Q,  queue_name))
+                ;
+            DEBUG_TRACE(": {}Finished Total size: {}", queue_name, POP_Q.size_approx());
+            if(queue_name != DEFAULT_QUEUE)
+                return PUSH_Q.size_approx() + POP_Q.size_approx();
+
+            // Remove any processes that:
+            //   1. whose task has completed
+            //   2. who is force terminated
+            //
+            auto _end = m_procs2.end();
+            for(auto it = m_procs2.begin(); it!=_end;)
             {
-                it->second->control->queue_name = queue_name;
-                _finalizePID(it->first);
+                auto & coro = *it->second;
+
+                if(coro.task.done() && !coro.is_complete)
+                {
+                    auto exit_code = coro.task();
+                    coro.is_complete = true;
+                    *coro.exit_code = !coro.force_terminate ? exit_code : -1;
+                    coro.should_remove = true;
+                    coro.force_terminate = true;
+                }
+
+                // did someone call kill on the PID?
+                if(coro.force_terminate)
+                {
+                    it->second->control->queue_name = queue_name;
+                    _finalizePID(it->first);
+                }
+
+                if(coro.should_remove)
+                {
+                    it = m_procs2.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
             }
 
-            if(coro.should_remove)
-            {
-                it = m_procs2.erase(it);
-            }
-            else
-            {
-                ++it;
-            }
+            if(std::chrono::system_clock::now()-T0 > maxComputeTime)
+                break;
         }
         m_main_thread_id = {};
         return m_procs2.size();
@@ -947,7 +1012,7 @@ struct System
         else
         {
             DEBUG_ERROR("{} not found. Adding to MAIN", a->m_queueName);
-            m_awaiters.at("MAIN").enqueue({a,proc});
+            m_awaiters.at(DEFAULT_QUEUE).enqueue({a,proc});
         }
     }
 
@@ -1206,33 +1271,61 @@ public:
             auto const PID  = control->get_pid(); (void)PID;\
             auto & SYSTEM = *control->system; (void)SYSTEM;\
             auto const & ARGS = control->args; (void)ARGS;\
-            auto const & ENV = control->env; (void)ENV; \
-            auto const & QUEUE = control->queue_name; (void)QUEUE
+            auto & ENV = control->env; (void)ENV; \
+            auto const & QUEUE = control->queue_name; (void)QUEUE; \
+            auto const & CWD = control->cwd; (void)CWD;\
+            auto const PARENT_SHELL_PID = ENV.count("SHELL_PID") ? static_cast<PseudoNix::System::pid_type>(std::stoul(ENV["SHELL_PID"])) : PseudoNix::invalid_pid; (void)PARENT_SHELL_PID;\
+            auto SHELL_PROC = PARENT_SHELL_PID != PseudoNix::invalid_pid ? SYSTEM.getProcessControl(PARENT_SHELL_PID) : nullptr; (void)SHELL_PROC
 
-        #define DEF_FUNC(A) m_funcs[A] = [](e_type ctrl) -> task_type
-        DEF_FUNC("false")
+
+
+#define HANDLE_PATH(CWD, path)\
+        {\
+            if(path.is_relative())\
+                path = CWD / path;\
+            path = path.lexically_normal();\
+        }
+
+        std::shared_ptr< std::map<std::string, std::string>> funcDescs = std::make_shared< std::map<std::string, std::string> >();
+        #define DEF_FUNC_HELP(A, help) \
+        (*funcDescs)[A] = help;\
+            m_funcs[A] = [](e_type ctrl) -> task_type
+
+        #define DEF_FUNC(A) DEF_FUNC_HELP(A, "")
+
+        DEF_FUNC_HELP("false", "Returns with exit code 1")
         {
             (void)ctrl;
             co_return 1;
         };
 
-        DEF_FUNC("true")
+        DEF_FUNC_HELP("true", "Returns with exit code 0")
         {
             (void)ctrl;
             co_return 0;
         };
-        DEF_FUNC("help")
+
+        (*funcDescs)["help"] = "Shows the list of commands";
+        m_funcs["help"] = [funcDescs](e_type ctrl) -> task_type
         {
             PSEUDONIX_PROC_START(ctrl);
 
+            //
+            // help set <proc> <desc>
+            //
+            if(ARGS.size() == 4 && ARGS[1] == "set")
+            {
+                (*funcDescs)[ARGS[2]] = ARGS[3];
+                co_return 0;
+            }
             COUT << "List of commands:\n\n";
             for(auto & f : ctrl->system->m_funcs)
             {
-                COUT << f.first << '\n';
+                COUT << std::format("{:15}: {:15}\n", f.first, (*funcDescs)[f.first]);
             }
             co_return 0;
         };
-        DEF_FUNC("env")
+        DEF_FUNC_HELP("env", "Prints out all environment variables")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1242,7 +1335,7 @@ public:
             }
             co_return 0;
         };
-        DEF_FUNC("echo")
+        DEF_FUNC_HELP("echo", "Prints arguments to standard output")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1260,7 +1353,7 @@ public:
 
             co_return 0;
         };
-        DEF_FUNC("yes")
+        DEF_FUNC_HELP("yes", "Keeps printing y to stdout until interrupted")
         {
             // A very basic example of a forever running
             // process
@@ -1275,7 +1368,7 @@ public:
 
             co_return 0;
         };
-        DEF_FUNC("sleep")
+        DEF_FUNC_HELP("sleep", "Pauses for NUMBER seconds")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1294,6 +1387,7 @@ public:
             co_return 0;
         };
 
+        (*funcDescs)["uptime"] = "Number of milliseconds since started";
         m_funcs["uptime"] = [T0=std::chrono::system_clock::now()](e_type ctrl) -> task_type
         {
             PSEUDONIX_PROC_START(ctrl);
@@ -1301,7 +1395,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("rev")
+        DEF_FUNC_HELP("rev", "Reverses the input")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1328,7 +1422,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("wc")
+        DEF_FUNC_HELP("wc", "Counts the number of characters")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1361,7 +1455,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("ps")
+        DEF_FUNC_HELP("ps", "Shows the current process list")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1378,7 +1472,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("kill")
+        DEF_FUNC_HELP("kill", "Terminate a process")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1400,7 +1494,7 @@ public:
             co_return 1;
         };
 
-        DEF_FUNC("signal")
+        DEF_FUNC_HELP("signal", "Send a signal to a process")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1432,7 +1526,7 @@ public:
             co_return 1;
         };
 
-        DEF_FUNC("io_info")
+        DEF_FUNC_HELP("io_info", "Shows IO pointers")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -1443,7 +1537,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("to_std_cout")
+        DEF_FUNC_HELP("to_std_cout", "Pipes process output to standard output")
         {
             PSEUDONIX_PROC_START(ctrl);
             std::string s;
@@ -1462,16 +1556,116 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("ls")
+
+        //========================
+        // Functions for shells
+        //========================
+        DEF_FUNC_HELP("exit", "Exits the shell")
         {
             PSEUDONIX_PROC_START(ctrl);
 
-            COUT << std::format("This function is a placeholder. PsuedoNix does not support a filesystem yet.");
+            // Not running in a shell
+            if(!SHELL_PROC)
+                co_return 0;
+
+            // the shell process will
+            // look at this variable to determine
+            // when to quit
+            SHELL_PROC->env["EXIT_SHELL"] = "1";
 
             co_return 0;
         };
-#if 1
-        DEF_FUNC("spawn")
+
+        DEF_FUNC("")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            // Not running in a shell
+            if(!SHELL_PROC)
+               co_return 0;
+            // This function will be called, if we set environment variables
+            // but didn't call an actual function, eg:
+            //     VAR=value VAR2=value2
+            for(auto & [var,val] : ENV)
+            {
+               SHELL_PROC->env[var] = val;
+            }
+            co_return 0;
+        };
+
+        DEF_FUNC_HELP("export", "Exports environment variables to new processes")
+        {
+           PSEUDONIX_PROC_START(ctrl);
+
+           // Not running in a shell
+           if(!SHELL_PROC)
+               co_return 0;
+           for(size_t i=1;i<ARGS.size();i++)
+           {
+               auto [var, val] = splitVar(ARGS[i]);
+               if(!var.empty() && !val.empty())
+               {
+                   // if the arg looked like: VAR=VAL
+                   // then set the variable as well as
+                   // export it
+                   SHELL_PROC->exported[std::string(var)] = true;
+                   SHELL_PROC->env[std::string(var)] = val;
+               }
+               else
+               {
+                   // just export the variable
+                   SHELL_PROC->exported[std::string(ARGS[i])] = true;
+               }
+           }
+           co_return 0;
+        };
+
+        DEF_FUNC_HELP("exported", "Prints exported environment variables")
+        {
+           PSEUDONIX_PROC_START(ctrl);
+           // Not running in a shell
+           if(!SHELL_PROC)
+               co_return 0;
+           for(auto & x : SHELL_PROC->exported)
+           {
+               COUT << x.first << '\n';
+           }
+           co_return 0;
+        };
+
+        DEF_FUNC_HELP("cd", "Changes the current working directory")
+        {
+           PSEUDONIX_PROC_START(ctrl);
+
+           // Not running in a shell
+           if(!SHELL_PROC)
+               co_return 0;
+
+           if(ARGS.size() == 1)
+           {
+               SHELL_PROC->chdir("/");
+               co_return 0;
+           }
+
+           System::path_type p = ARGS[1];
+           if(p.is_relative())
+               p = SHELL_PROC->cwd / p;
+
+           p = p.lexically_normal();
+           if(!SYSTEM.exists(p))
+           {
+               COUT << std::format("cd: {}: No such file or directory\n", ARGS[1]);
+               co_return 1;
+           }
+
+           if(SHELL_PROC->chdir(p))
+               co_return 0;
+
+           COUT << std::format("Unknown error\n");
+           co_return 1;
+
+        };
+
+        DEF_FUNC_HELP("spawn", "Spawns N instances of the same process")
         {
             // Executes a command N times.
             //
@@ -1501,7 +1695,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("bgrunner")
+        DEF_FUNC_HELP("bgrunner", "Spawn a background thread to process a Task Queue")
         {
             // Executes a Task Queue in a background thread
             // You can call this function on the same Task Queue
@@ -1510,7 +1704,7 @@ public:
             //
             PSEUDONIX_PROC_START(ctrl);
             #if defined __EMSCRIPTEN__
-            COUT << "This command does not work on Emscripten at the moment.\n"
+            COUT << "This command does not work on Emscripten at the moment.\n";
             co_return 1;
             #endif
             std::string s;
@@ -1547,7 +1741,7 @@ public:
             });
 
             PSEUDONIX_TRAP {
-                std::cerr << "TRAPPED: " << QUEUE << std::endl;
+                DEBUG_TRACE("TRAPPED: {}", QUEUE);
                 // set the stop token so the thread will exit
                 // its main loop
                 stop_token = true;
@@ -1567,8 +1761,8 @@ public:
 
             co_return 0;
         };
-#endif
-        DEF_FUNC("queue")
+
+        DEF_FUNC_HELP("queue", "Create/List/Destroy task queues")
         {
             // Lists all the queues and the number of tasks
             // currently in the queue
@@ -1616,7 +1810,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC("queueHopper")
+        DEF_FUNC_HELP("queueHopper", "Example process that hops to different task queues")
         {
             //
             // An example process which executes part of its
@@ -1650,7 +1844,7 @@ public:
 
             // the QUEUE variable defined by PSEUDONIX_PROC_START(ctrl)
             // tells you what queue this process is being executed on
-            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), "MAIN"), ctrl);
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), DEFAULT_QUEUE), ctrl);
 
             {
                 auto _lock = COUT.lock();
@@ -1672,7 +1866,7 @@ public:
                     COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
                 }
 
-                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), "MAIN"), ctrl);
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), DEFAULT_QUEUE), ctrl);
 
                 {
                     auto _lock = COUT.lock();
@@ -1683,7 +1877,7 @@ public:
             // finally make sure we are on the main queue
             // when we exit so that the TRAP function will be executed
             // on that
-            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), "MAIN"), ctrl);
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), DEFAULT_QUEUE), ctrl);
             {
                 auto _lock = COUT.lock();
                 COUT << std::format("Last On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
@@ -1692,6 +1886,249 @@ public:
             co_return 0;
         };
 
+
+        DEF_FUNC_HELP("pwd", "Prints the current working directory")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            COUT << std::format("{}\n", ctrl->cwd.generic_string());
+            co_return 0;
+        };
+
+#define FS_PRINT_ERROR(_error) \
+        switch(_error)\
+            {\
+                case FSResult::PathExists:        COUT << std::format("Directory already exists.\n"); co_return 1; break;\
+                case FSResult::DoesNotExist:     COUT << std::format("Does not exist\n"); co_return 1; break;\
+                case FSResult::NotEmpty:          COUT << std::format("Not Empty\n"); co_return 1; break;\
+                case FSResult::NotValidMount:    COUT << std::format("Not a valid Mount\n"); co_return 1; break;\
+                case FSResult::HostDoesNotExist: COUT << std::format("Host does not exist\n"); co_return 1; break;\
+                case FSResult::CannotCreate:      COUT << std::format("Cannot create\n"); co_return 1; break;\
+                case FSResult::InvalidFileName:  COUT << std::format("Invalid Filename\n"); co_return 1; break;\
+                default: \
+                    break;\
+            }\
+
+        DEF_FUNC_HELP("ls", "Lists files and directories")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            path_type path = CWD;
+
+            if(ARGS.size() >= 2)
+            {
+                path_type p = ARGS[1];
+                HANDLE_PATH(CWD, p)
+                path = p;
+            }
+
+            assert(path.has_root_directory());
+
+            for(auto u : SYSTEM.list_dir(path))
+            {
+                COUT << std::format("{}\n", u.lexically_relative(path).generic_string());
+            }
+
+            co_return 0;
+        };
+
+        DEF_FUNC_HELP("mkdir", "Create directories")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            path_type path = "/";
+            if(ARGS.size() >= 2)
+            {
+                path = ARGS[1];
+                HANDLE_PATH(CWD, path);
+
+                auto res = SYSTEM.mkdir(path);
+                FS_PRINT_ERROR(res);
+            }
+            else
+            {
+                COUT << std::format("mkdir: missing operand\n");
+                co_return 1;
+            }
+
+            co_return 0;
+        };
+
+
+        DEF_FUNC_HELP("rm", "Removes files and directories")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            path_type path = "/";
+            if(ARGS.size() >= 2)
+            {
+                for(size_t i=1; i < ARGS.size();i++)
+                {
+                    path = ARGS[i];
+                    HANDLE_PATH(CWD, path);
+                    if(!SYSTEM.rm(path))
+                    {
+                        COUT << std::format("Error deleting file: {}", path.generic_string());
+                        co_return 1;
+                    }
+                }
+            }
+            else
+            {
+                COUT << std::format("touch: missing operand\n");
+                co_return 1;
+            }
+
+            co_return 0;
+        };
+
+        DEF_FUNC_HELP("touch", "Create files")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            path_type path = "/";
+            if(ARGS.size() >= 2)
+            {
+                for(size_t i=1; i < ARGS.size();i++)
+                {
+                    path = ARGS[i];
+                    HANDLE_PATH(CWD, path);
+                    auto res = SYSTEM.touch(path);
+                    FS_PRINT_ERROR(res);
+                }
+            }
+            else
+            {
+                COUT << std::format("touch: missing operand\n");
+                co_return 1;
+            }
+
+            co_return 0;
+        };
+
+        DEF_FUNC_HELP("cp", "Copies files and directories")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+            if(ARGS.size() >= 3)
+            {
+                path_type cpy_to = ARGS.back();
+                HANDLE_PATH(CWD, cpy_to);
+
+                for(size_t i=1; i<ARGS.size()-1;i++)
+                {
+                    path_type path = ARGS[i];
+                    _clean(path);
+                    HANDLE_PATH(CWD, path);
+                    SYSTEM.cp(path, cpy_to);
+                }
+            }
+            else
+            {
+                COUT << std::format("touch: missing operand\n");
+                co_return 1;
+            }
+
+            co_return 0;
+        };
+
+        DEF_FUNC_HELP("mount", "Mounts host filesystems inside the VFS")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+
+            if(ARGS.size() == 1)
+            {
+                for(auto & n : SYSTEM.m_nodes)
+                {
+                    if( std::holds_alternative<NodeMount>(n.second) )
+                    {
+                        COUT << std::format("{} on {}\n", n.first.generic_string(), std::get<NodeMount>(n.second).host_path.generic_string());
+                    }
+                }
+                co_return 0;
+            }
+            if(ARGS.size() == 3)
+            {
+                if( std::filesystem::is_directory(ARGS[1]) )
+                {
+                    path_type vfs_path = ARGS[2];
+                    HANDLE_PATH(CWD, vfs_path);
+
+                    auto er = SYSTEM.mount(ARGS[1], vfs_path);
+                    FS_PRINT_ERROR(er);
+                    co_return 0;
+                }
+                else
+                {
+                    COUT << std::format("Directory {} does not exist on the host", ARGS[1]);
+                    co_return 1;
+                }
+            }
+            COUT << std::format("Unknown error\n");
+
+            co_return 1;
+        };
+
+        DEF_FUNC_HELP("umount", "Unmounts a host filesystem")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+
+            if(ARGS.size() == 2)
+            {
+                path_type p = ARGS[1];
+                if(!p.has_root_directory())
+                    p = CWD / p;
+                auto res = SYSTEM.umount(p);
+                FS_PRINT_ERROR(res);
+                co_return 0;
+            }
+            COUT << std::format("Unknown error\nUsage:\n umount <mount point>\n");
+
+            co_return 1;
+        };
+
+        DEF_FUNC_HELP("cat", "Concatenates files to standard output")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+
+            if(ARGS.size() == 2)
+            {
+                path_type path = ARGS[1];
+                if(!path.has_root_directory())
+                    path = CWD / path;
+
+                switch(SYSTEM.get_type(path))
+                {
+                    case Type::MEM_FILE:
+                    case Type::HOST_FILE:
+                    {
+                        auto file = SYSTEM.open(path, std::ios::in);
+                        if (!file) {
+                            co_return 1;
+                        }
+                        auto T0 = std::chrono::system_clock::now();
+                        std::string line;
+                        while(true)
+                        {
+                            while(!file.eof() && (std::chrono::system_clock::now()-T0 < std::chrono::microseconds(250)) )
+                            {
+                                std::getline(file, line);
+                                COUT << line;
+                                COUT << "\n";
+                            }
+                            if(file.eof())
+                                break;
+                            co_await ctrl->await_yield();
+                            T0 = std::chrono::system_clock::now();
+                        }
+                        co_return 0;
+                    }
+                    default:
+                    {
+                        COUT << std::format("cat: {}: Not a regular file", ARGS[1]);
+                        co_return 1;
+                    }
+                }
+
+                COUT << "\n";
+                co_return 0;
+            }
+            co_return 1;
+        };
         #undef DEF_FUNC
     }
 };

@@ -12,12 +12,12 @@ cmake_minimum_required(VERSION 3.10)
 #  target_link_libraries(main PseudoNix::PseudoNix)
 #
 ################################################################################
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 project( PseudoNix
          VERSION 0.1.0.0
          LANGUAGES CXX)
 
 ################################################################################
-
 
 # The following options are set to TRUE if you are building this project as a top 
 # project.

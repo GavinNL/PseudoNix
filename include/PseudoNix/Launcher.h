@@ -2,9 +2,10 @@
 #define PSUDONIX_LAUNCHER_H
 
 #include "System.h"
-#include "defer.h"
 
 #if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOBOOL
 #include <windows.h>
 #include <conio.h>
 #include <cstddef>
@@ -22,11 +23,18 @@ inline System::task_type launcher_coro(System::e_type ctrl)
     static auto count = 0;
     if(count != 0)
     {
-        *ctrl->in << std::format("Only one instance of {} can exist\n", ctrl->args[0]);
+        std::cout << std::format("Only one instance of {} can exist\n", ctrl->args[0]);
         co_return 1;
     }
 
     count++;
+    PSEUDONIX_TRAP
+    {
+        // Ensure that the count is decremated if
+        // the launcher goes out of scope
+        if(count)
+            count--;
+    };
 
     if(ctrl->args.size() < 2)
     {
@@ -60,18 +68,6 @@ inline System::task_type launcher_coro(System::e_type ctrl)
     auto [c_in, c_out] = ctrl->system->getIO(sh_pid);
     assert(c_in == E.in);
     assert(c_out == E.out);
-
-    bl_defer
-    {
-        // count was decremented at the
-        // end of the function, but we might not actually
-        // get there if this process was forcefully killed
-        // so to ensure it gets decremnted properly
-        // we'll put it in a defer block
-        if(count) count--;
-    };
-
-
 
 
 #if defined(_WIN32)
@@ -117,7 +113,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
     };
 #endif
 
-    std::cerr << std::format("Launcher started process: {}", ctrl->args[1]) << std::endl;
+    //std::cerr << std::format("Launcher started process: {}", ctrl->args[1]) << std::endl;
     while(true)
     {
         char ch=0;
@@ -159,9 +155,6 @@ inline System::task_type launcher_coro(System::e_type ctrl)
         HANDLE_AWAIT_TERM(co_await ctrl->await_yield(), ctrl)
     }
 
-    count--;
-
-    std::cerr << std::format("{} exiting", ctrl->args[0]) << std::endl;
     co_return 0;
 }
 

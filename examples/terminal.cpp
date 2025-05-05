@@ -15,7 +15,6 @@ public:
 
     void setupFunctions()
     {
-
         // The sh function is provided for you.
         // It's relatively rudametry but allowed you do
         // do simple linux pipling and shell substitution
@@ -25,14 +24,14 @@ public:
         // cmd1 || cmd2
         // echo "Hello ${USER}"
         //
-        m_mini.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
+        m_mini.setFunction("sh", "Default Shell", PseudoNix::shell_coro);
 
         // an ImGui Terminal function has been created if you want to
         // add a terminal to your projects. It is fairly simple
         // and can be copied/modified for extra features
-        m_mini.setFunction("term", PseudoNix::terminalWindow_coro);
+        m_mini.setFunction("term", "Opens a new ImGui Terminal", PseudoNix::terminalWindow_coro);
 
-        m_mini.setFunction("theme", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+        m_mini.setFunction("theme", "Sets the ImGui Theme", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -58,7 +57,7 @@ public:
             co_return 0;
         });
 
-        m_mini.setFunction("confirm", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+        m_mini.setFunction("confirm", "Example dialog box", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -111,13 +110,58 @@ public:
         m_mini.m_preExec = [](PseudoNix::System::Exec & E)
         {
             E.env["USER"] = "bob";
+            E.env["PSEUDONIX_VERSION"] = std::format("{}.{}", PSEUDONIX_VERSION_MAJOR, PSEUDONIX_VERSION_MINOR);
+#if defined CMAKE_SOURCE_DIR
+            E.env["CMAKE_SOURCE_DIR"] = CMAKE_SOURCE_DIR;
+            E.env["CMAKE_BINARY_DIR"] = CMAKE_BINARY_DIR;
+            E.env["COMPILE_DATE"] = std::format("{} {}", __DATE__, __TIME__);
+#endif
         };
 
         // Set up additional commands we want
         // in our System
         setupFunctions();
 
-        // Createa  new task queue called "THREAD"
+        m_mini.mkdir("/bin");
+        m_mini.touch("/bin/hello.sh");
+        m_mini.fs("/bin/hello.sh") <<
+R"foo(
+echo Hello World!
+echo "this is a script defined inside the virtual file system"
+echo "I'm going to sleep now for a few seconds"
+sleep 3
+echo "Hey! I'm awake!"
+)foo";
+
+
+        // Create the /etc/profile file so that
+        // every instance of the sh command will execute
+        // those commands first
+        m_mini.mkdir("/etc");
+        m_mini.touch("/etc/profile");
+        m_mini.fs("/etc/profile") << R"foo(
+echo "###################################"
+echo "Welcome to the shell!"
+echo ""
+echo "The shell process automatically sources the"
+echo "/etc/profile" in the Virtual File System"
+echo ""
+echo "You are user: ${USER}
+echo "This is SHELL_PID: ${SHELL_PID}
+echo "Compiled Date: ${COMPILE_DATE}
+echo ""
+echo "type 'help' for a list of commands"
+echo "###################################"
+)foo";
+
+        #if !defined __EMSCRIPTEN__
+        m_mini.mkdir("/src");
+        m_mini.mkdir("/build");
+        m_mini.mount(CMAKE_SOURCE_DIR, "/src");
+        m_mini.mount(CMAKE_BINARY_DIR, "/build");
+        #endif
+
+        // Create a new task queue called "THREAD"
         // This can be executed at a different
         // time as the MAIN task queue.
         m_mini.taskQueueCreate("PRE_MAIN");
@@ -126,7 +170,7 @@ public:
 
         // finally, execute the term command
         // and execute the system call
-        m_mini.spawnProcess({"SHELL=sh", "term", "sh"});
+        m_mini.spawnProcess({"term", "sh"});
         m_mini.spawnProcess({"bgrunner", "THREADPOOL"});
 
     }
@@ -149,7 +193,7 @@ public:
         // all coroutines once. Because we are running the
         // coroutines within the imguiRender() functions
         // the coroutines can also draw ImGui objects
-        m_mini.taskQueueExecute();
+        m_mini.taskQueueExecute("MAIN", std::chrono::milliseconds(1), 15);
     }
 };
 
@@ -158,7 +202,7 @@ int main(int argc, char* argv[])
 {
     //(void)argc;
     //(void)argv;
-    return ImGuiApp::run<MyApplication>("SDL Window", 1920, 1080);
+    return ImGuiApp::run<MyApplication>("PseudoNix ImGui Terminal Example", 1920, 1080);
 }
 
 #include <imgui_impl_sdl2.cpp>
