@@ -21,8 +21,6 @@ SCENARIO("Test FS linux/windows")
         std::cout << std::endl;
     };
 
-    path P(std::string("gavin"));
-    _test(P);
     _test(std::string("/home/gavin"));
     _test(std::string("home/gavin"));
     _test(std::string("./home"));
@@ -30,10 +28,24 @@ SCENARIO("Test FS linux/windows")
     _test(std::string("C:"));
     _test(std::string("C:/"));
     _test(std::string("C:\\home"));
+    _test(std::string("C:/home"));
 
-    auto _clean = [](path const& P)
+    auto _clean = [](path const& P1)
     {
-        return P.lexically_normal();
+        path P = P1;
+        // for(auto & m : P1)
+        // {
+        //     auto str = m.generic_string();
+        //     std::cout << str << std::endl;
+        //     //if(str.size() >= 2 && std::isalpha(str[0]) && str[1] == ':' )
+        //     //    P = m;
+
+        //     break;
+        // }
+        if(P.has_root_directory())
+            return std::filesystem::path("/") / P.lexically_normal().relative_path();
+
+        return P.lexically_normal().relative_path();
     };
     auto _isAbsolute = [](path const& P)
     {
@@ -42,8 +54,17 @@ SCENARIO("Test FS linux/windows")
 
     REQUIRE(_isAbsolute("/home"));
     REQUIRE(_isAbsolute("/"));
+    REQUIRE(_clean("home") == "home");
     REQUIRE(_clean("/home") == "/home");
-    REQUIRE(_clean("C:/home") == "/home");
+    REQUIRE(_clean("C:/home") == "C:/home");
+    REQUIRE(_clean("C:home") == "C:home");
+    REQUIRE( _clean("C:home").is_absolute() == false );
+    REQUIRE( _clean("C:home").is_relative() == true );
+
+    REQUIRE( _clean("home").is_relative() == true );
+    REQUIRE( _clean("home").is_absolute() == false );
+
+
 }
 
 #if 0
