@@ -144,6 +144,7 @@ struct System : public PseudoNix::FileSystem
         std::map<std::string, std::string> env;
         std::shared_ptr<stream_type>       in;
         std::shared_ptr<stream_type>       out;
+        std::string                        queue = DEFAULT_QUEUE;
 
         Exec(std::vector<std::string> const &_args = {}, std::map<std::string, std::string> const & _env = {}) : args(_args), env(_env)
         {
@@ -236,10 +237,10 @@ struct System : public PseudoNix::FileSystem
         std::vector<std::string>           args;
         std::shared_ptr<stream_type>       in;
         std::shared_ptr<stream_type>       out;
-        std::map<std::string, std::string> env;
-        std::map<std::string, bool>        exported;
+        std::map<std::string, std::string> env;        // environment variables
+        std::map<std::string, bool>        exported;   // list of variables that are exported
+        std::string                        queue_name = DEFAULT_QUEUE; // which queue to run on
         System * system = nullptr;
-        std::string queue_name;
         path_type cwd = "/";
 
     protected:
@@ -635,6 +636,7 @@ struct System : public PseudoNix::FileSystem
         proc_control->in   = args.in;
         proc_control->out  = args.out;
         proc_control->env  = args.env;
+        proc_control->queue_name= args.queue;
 
 
         if(parent != invalid_pid)
@@ -725,7 +727,7 @@ struct System : public PseudoNix::FileSystem
         // Create custom awaiter that will
         // be placed in the main thread pool
         DEBUG_INFO("Process Registered: {}", join(arg->args) );
-        Proc.first->second->initialAwaiter = Awaiter(_pid, this, [](Awaiter*){return true;}, DEFAULT_QUEUE);
+        Proc.first->second->initialAwaiter = Awaiter(_pid, this, [](Awaiter*){return true;}, arg->queue_name);
         Proc.first->second->initialAwaiter.handle_ = handle;
         Proc.first->second->initialAwaiter.await_suspend(handle);
 
@@ -902,6 +904,7 @@ struct System : public PseudoNix::FileSystem
             if(a.first->await_ready())
             {
                 a.second->control->queue_name = queue_name;
+                a.second->control->env["QUEUE"] = queue_name;
                 a.first->resume();
             }
             else

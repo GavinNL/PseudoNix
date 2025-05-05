@@ -156,6 +156,7 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
         {
             e.args.push_back("");
         }
+        e.queue = proc->queue_name;
     }
 
     auto pids = proc->executeSubProcess(E);
@@ -366,6 +367,19 @@ inline System::task_type shell_coro(System::e_type ctrl)
             continue;
 
         bool run_in_background = false;
+
+        if(args.size() >= 2 && args[0] == "yield")
+        {
+            if(SYSTEM.taskQueueExists(args[1]))
+            {
+                HANDLE_AWAIT_TERM(co_await ctrl->await_yield(args[1]), ctrl)
+            }
+            else
+            {
+                COUT << std::format("Queue, {}, does not exist. Staying on {}\n", args[1], QUEUE);
+            }
+            continue;
+        }
 
         if(args.back() == "&")
         {

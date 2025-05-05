@@ -140,6 +140,7 @@ echo "Hey! I'm awake!"
         m_mini.mkdir("/etc");
         m_mini.touch("/etc/profile");
         m_mini.fs("/etc/profile") << R"foo(
+export PATH=/bin:/usr/bin
 echo "###################################"
 echo "Welcome to the shell!"
 echo ""
@@ -150,6 +151,10 @@ echo "You are user: ${USER}
 echo "This is SHELL_PID: ${SHELL_PID}
 echo "Compiled Date: ${COMPILE_DATE}
 echo ""
+echo "/bin contains in-memory scripts"
+echo "/etc contains the profile that sh reads"
+echo "/usr/bin a mounted directory"
+echo ""
 echo "type 'help' for a list of commands"
 echo "###################################"
 )foo";
@@ -157,8 +162,10 @@ echo "###################################"
         #if !defined __EMSCRIPTEN__
         m_mini.mkdir("/src");
         m_mini.mkdir("/build");
+        m_mini.mkdir("/usr/bin");
         m_mini.mount(CMAKE_SOURCE_DIR, "/src");
         m_mini.mount(CMAKE_BINARY_DIR, "/build");
+        m_mini.mount(CMAKE_SOURCE_DIR "/scripts", "/usr/bin");
         #endif
 
         // Create a new task queue called "THREAD"
