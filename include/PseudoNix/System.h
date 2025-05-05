@@ -1297,6 +1297,7 @@ public:
             co_return 0;
         };
 
+        (*funcDescs)["help"] = "Shows the list of commands";
         m_funcs["help"] = [funcDescs](e_type ctrl) -> task_type
         {
             PSEUDONIX_PROC_START(ctrl);
@@ -1312,7 +1313,7 @@ public:
             COUT << "List of commands:\n\n";
             for(auto & f : ctrl->system->m_funcs)
             {
-                COUT << std::format("{:15}: {}\n", f.first, (*funcDescs)[f.first]);
+                COUT << std::format("{:15}: {:15}\n", f.first, (*funcDescs)[f.first]);
             }
             co_return 0;
         };
@@ -1528,7 +1529,7 @@ public:
             co_return 0;
         };
 
-        DEF_FUNC_HELP("to_std_cout", "Pipes input to std::cout")
+        DEF_FUNC_HELP("to_std_cout", "Pipes process output to standard output")
         {
             PSEUDONIX_PROC_START(ctrl);
             std::string s;
@@ -1732,7 +1733,7 @@ public:
             });
 
             PSEUDONIX_TRAP {
-                std::cerr << "TRAPPED: " << QUEUE << std::endl;
+                DEBUG_TRACE("TRAPPED: {}", QUEUE);
                 // set the stop token so the thread will exit
                 // its main loop
                 stop_token = true;

@@ -117,7 +117,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
     };
 #endif
 
-    std::cerr << std::format("Launcher started process: {}", ctrl->args[1]) << std::endl;
+    //std::cerr << std::format("Launcher started process: {}", ctrl->args[1]) << std::endl;
     while(true)
     {
         char ch=0;
@@ -161,7 +161,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
 
     count--;
 
-    std::cerr << std::format("{} exiting", ctrl->args[0]) << std::endl;
+    //std::cerr << std::format("{} exiting", ctrl->args[0]) << std::endl;
     co_return 0;
 }
 

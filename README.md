@@ -82,10 +82,12 @@ the system. After add more and more features, I decided to turn it into its own 
 
 ### Future Development
 
- - [ ] Virtual Filesystem
+ - [x] Virtual Filesystem
  - [ ] Root vs Regular user
  - [ ] Better bash-features (if statements, loops)
  - [ ] More GNU core-utils like functions
+   - [ ] head/tail
+   - [ ] grep
 
 
 ## Examples
@@ -264,29 +266,42 @@ The following bash features are not provided, but may be included in the future
 Here is a list of commands that are provided by default, mostly for testing purposes.
 See the examples below to define your own.
 
-| name     | Description                                                       |
-| -------- | ----------------------------------------------------------------- |
-| echo     | echos arguments to output: `echo hello world`                     |
-| env      | Shows all current env variables                                   |
-| exit     | Exits the shell                                                   |
-| export   | Exports env variables to children                                 |
-| exported | Lists all exported variables                                      |
-| false    | Returns immediately with exit code 1                              |
-| true     | Returns immediately with exit code 0                              |
-| help     | Lists all commands available                                      |
-| kill     | Kill a process: `kill <PID>`                                      |
-| launcher | Launches another process and redirects stdin/out to the process   |
-| ps       | Lists all processes                                               |
-| rev      | Reverses the input characters                                     |
-| sh       | A process that provides a bash-like shell interface               |
-| signal   | Signal a process `signal <pid> <signal>`                          |
-| sleep    | Pause for a few seconds                                           |
-| uptime   | Prints milliseconds since start up                                |
-| wc       | Counts the characters in input                                    |
-| yes      | Outputs 'y' to the output                                         |
-| queue    | List/Create/Destroy task queues                                   |
-| spawn    | Spawns N processes: `spawn 4 echo hello world`                    |
-
+| name           | Description                                                      |
+| -------------- | ---------------------------------------------------------------- |
+| bgrunner       | Spawn a background thread to process a Task Queue                |
+| cat            | Concatenates files to standard output                            |
+| cd             | Changes the current working directory                            |
+| cp             | Copies files and directories                                     |
+| echo           | Prints arguments to standard output                              |
+| env            | Prints out all environment variables                             |
+| exit           | Exits the shell                                                  |
+| export         | Exports environment variables to new processes                   |
+| exported       | Prints exported environment variables                            |
+| false          | Returns with exit code 1                                         |
+| help           | Shows the list of commands                                       |
+| io_info        | Shows IO pointers                                                |
+| kill           | Terminate a process                                              |
+| launcher       | Launches another process and redirects stdin/out to the process. |
+| ls             | Lists files and directories                                      |
+| mkdir          | Create directories                                               |
+| mount          | Mounts host filesystems inside the VFS                           |
+| ps             | Shows the current process list                                   |
+| pwd            | Prints the current working directory                             |
+| queue          | Create/List/Destroy task queues                                  |
+| queueHopper    | Example process that hops to different task queues               |
+| rev            | Reverses the input                                               |
+| rm             | Removes files and directories                                    |
+| sh             | The default shell                                                |
+| signal         | Send a signal to a process                                       |
+| sleep          | Pauses for NUMBER seconds                                        |
+| spawn          | Spawns N instances of the same process                           |
+| to_std_cout    | Pipes process output to standard output                          |
+| touch          | Create files                                                     |
+| true           | Returns with exit code 0                                         |
+| umount         | Unmounts a host filesystem                                       |
+| uptime         | Number of milliseconds since started                             |
+| wc             | Counts the number of characters                                  |
+| yes            | Keeps printing y to stdout until interrupted                     |
 
 ## Integrating with GUI
 

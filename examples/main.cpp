@@ -32,13 +32,13 @@ int main(int argc, char** argv)
     // Add the shell function to System
     // This isn't added by default because it's quite a large
     // function and you might want to add your own
-    M.setFunction("sh", PseudoNix::shell_coro);
-    M.setFunction("launcher", PseudoNix::launcher_coro);
+    M.setFunction("sh"      , "The default shell", PseudoNix::shell_coro);
+    M.setFunction("launcher", "Launches another process and redirects stdin/out to the process.", PseudoNix::launcher_coro);
 
     //=============================================================================
 
     // Here's a very simple guessing game process
-    M.setFunction("guess", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+    M.setFunction("guess", "A simple guessing game", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
     {
         // Macro to define a few variables such as
         // IN, OUT, ENV, SYSTEM, ARGS, PID

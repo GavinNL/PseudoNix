@@ -110,6 +110,7 @@ public:
         m_mini.m_preExec = [](PseudoNix::System::Exec & E)
         {
             E.env["USER"] = "bob";
+            E.env["PSEUDONIX_VERSION"] = std::format("{}.{}", PSEUDONIX_VERSION_MAJOR, PSEUDONIX_VERSION_MINOR);
 #if defined CMAKE_SOURCE_DIR
             E.env["CMAKE_SOURCE_DIR"] = CMAKE_SOURCE_DIR;
             E.env["CMAKE_BINARY_DIR"] = CMAKE_BINARY_DIR;
@@ -151,12 +152,12 @@ echo "type 'help' for a list of commands"
 echo "###################################"
 )foo";
 
+        #if !defined __EMSCRIPTEN__
         m_mini.mkdir("/src");
         m_mini.mkdir("/build");
-        m_mini.mkdir("/home");
         m_mini.mount(CMAKE_SOURCE_DIR, "/src");
         m_mini.mount(CMAKE_BINARY_DIR, "/build");
-        m_mini.mount("/home/gavin", "/home");
+        #endif
 
         // Create a new task queue called "THREAD"
         // This can be executed at a different
