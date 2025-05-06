@@ -1,0 +1,21 @@
+#!/bin/bash
+#
+# This example shows how you can use the THREADPOOL
+# queue run a long running function that will block
+# the Task Queues
+# We will switch from the MAIN queue to the THREADPOOL
+# queue, then execute the function, and then swap back
+#
+Q=THREADPOOL
+
+echo "I'm going to simulate executing a long running blocking function."
+echo "A function like this does not call co_await. It will stall the"
+echo "entire queue process."
+echo ""
+echo "I am on queue: ${QUEUE}, switching to ${Q}"
+yield $Q
+echo "I am on queue: ${QUEUE}. Calling [blocking_sleep 5]"
+blocking_sleep 5
+echo "Blocking sleep completed. Switching back to MAIN"
+yield MAIN
+echo "I am on queue: ${QUEUE}"
