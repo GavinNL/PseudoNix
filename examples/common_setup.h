@@ -100,7 +100,7 @@ echo "Hey! I'm awake!"
     sys.mkdir("/etc");
     sys.touch("/etc/profile");
     sys.fs("/etc/profile") << R"foo(
-export PATH=/bin:/usr/bin
+export PATH=/usr/bin:/bin
 echo "###################################"
 echo "Welcome to the shell!"
 echo ""

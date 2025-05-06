@@ -429,6 +429,11 @@ inline System::task_type shell_coro(System::e_type ctrl)
 
         if( run_in_background )
         {
+#if 1
+            auto STDIN = System::make_stream();
+            STDIN->set_eof();
+            auto pids = execute_pipes( args, ctrl.get(), STDIN, ctrl->out);
+#else
             auto STDIN = System::make_stream();
 
             for(auto & a : args)
@@ -441,7 +446,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
             *STDIN << std::format(";");
             STDIN->set_eof();
             auto pids = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), STDIN, ctrl->out);
-
+#endif
             COUT << std::format("{}\n", pids[0]);
             ENV["!"] = std::format("{}", pids[0]);
             continue;
