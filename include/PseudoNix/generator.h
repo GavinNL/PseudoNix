@@ -9,6 +9,8 @@ namespace PseudoNix
 
 template<typename T>
 struct Generator {
+    using value_type = T;
+
     struct promise_type {
         std::optional<T> current_value;
 

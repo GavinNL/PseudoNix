@@ -6,6 +6,21 @@
 using namespace PseudoNix;
 
 
+SCENARIO("Tokenizer Generator")
+{
+    auto s = System::make_stream("cmd1 $(echo hello world) arg2 ; cmd2     \n cmd3 \"hello world\" \n cmd4");
+    s->set_eof();
+    auto gen = BashTokenizerGen(s);
+    for(auto i : gen)
+    {
+        if(i)
+        {
+            std::cout << std::format("{}", join(*i,",")) << std::endl;
+        }
+    }
+    exit(0);
+}
+
 SCENARIO("Tokenizer 3")
 {
     std::stringstream ss;

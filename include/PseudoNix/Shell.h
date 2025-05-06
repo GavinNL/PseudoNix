@@ -122,10 +122,145 @@ struct Tokenizer3
 };
 
 
-struct ShellEnv
+enum BashToken
 {
-    std::string                        rc_text;
+    WAITING,
+    END_OF_LINE
 };
+
+using token = std::variant<std::string, BashToken>;
+Generator< std::string* > parseQuotes(std::shared_ptr<System::stream_type> in)
+{
+    char c;
+    std::string current;
+    while(true)
+    {
+        auto res = in->get(&c);
+        if(res == System::stream_type::Result::END_OF_STREAM)
+        {
+            co_yield &current;
+            co_return;
+        }
+        if(res == System::stream_type::Result::EMPTY)
+            co_yield nullptr;
+
+        current.push_back(c);
+        if(current.back() == '"')
+        {
+            current.pop_back();
+            co_yield &current;
+            co_return;
+        }
+    }
+}
+
+Generator< std::string* > parseBrackets(std::shared_ptr<System::stream_type> in, char _open, char _close)
+{
+    char c;
+    std::string current;
+    int count=1;
+    while(true)
+    {
+        auto res = in->get(&c);
+        if(res == System::stream_type::Result::END_OF_STREAM)
+        {
+            co_yield &current;
+            co_return;
+        }
+        if(res == System::stream_type::Result::EMPTY)
+            co_yield nullptr;
+
+        current.push_back(c);
+        if(current.back() == _open)
+        {
+            ++count;
+        }
+        else if(current.back() == _close)
+        {
+            --count;
+            if(count == 0)
+            {
+                current.pop_back();
+                co_yield &current;
+                co_return;
+            }
+        }
+    }
+}
+
+Generator< std::vector<std::string>* > BashTokenizerGen(std::shared_ptr<System::stream_type> in)
+{
+    std::vector<std::string> _tokens;
+    if(!in->has_data())
+        co_yield nullptr;
+
+    char c = ' ';
+    char last;
+    while(true)
+    {
+        last = c;
+        auto res = in->get(&c);
+
+        if(res == System::stream_type::Result::END_OF_STREAM)
+        {
+            co_yield &_tokens;
+            co_return;
+        }
+        if(res == System::stream_type::Result::EMPTY)
+            co_yield nullptr;
+
+
+        if(c == ';' || c == '\n')
+        {
+            co_yield &_tokens;
+            _tokens.clear();
+        }
+        else if( !std::isspace(c) )
+        {
+            if(std::isspace(last))
+            {
+                _tokens.push_back({});
+            }
+            _tokens.back().push_back(c);
+
+            if(_tokens.back().back() == '"')
+            {
+                _tokens.back().pop_back();
+                auto Q = parseQuotes(in);
+                for(auto q : Q)
+                {
+                    if(q)
+                    {
+                        _tokens.back().insert(_tokens.back().end(), q->begin(), q->end());
+                    }
+                    else
+                    {
+                        co_yield nullptr;
+                    }
+                }
+            }
+            else if(_tokens.back().ends_with("$("))
+            {
+                auto Q = parseBrackets(in, '(', ')');
+                for(auto q : Q)
+                {
+                    if(q)
+                    {
+                        _tokens.back().insert(_tokens.back().end(), q->begin(), q->end());
+                    }
+                    else
+                    {
+                        co_yield nullptr;
+                    }
+                }
+                _tokens.back().push_back(')');
+            }
+        }
+    }
+
+
+    co_return;
+}
 
 inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> tokens,
                              System::ProcessControl * proc,
