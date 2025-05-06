@@ -405,7 +405,6 @@ inline System::task_type shell_coro(System::e_type ctrl)
                 auto bin_loc = System::path_type(subPath) / args[0];
                 if(SYSTEM.exists(bin_loc))
                 {
-
                     std::vector<std::string> newargs;
 
                     // Set all the argument variables $0, $1, $2...
@@ -429,7 +428,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
 
         if( run_in_background )
         {
-#if 1
+#if 0
             auto STDIN = System::make_stream();
             STDIN->set_eof();
             auto pids = execute_pipes( args, ctrl.get(), STDIN, ctrl->out);
