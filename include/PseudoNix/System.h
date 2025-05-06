@@ -1640,6 +1640,12 @@ public:
                co_return 0;
            }
 
+           if(ARGS[1] == "-")
+           {
+               SHELL_PROC->chdir(SHELL_PROC->env["OLDPWD"]);
+               co_return 0;
+           }
+
            System::path_type p = ARGS[1];
            if(p.is_relative())
                p = SHELL_PROC->cwd / p;
