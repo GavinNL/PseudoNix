@@ -1372,7 +1372,7 @@ public:
             float t = 0.0f;
             std::istringstream in(ARGS[1]);
             in >> t;
-
+            t = std::max(0.0f, t);
             // NOTE: do not acutally use this_thread::sleep
             // this is a coroutine, so you should suspend
             // the routine
@@ -2122,6 +2122,25 @@ public:
                 co_return 0;
             }
             co_return 1;
+        };
+
+        DEF_FUNC_HELP("blocking_sleep", "Like [sleep], but will block. For demo purposes only.")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+
+            std::string output;
+            if(ARGS.size() < 2)
+                co_return 1;
+            float t = 0.0f;
+            std::istringstream in(ARGS[1]);
+            in >> t;
+            t = std::max(0.0f, t);
+            // NOTE: do not acutally use this_thread::sleep
+            // this is a coroutine, so you should suspend
+            // the routine
+            std::this_thread::sleep_for(std::chrono::milliseconds( static_cast<uint64_t>(t*1000)));
+
+            co_return 0;
         };
         #undef DEF_FUNC
     }
