@@ -1714,6 +1714,12 @@ public:
 
             std::binary_semaphore _semaphore(0);
 
+            if(!SYSTEM.taskQueueExists(TASK_QUEUE))
+            {
+                COUT << std::format("{}: Task queue, {}, does not exist", ARGS[0], TASK_QUEUE);
+                co_return 1;
+            }
+
             std::thread worker([sys=ctrl->system, TASK_QUEUE, &stop_token, &_semaphore]()
             {
                 while (true)
@@ -1745,15 +1751,17 @@ public:
                 // set the stop token so the thread will exit
                 // its main loop
                 stop_token = true;
-                // trigger the semaphore so that any
+                // trigger the semaphore so that the thread
+                // will wake up and quit
                 _semaphore.release();
                 worker.join();
-
             };
 
             while(true)
             {
                 auto & TQ = SYSTEM.m_awaiters.at(TASK_QUEUE);
+                // Wake the thread up if there are items
+                // in the queue
                 if(TQ.get().size_approx() > 0)
                     _semaphore.release();
                 HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
