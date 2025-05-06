@@ -604,13 +604,6 @@ struct System : public PseudoNix::FileSystem
      */
     pid_type runRawCommand(Exec args, pid_type parent = invalid_pid)
     {
-        if(m_main_thread_id != std::thread::id{})
-        {
-            if(m_main_thread_id != std::this_thread::get_id())
-            {
-                throw std::runtime_error("Cannot execute new commands on a separate thread");
-            }
-        }
         assert(args.args.size() > 0);
         // Try to find the name of the function to run
         auto it = m_funcs.find(args.args[0]);
@@ -905,6 +898,7 @@ struct System : public PseudoNix::FileSystem
             {
                 a.second->control->queue_name = queue_name;
                 a.second->control->env["QUEUE"] = queue_name;
+                a.second->control->env["THREAD_ID"] = std::format("{}", std::this_thread::get_id());
                 a.first->resume();
             }
             else
@@ -930,7 +924,6 @@ struct System : public PseudoNix::FileSystem
      */
     size_t taskQueueExecute(std::string const & queue_name = DEFAULT_QUEUE, std::chrono::milliseconds maxComputeTime=std::chrono::milliseconds(15), size_t maxIter = 1)
     {
-        m_main_thread_id = std::this_thread::get_id();
         auto T0 = std::chrono::system_clock::now();
 
         while(maxIter > 0 )
@@ -996,7 +989,7 @@ struct System : public PseudoNix::FileSystem
             if(std::chrono::system_clock::now()-T0 > maxComputeTime)
                 break;
         }
-        m_main_thread_id = {};
+
         return m_procs2.size();
     }
 
@@ -1242,8 +1235,6 @@ public:
 
     std::map<std::string,  AwaiterQueue_T<std::pair<Awaiter*, std::shared_ptr<Process> >> > m_awaiters;
 
-
-    std::thread::id m_main_thread_id = {};
     pid_type _pid_count=1;
 
     void setDefaultFunctions()
@@ -1842,7 +1833,7 @@ public:
 
             {
                 auto _lock = COUT.lock();
-                COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
+                COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, ENV["THREAD_ID"]);
             }
 
             // the QUEUE variable defined by PSEUDONIX_PROC_START(ctrl)
@@ -1851,7 +1842,7 @@ public:
 
             {
                 auto _lock = COUT.lock();
-                COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
+                COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, ENV["THREAD_ID"]);
             }
 
             for(int i=0;i<20;i++)
@@ -1866,14 +1857,14 @@ public:
                     // processes. So we ensure that we lock access
                     // to it so that it doesn't cause any race conditions
                     auto _lock = COUT.lock();
-                    COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
+                    COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, ENV["THREAD_ID"]);
                 }
 
                 HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), DEFAULT_QUEUE), ctrl);
 
                 {
                     auto _lock = COUT.lock();
-                    COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
+                    COUT << std::format("On {} queue. Thread ID: {}\n", QUEUE, ENV["THREAD_ID"]);
                 }
             }
 
@@ -1883,7 +1874,7 @@ public:
             HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(250), DEFAULT_QUEUE), ctrl);
             {
                 auto _lock = COUT.lock();
-                COUT << std::format("Last On {} queue. Thread ID: {}\n", QUEUE, std::this_thread::get_id());
+                COUT << std::format("Last On {} queue. Thread ID: {}\n", QUEUE, ENV["THREAD_ID"]);
             }
 
             co_return 0;
