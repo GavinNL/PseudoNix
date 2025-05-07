@@ -553,7 +553,41 @@ Generator<WhatToDo> parse_pipeline(std::string cmd,
     // we need to execute the command here and wait for
     if(!args.empty())
     {
-        std::cout << std::format("Executing: {}", join(args)) << std::endl;
+
+        {
+            auto & PATH = proc->env["PATH"];
+            auto & SYSTEM = *proc->system;
+            auto parts = PATH
+                         | std::views::split(':')
+                         | std::views::transform([](auto &&subrange) {
+                               return std::string_view(&*subrange.begin(), static_cast<size_t>(std::ranges::distance(subrange)));
+                           });
+            for(auto subPath : parts)
+            {
+                auto bin_loc = System::path_type(subPath) / args[0];
+                if(SYSTEM.exists(bin_loc))
+                {
+                    std::vector<std::string> newargs;
+
+                    // Set all the argument variables $0, $1, $2...
+                    // first
+                    for(size_t i=0;i<args.size();i++)
+                    {
+                        newargs.push_back(std::format("{}={}", i, args[i]));
+                    }
+                    // add the sh shell
+                    newargs.push_back("sh");
+
+                    // and the location of the script
+                    newargs.push_back(bin_loc.generic_string());
+
+                    args = newargs;
+                    break;
+                }
+            }
+        }
+
+        //std::cout << std::format("Executing: {}", join(args)) << std::endl;
         auto procIDs = execute_pipes(args, proc, in, out);
         co_yield procIDs;
     }
@@ -880,9 +914,37 @@ inline System::task_type shell_coro(System::e_type ctrl)
     // but didn't want to add the dependnecy
     //===========================================================================
     auto _args = ARGS;
+    auto no_profile = std::find(_args.begin(), _args.end(), "--noprofile");
+    bool load_etc_profile = true;
+    if(_args.end() != no_profile)
+    {
+        // Copy the rc_text into the
+        // the input stream so that
+        // it will be executed first
+        //script += shellEnv.rc_text;
+        _args.erase(no_profile);
+        load_etc_profile = false;
+    }
+    if(load_etc_profile && SYSTEM.exists("/etc/profile"))
+    {
+        script += SYSTEM.file_to_string("/etc/profile");
+    }
 
-    std::vector<System::pid_type> subProcess;
+    if(_args.size() > 1)
+    {
+        if(SYSTEM.exists(_args[1]))
+        {
+            script = SYSTEM.file_to_string(_args[1]);
+            script += "\nexit;";
+        }
+        else
+        {
+            COUT << std::format("{}: {}: no such file or directory\n", ARGS[0], _args[1]);
+        }
+    }
 
+
+    CIN << script;
     auto & EXIT_SHELL = ENV["EXIT_SHELL"];
 
     auto gen = BashTokenizerGen2(ctrl->in);
@@ -892,15 +954,12 @@ inline System::task_type shell_coro(System::e_type ctrl)
 
     //while(EXIT_SHELL.empty())
     {
-        //HANDLE_AWAIT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
-
         auto it = block.begin();
         while(it != block.end())
         {
             auto _cc = *it;
             if( std::holds_alternative<int>(_cc) && std::get<int>(_cc) == 0)
             {
-                std::cout << "Waiting on new data" << std::endl;
                 HANDLE_AWAIT_TERM( co_await ctrl->await_has_data(ctrl->in), ctrl);
                 ++it;
             }
@@ -913,8 +972,6 @@ inline System::task_type shell_coro(System::e_type ctrl)
             if(!EXIT_SHELL.empty())
                 co_return 0;
         }
-
-
     }
 
     co_return std::move(ret_value);
