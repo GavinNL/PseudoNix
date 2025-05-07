@@ -511,7 +511,6 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
                 }
             }
         }
-
     }
     std::cout << "-- End of Block -- " << std::endl;
 
@@ -604,8 +603,8 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
                                    Generator<std::optional<std::string>> & gen,
                                    Generator<std::optional<std::string>>::iterator & a_it,
                                    System::ProcessControl * proc,
-                                   std::shared_ptr<System::stream_type> in,
-                                   std::shared_ptr<System::stream_type> out)
+                                   std::shared_ptr<System::stream_type> _in,
+                                   std::shared_ptr<System::stream_type> _out)
 {
     (void)cmd1;
     std::vector<std::string> args;
@@ -665,6 +664,41 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
             }
         }
 
+        bool run_in_background = false;
+        if(args.back() == "&")
+        {
+            // NOTE: we should probably do a find for the &
+            // and cut everything in front of it to be run
+            // in the background
+            run_in_background = true;
+            args.pop_back();
+        }
+
+        if( run_in_background )
+        {
+#if 0
+            auto STDIN = System::make_stream();
+            STDIN->set_eof();
+            auto pids = execute_pipes( args, ctrl.get(), STDIN, ctrl->out);
+#else
+            auto STDIN = System::make_stream();
+
+            for(auto & a : args)
+            {
+                // pipe the data into stdin, and make sure each argument
+                // is in quotes. We may need to tinker with this
+                // to have properly escaped characters
+                *STDIN << std::format("\"{}\" ", a);
+            }
+            *STDIN << std::format(";");
+            STDIN->set_eof();
+            auto pids = execute_pipes( {"sh", "--noprofile"}, proc, STDIN, _out);
+#endif
+            *_out << std::format("{}\n", pids[0]);
+            proc->env["!"] = std::format("{}", pids[0]);
+            co_return;
+        }
+
         auto op_args = parse_operands(args);
         std::reverse(op_args.begin(), op_args.end());
 
@@ -720,23 +754,23 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
 
             //======================================================================
 
-            auto subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), proc, in, out);
+            auto subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), proc, _in, _out);
             //auto procIDs = execute_pipes(args, proc, in, out);
             auto f_exit_code = proc->system->getProcessExitCode(subProcess.back());
-
-            co_yield subProcess;
-
-            if(!f_exit_code)
+            if(cmd.back() != "&")
             {
-                *proc->out << std::format("Command not found: [{}]\n", cmd[1] );
-                ret_value = 127;
+                co_yield subProcess;
+                if(!f_exit_code)
+                {
+                    *proc->out << std::format("Command not found: [{}]\n", cmd[1] );
+                    ret_value = 127;
+                }
+                else
+                {
+                    ret_value = *f_exit_code;
+                }
+                proc->env["?"] = std::to_string(ret_value);
             }
-            else
-            {
-                ret_value = *f_exit_code;
-            }
-
-            proc->env["?"] = std::to_string(ret_value);
 
             op_args.pop_back();
         }
