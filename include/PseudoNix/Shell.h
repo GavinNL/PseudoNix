@@ -402,7 +402,14 @@ Generator< std::optional<std::string> > BashTokenizerGen2(std::shared_ptr<System
             co_yield std::string(";");
             _token.clear();
         }
-        else if( c == ' ' || c=='\n' )
+        if(c == '\n')
+        {
+            if(!_token.empty())
+                co_yield _token;
+            co_yield std::string("\n");
+            _token.clear();
+        }
+        else if( c == ' ' )
         {
             if(!_token.empty())
             {
@@ -428,7 +435,7 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
                              std::shared_ptr<System::stream_type> in,
                              std::shared_ptr<System::stream_type> out);
 
-Generator<WhatToDo> parse_args(std::string cmd,  Generator<std::optional<std::string>> & gen,
+Generator<WhatToDo> parse_pipeline(std::string cmd,  Generator<std::optional<std::string>> & gen,
                                                  Generator<std::optional<std::string>>::iterator & a,
                                                  System::ProcessControl * proc,
                                                  std::shared_ptr<System::stream_type> in,
@@ -440,17 +447,14 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
                                 std::shared_ptr<System::stream_type> in,
                                 std::shared_ptr<System::stream_type> out)
 {
-    //auto gen = BashTokenizerGen2(in);
-    //auto a = gen.begin();
-
     while(a != gen.end())
     {
         auto tok_opt = *a;
-        ++a;
 
         if(!tok_opt.has_value())
         {
             co_yield 0; // wait for more
+            ++a;
         }
         else
         {
@@ -473,7 +477,7 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
             }
             else
             {
-                auto parse_cmd = parse_args(tok, gen, a, proc, in, out);
+                auto parse_cmd = parse_pipeline(tok, gen, a, proc, in, out);
                 for(auto c : parse_cmd)
                 {
                     co_yield c;
@@ -493,10 +497,7 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
                              std::shared_ptr<System::stream_type> in,
                              std::shared_ptr<System::stream_type> out)
 {
-    //auto gen = BashTokenizerGen2(in);
-    //auto a = gen.begin();
     auto tok = *a;
-    // parse the condition line
 
     std::vector<std::string> condition;
 
@@ -526,7 +527,7 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
     co_return;
 }
 
-Generator<WhatToDo> parse_args(std::string cmd,
+Generator<WhatToDo> parse_pipeline(std::string cmd,
                                Generator<std::optional<std::string>> & gen,
                                Generator<std::optional<std::string>>::iterator & a_it,
                                    System::ProcessControl * proc,
@@ -534,12 +535,12 @@ Generator<WhatToDo> parse_args(std::string cmd,
                                std::shared_ptr<System::stream_type> out)
 {
     std::vector<std::string> args;
-    args.push_back(cmd);
+    //args.push_back(cmd);
     while(a_it != gen.end())
     {
         auto a = *a_it;
         ++a_it;
-        if(a == ";")
+        if(a == ";" || a == "\n")
             break;
         if(!a.has_value())
         {
