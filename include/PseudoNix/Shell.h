@@ -588,8 +588,81 @@ Generator<WhatToDo> parse_pipeline(std::string cmd,
         }
 
         //std::cout << std::format("Executing: {}", join(args)) << std::endl;
-        auto procIDs = execute_pipes(args, proc, in, out);
-        co_yield procIDs;
+        auto op_args = parse_operands(args);
+        std::reverse(op_args.begin(), op_args.end());
+
+        int ret_value = 0;
+        while(op_args.size())
+        {
+            auto & cmd = op_args.back();
+            auto _operator = cmd.front();
+
+            if(_operator == "&&" && ret_value != 0)
+            {
+                op_args.pop_back();
+                continue;
+            }
+            if(_operator == "||" && ret_value == 0)
+            {
+                op_args.pop_back();
+                continue;
+            }
+            //======================================================================
+            // Loop through all the arguments in the
+            // cmd and see if any of them look like: $(cmdname arg1 arg2)
+            //
+            // If so, execute a new shell and pipe the "cmdname arg1 arg2" into
+            // the input stream so that it can be executed
+            for(auto it=cmd.begin(); it != cmd.end();)
+            {
+                if(it->size() >= 3 && it->substr(0,2) == "$(" && it->back() == ')')
+                {
+                    // we have a $(cmd arg1 arg2 arg3) situtation going on here
+                    // so execute this as a new shell
+                    auto STDIN = System::make_stream();
+                    auto STDOUT = System::make_stream();
+                    auto subProcess = execute_pipes( {"sh", "--noprofile"}, proc, STDIN, STDOUT);
+                    *STDIN << it->substr(2, it->size()-3);
+                    *STDIN << ';';
+                    STDIN->set_eof(); // make sure to set the eof of the output stream otherwise
+                        // sh will block waiting for bytes
+
+                    co_yield subProcess;
+
+                    std::string out;
+                    *STDOUT >> out;
+                    auto new_args = Tokenizer3::to_vector(out);
+                    it = cmd.erase(it);
+                    it = cmd.insert(it, new_args.begin(), new_args.end());
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+
+            //======================================================================
+
+            auto subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), proc, in, out);
+            //auto procIDs = execute_pipes(args, proc, in, out);
+            auto f_exit_code = proc->system->getProcessExitCode(subProcess.back());
+
+            co_yield subProcess;
+
+            if(!f_exit_code)
+            {
+                *proc->out << std::format("Command not found: [{}]\n", cmd[1] );
+                ret_value = 127;
+            }
+            else
+            {
+                ret_value = *f_exit_code;
+            }
+
+            proc->env["?"] = std::to_string(ret_value);
+
+            op_args.pop_back();
+        }
     }
     co_return;
 }
