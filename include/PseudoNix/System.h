@@ -1735,9 +1735,9 @@ public:
                     auto is_empty = !sys->_processQueue(Q, Q, TASK_QUEUE);
                     if(is_empty)
                     {
-                        DEBUG_INFO("No Tasks. Sleeping: {}", std::this_thread::get_id());
+                        DEBUG_TRACE("No Tasks. Sleeping: {}", std::this_thread::get_id());
                         _semaphore.acquire();
-                        DEBUG_INFO("Woke up: {}", std::this_thread::get_id());
+                        DEBUG_TRACE("Woke up: {}", std::this_thread::get_id());
                     }
                     if(stop_token)
                         break;

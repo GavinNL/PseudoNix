@@ -7,6 +7,24 @@
 using namespace PseudoNix;
 
 
+SCENARIO("Tokenizer Generator")
+{
+    auto s = System::make_stream(R"foo("echo" "hello world" )foo");
+    //    s->set_eof();
+
+    auto gn = BashTokenizerGen2(s);
+
+    for(auto a : gn)
+    {
+        if(a)
+        {
+            std::cout << *a << std::endl;
+        }
+    }
+
+    exit(0);
+}
+
 
 SCENARIO("Tokenizer Generator")
 {

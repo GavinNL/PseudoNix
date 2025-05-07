@@ -1,12 +1,7 @@
-#!/bin/bash
 echo "Pre-if"
-if [[ -f /etc/profile ]]; then
-    echo "Hello If statement 1!"
-    echo "Hello If statement 2!"
-    echo "Hello If statement 3!"
+if true ; then
+    echo /etc/profile exists
 fi
-echo "post-if"
-echo "post-if"
 echo "post-if"
 
 

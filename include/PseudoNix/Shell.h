@@ -373,7 +373,7 @@ Generator< std::optional<std::string> > BashTokenizerGen2(std::shared_ptr<System
     std::string _token;
 
     char c = 0;
-
+    bool quoted = false;
     while(true)
     {
         auto res = in->get(&c);
@@ -394,33 +394,51 @@ Generator< std::optional<std::string> > BashTokenizerGen2(std::shared_ptr<System
 
         // will need to check whether we are in a quoted
         // string
-
-        if(c == ';')
+        if(quoted)
         {
-            if(!_token.empty())
-                co_yield _token;
-            co_yield std::string(";");
-            _token.clear();
-        }
-        if(c == '\n')
-        {
-            if(!_token.empty())
-                co_yield _token;
-            co_yield std::string("\n");
-            _token.clear();
-        }
-        else if( c == ' ' )
-        {
-            if(!_token.empty())
+            if(c=='"')
             {
-                co_yield _token;
-                _token.clear();
+                quoted = !quoted;
+            }
+            else
+            {
+                _token.push_back(c);
             }
         }
         else
         {
-            _token.push_back(c);
+            if(c == '"' && !quoted)
+            {
+                quoted = !quoted;
+            }
+            else if(c == ';')
+            {
+                if(!_token.empty())
+                    co_yield _token;
+                co_yield std::string(";");
+                _token.clear();
+            }
+            else if(c == '\n')
+            {
+                if(!_token.empty())
+                    co_yield _token;
+                co_yield std::string("\n");
+                _token.clear();
+            }
+            else if( c == ' ' )
+            {
+                if(!_token.empty())
+                {
+                    co_yield _token;
+                    _token.clear();
+                }
+            }
+            else
+            {
+                _token.push_back(c);
+            }
         }
+
     }
 
     co_return;
@@ -445,7 +463,8 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
                                 Generator<std::optional<std::string>>::iterator & a,
                                 System::ProcessControl * proc,
                                 std::shared_ptr<System::stream_type> in,
-                                std::shared_ptr<System::stream_type> out)
+                                std::shared_ptr<System::stream_type> out,
+                                bool execute_block)
 {
     while(a != gen.end())
     {
@@ -478,10 +497,17 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
             }
             else
             {
-                auto parse_cmd = parse_pipeline(tok, gen, a, proc, in, out);
-                for(auto c : parse_cmd)
+                if(execute_block)
                 {
-                    co_yield c;
+                    auto parse_cmd = parse_pipeline(tok, gen, a, proc, in, out);
+                    for(auto c : parse_cmd)
+                    {
+                        co_yield c;
+                    }
+                }
+                else
+                {
+                    ++a;
                 }
             }
         }
@@ -490,6 +516,12 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
     std::cout << "-- End of Block -- " << std::endl;
 
     co_return;
+}
+
+std::string _handleCondition(std::vector<std::string> condArgs)
+{
+    (void)condArgs;
+    return "1";
 }
 
 Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
@@ -502,7 +534,7 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
 
     std::vector<std::string> condition;
 
-    while("]]" != tok)
+    while("then" != tok)
     {
         tok = *a;
         if(!tok.has_value())
@@ -513,6 +545,8 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
         condition.push_back(*tok);
         ++a;
     }
+
+    // condition = {"if", "[[", ..... , "]]" }
     std::cout << std::format("Condition: {}", join(condition)) << std::endl;
 
     ++a;
@@ -525,26 +559,57 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
         ++a;
     }
 
-    auto block = parse_block(gen, a, proc, in, out);
+    condition = std::vector(condition.begin()+1, condition.end()-1);
+
+    bool condition_true = false;
+
+
+    {
+        if(condition.back() == ";")
+        {
+            condition.pop_back();
+        }
+        for(auto & v : condition)
+        {
+            v = var_sub1(v, proc->env);
+        }
+        //auto if_in = System::make_stream();
+        //for(auto &_ar : condition)
+        //{
+        //    *if_in << std::format("\"{}\" ", _ar);
+        //}
+        //if_in->set_eof();
+
+        auto subs = execute_pipes(condition, proc, in, out);
+        auto ret_code = proc->system->getProcessExitCode(subs[0]);
+        co_yield subs;
+
+        condition_true = *ret_code == 0;
+    }
+
+    auto block = parse_block(gen, a, proc, in, out, condition_true);
     for(auto c : block)
     {
         co_yield c;
     }
+
     assert((*a).value() == "fi");
     ++a;
 
     co_return;
 }
 
-Generator<WhatToDo> parse_pipeline(std::string cmd,
-                               Generator<std::optional<std::string>> & gen,
-                               Generator<std::optional<std::string>>::iterator & a_it,
+inline
+Generator<WhatToDo> parse_pipeline(std::string cmd1,
+                                   Generator<std::optional<std::string>> & gen,
+                                   Generator<std::optional<std::string>>::iterator & a_it,
                                    System::ProcessControl * proc,
-                               std::shared_ptr<System::stream_type> in,
-                               std::shared_ptr<System::stream_type> out)
+                                   std::shared_ptr<System::stream_type> in,
+                                   std::shared_ptr<System::stream_type> out)
 {
+    (void)cmd1;
     std::vector<std::string> args;
-    //args.push_back(cmd);
+
     while(a_it != gen.end())
     {
         auto a = *a_it;
@@ -562,6 +627,10 @@ Generator<WhatToDo> parse_pipeline(std::string cmd,
     // we need to execute the command here and wait for
     if(!args.empty())
     {
+        for(auto & v : args)
+        {
+            v = var_sub1(v, proc->env);
+        }
 
         {
             auto & PATH = proc->env["PATH"];
@@ -596,7 +665,6 @@ Generator<WhatToDo> parse_pipeline(std::string cmd,
             }
         }
 
-        //std::cout << std::format("Executing: {}", join(args)) << std::endl;
         auto op_args = parse_operands(args);
         std::reverse(op_args.begin(), op_args.end());
 
@@ -638,9 +706,9 @@ Generator<WhatToDo> parse_pipeline(std::string cmd,
 
                     co_yield subProcess;
 
-                    std::string out;
-                    *STDOUT >> out;
-                    auto new_args = Tokenizer3::to_vector(out);
+                    std::string _out;
+                    *STDOUT >> _out;
+                    auto new_args = Tokenizer3::to_vector(_out);
                     it = cmd.erase(it);
                     it = cmd.insert(it, new_args.begin(), new_args.end());
                 }
@@ -687,7 +755,6 @@ inline System::task_type shell_coro_old(System::e_type ctrl)
     std::string _current;
     std::string script = "";
     int ret_value = 0;
-
 
     ctrl->exported["SHELL_PID"] = true;
     ctrl->env["SHELL_PID"] = std::to_string(PID);
@@ -1021,7 +1088,6 @@ inline System::task_type shell_coro(System::e_type ctrl)
         {
             script = SYSTEM.file_to_string(_args[1]);
             script += "\nexit;";
-            _in = System::make_stream(script);
         }
         else
         {
@@ -1036,7 +1102,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
     auto gen = BashTokenizerGen2(_in);
     auto a_it = gen.begin();
 
-    auto block = parse_block(gen, a_it, ctrl.get(), _in, _out);
+    auto block = parse_block(gen, a_it, ctrl.get(), _in, _out, true);
 
     //while(EXIT_SHELL.empty())
     {

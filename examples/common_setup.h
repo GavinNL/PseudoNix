@@ -91,6 +91,8 @@ echo "this is a script defined inside the virtual file system"
 echo "I'm going to sleep now for a few seconds"
 sleep 3
 echo "Hey! I'm awake!"
+sleep 1
+echo "Hey! I'm awake!"
 )foo";
 
 
