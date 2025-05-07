@@ -6,6 +6,7 @@
 #include "System.h"
 #include "defer.h"
 #include <ranges>
+#include "Shell2.h"
 
 namespace PseudoNix
 {
@@ -258,7 +259,6 @@ Generator< std::vector<std::string>* > BashTokenizerGen(std::shared_ptr<System::
         }
     }
 
-
     co_return;
 }
 
@@ -365,7 +365,204 @@ inline std::string var_sub1(std::string_view str, std::map<std::string,std::stri
 }
 
 
-inline System::task_type shell_coro(System::e_type ctrl)
+
+
+//===========================
+Generator< std::optional<std::string> > BashTokenizerGen2(std::shared_ptr<System::stream_type> in)
+{
+    std::string _token;
+
+    char c = 0;
+
+    while(true)
+    {
+        auto res = in->get(&c);
+
+        if(res == System::stream_type::Result::END_OF_STREAM)
+        {
+            if(!_token.empty())
+                co_yield _token;
+            co_yield ";";
+            co_yield "done";
+            co_return;
+        }
+        if(res == System::stream_type::Result::EMPTY)
+        {
+            co_yield std::nullopt;
+            continue;
+        }
+
+        // will need to check whether we are in a quoted
+        // string
+
+        if(c == ';')
+        {
+            if(!_token.empty())
+                co_yield _token;
+            co_yield std::string(";");
+            _token.clear();
+        }
+        else if( c == ' ' || c=='\n' )
+        {
+            if(!_token.empty())
+            {
+                co_yield _token;
+                _token.clear();
+            }
+        }
+        else
+        {
+            _token.push_back(c);
+        }
+    }
+
+    co_return;
+}
+
+using WhatToDo = std::variant< std::vector<System::pid_type>, int >;
+
+
+Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
+                             Generator<std::optional<std::string>>::iterator & a,
+                             System::ProcessControl * proc,
+                             std::shared_ptr<System::stream_type> in,
+                             std::shared_ptr<System::stream_type> out);
+
+Generator<WhatToDo> parse_args(std::string cmd,  Generator<std::optional<std::string>> & gen,
+                                                 Generator<std::optional<std::string>>::iterator & a,
+                                                 System::ProcessControl * proc,
+                                                 std::shared_ptr<System::stream_type> in,
+                               std::shared_ptr<System::stream_type> out);
+
+Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
+                                Generator<std::optional<std::string>>::iterator & a,
+                                System::ProcessControl * proc,
+                                std::shared_ptr<System::stream_type> in,
+                                std::shared_ptr<System::stream_type> out)
+{
+    //auto gen = BashTokenizerGen2(in);
+    //auto a = gen.begin();
+
+    while(a != gen.end())
+    {
+        auto tok_opt = *a;
+        ++a;
+
+        if(!tok_opt.has_value())
+        {
+            co_yield 0; // wait for more
+        }
+        else
+        {
+            auto & tok = *tok_opt;
+            if(tok == "done" || tok == "fi" )
+            {
+                break;
+            }
+            else if( tok == ";" )
+            {
+                // skip
+            }
+            else if( tok == "if" )
+            {
+                auto if_cmd = parse_if(gen, a, proc, in, out);
+                for(auto c : if_cmd)
+                {
+                    co_yield c;
+                }
+            }
+            else
+            {
+                auto parse_cmd = parse_args(tok, gen, a, proc, in, out);
+                for(auto c : parse_cmd)
+                {
+                    co_yield c;
+                }
+            }
+        }
+
+    }
+    std::cout << "-- End of Block -- " << std::endl;
+
+    co_return;
+}
+
+Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
+                             Generator<std::optional<std::string>>::iterator & a,
+                             System::ProcessControl * proc,
+                             std::shared_ptr<System::stream_type> in,
+                             std::shared_ptr<System::stream_type> out)
+{
+    //auto gen = BashTokenizerGen2(in);
+    //auto a = gen.begin();
+    auto tok = *a;
+    // parse the condition line
+
+    std::vector<std::string> condition;
+
+    assert("[[" == tok);
+    ++a;
+    while("]]" != tok)
+    {
+        tok = *a;
+        if(!tok.has_value())
+        {
+            co_yield 0;
+            continue;
+        }
+        condition.push_back(*tok);
+        ++a;
+    }
+    std::cout << std::format("Condition: {}", join(condition)) << std::endl;
+    tok = *(++a);
+    assert("then" == tok);
+
+    auto block = parse_block(gen, a, proc, in, out);
+    for(auto c : block)
+    {
+        co_yield c;
+    }
+
+    co_return;
+}
+
+Generator<WhatToDo> parse_args(std::string cmd,
+                               Generator<std::optional<std::string>> & gen,
+                               Generator<std::optional<std::string>>::iterator & a_it,
+                                   System::ProcessControl * proc,
+                               std::shared_ptr<System::stream_type> in,
+                               std::shared_ptr<System::stream_type> out)
+{
+    std::vector<std::string> args;
+    args.push_back(cmd);
+    while(a_it != gen.end())
+    {
+        auto a = *a_it;
+        ++a_it;
+        if(a == ";")
+            break;
+        if(!a.has_value())
+        {
+            co_yield 0;
+            continue;
+        }
+        args.push_back(*a);
+    }
+
+    // we need to execute the command here and wait for
+    if(!args.empty())
+    {
+        std::cout << std::format("Executing: {}", join(args)) << std::endl;
+        auto procIDs = execute_pipes(args, proc, in, out);
+        co_yield procIDs;
+    }
+    co_return;
+}
+//===========================
+
+
+
+inline System::task_type shell_coro_old(System::e_type ctrl)
 {
     PSEUDONIX_PROC_START(ctrl);
 
@@ -660,6 +857,63 @@ inline System::task_type shell_coro(System::e_type ctrl)
 
             op_args.pop_back();
         }
+    }
+
+    co_return std::move(ret_value);
+}
+
+
+inline System::task_type shell_coro(System::e_type ctrl)
+{
+    PSEUDONIX_PROC_START(ctrl);
+
+    std::string _current;
+    std::string script = "";
+    int ret_value = 0;
+
+
+    ctrl->exported["SHELL_PID"] = true;
+    ctrl->env["SHELL_PID"] = std::to_string(PID);
+    //===========================================================================
+    // Parse arguments. Probably should use an external library for this
+    // but didn't want to add the dependnecy
+    //===========================================================================
+    auto _args = ARGS;
+
+    std::vector<System::pid_type> subProcess;
+
+    auto & EXIT_SHELL = ENV["EXIT_SHELL"];
+
+    auto gen = BashTokenizerGen2(ctrl->in);
+    auto a_it = gen.begin();
+
+    auto block = parse_block(gen, a_it, ctrl.get(), ctrl->in, ctrl->out);
+
+    //while(EXIT_SHELL.empty())
+    {
+        //HANDLE_AWAIT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
+
+        auto it = block.begin();
+        while(it != block.end())
+        {
+            auto _cc = *it;
+            if( std::holds_alternative<int>(_cc) && std::get<int>(_cc) == 0)
+            {
+                std::cout << "Waiting on new data" << std::endl;
+                HANDLE_AWAIT_TERM( co_await ctrl->await_has_data(ctrl->in), ctrl);
+                ++it;
+            }
+            else if( std::holds_alternative<std::vector<System::pid_type>>(_cc))
+            {
+                HANDLE_AWAIT_TERM(co_await ctrl->await_finished(std::get<std::vector<System::pid_type>>(_cc)), ctrl);
+                ++it;
+            }
+
+            if(!EXIT_SHELL.empty())
+                co_return 0;
+        }
+
+
     }
 
     co_return std::move(ret_value);

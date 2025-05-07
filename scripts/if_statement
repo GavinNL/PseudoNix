@@ -1,0 +1,9 @@
+#!/bin/bash
+
+if [[ -f /etc/profile ]]; then
+    echo "Hello File!"
+elif [[ -d /etc/profile ]]; then
+    echo "Hello Directory!"
+else
+    echo "Unknown"
+fi

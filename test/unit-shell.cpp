@@ -2,22 +2,23 @@
 #include <doctest/doctest.h>
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
+#include <PseudoNix/Shell2.h>
 
 using namespace PseudoNix;
 
 
+
 SCENARIO("Tokenizer Generator")
 {
-    auto s = System::make_stream("cmd1 $(echo hello world) arg2 ; cmd2     \n cmd3 \"hello world\" \n cmd4");
-    s->set_eof();
-    auto gen = BashTokenizerGen(s);
-    for(auto i : gen)
-    {
-        if(i)
-        {
-            std::cout << std::format("{}", join(*i,",")) << std::endl;
-        }
-    }
+    auto s = System::make_stream(R"foo(ps
+)foo");
+//    s->set_eof();
+
+    auto gn = BashTokenizerGen2(s);
+    auto a = gn.begin();
+    std::cout << (*a).has_value() << std::endl;
+    std::cout << *(*a) << std::endl;
+
     exit(0);
 }
 

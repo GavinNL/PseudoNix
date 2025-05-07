@@ -1,7 +1,7 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "App.h"
 
-//#define PSUEDONIX_ENABLE_DEBUG
+#define PSEUDONIX_LOG_LEVEL_INFO
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
 #include <PseudoNix/ImGuiTerminal.h>
