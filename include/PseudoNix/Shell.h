@@ -466,6 +466,7 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
             else if( tok == ";" )
             {
                 // skip
+                ++a;
             }
             else if( tok == "if" )
             {
@@ -501,8 +502,6 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
 
     std::vector<std::string> condition;
 
-    assert("[[" == tok);
-    ++a;
     while("]]" != tok)
     {
         tok = *a;
@@ -515,14 +514,24 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
         ++a;
     }
     std::cout << std::format("Condition: {}", join(condition)) << std::endl;
-    tok = *(++a);
-    assert("then" == tok);
+
+    ++a;
+    if((*a).has_value() && (*a).value() == ";")
+    {
+        ++a;
+    }
+    if((*a).has_value() && (*a).value() == "then")
+    {
+        ++a;
+    }
 
     auto block = parse_block(gen, a, proc, in, out);
     for(auto c : block)
     {
         co_yield c;
     }
+    assert((*a).value() == "fi");
+    ++a;
 
     co_return;
 }
@@ -979,9 +988,12 @@ inline System::task_type shell_coro(System::e_type ctrl)
     std::string script = "";
     int ret_value = 0;
 
-
     ctrl->exported["SHELL_PID"] = true;
     ctrl->env["SHELL_PID"] = std::to_string(PID);
+
+    auto _in  = ctrl->in;
+    auto _out = ctrl->out;
+
     //===========================================================================
     // Parse arguments. Probably should use an external library for this
     // but didn't want to add the dependnecy
@@ -1009,6 +1021,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
         {
             script = SYSTEM.file_to_string(_args[1]);
             script += "\nexit;";
+            _in = System::make_stream(script);
         }
         else
         {
@@ -1016,14 +1029,14 @@ inline System::task_type shell_coro(System::e_type ctrl)
         }
     }
 
+    *_in << script;
 
-    CIN << script;
     auto & EXIT_SHELL = ENV["EXIT_SHELL"];
 
-    auto gen = BashTokenizerGen2(ctrl->in);
+    auto gen = BashTokenizerGen2(_in);
     auto a_it = gen.begin();
 
-    auto block = parse_block(gen, a_it, ctrl.get(), ctrl->in, ctrl->out);
+    auto block = parse_block(gen, a_it, ctrl.get(), _in, _out);
 
     //while(EXIT_SHELL.empty())
     {
@@ -1033,7 +1046,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
             auto _cc = *it;
             if( std::holds_alternative<int>(_cc) && std::get<int>(_cc) == 0)
             {
-                HANDLE_AWAIT_TERM( co_await ctrl->await_has_data(ctrl->in), ctrl);
+                HANDLE_AWAIT_TERM( co_await ctrl->await_has_data(_in), ctrl);
                 ++it;
             }
             else if( std::holds_alternative<std::vector<System::pid_type>>(_cc))

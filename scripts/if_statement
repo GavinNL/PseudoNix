@@ -1,9 +1,12 @@
 #!/bin/bash
-
+echo "Pre-if"
 if [[ -f /etc/profile ]]; then
-    echo "Hello File!"
-elif [[ -d /etc/profile ]]; then
-    echo "Hello Directory!"
-else
-    echo "Unknown"
+    echo "Hello If statement 1!"
+    echo "Hello If statement 2!"
+    echo "Hello If statement 3!"
 fi
+echo "post-if"
+echo "post-if"
+echo "post-if"
+
+
