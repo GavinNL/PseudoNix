@@ -572,7 +572,6 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
 
     bool condition_true = false;
 
-
     {
         if(condition.back() == ";")
         {

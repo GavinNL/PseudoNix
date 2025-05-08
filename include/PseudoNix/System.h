@@ -2089,7 +2089,7 @@ public:
             co_return 1;
         };
 
-        DEF_FUNC_HELP("test", "Test filetypes and compares values")
+        DEF_FUNC_HELP("test", "Test file types and compares values")
         {
             // very simple implemntation of the "test" function in linux
             // mostly used in if statements in shell scripts
@@ -2098,6 +2098,17 @@ public:
                 co_return 0;
 
             // test [flag] [file_path]
+            bool negate=false;
+            auto _cmp = [&negate](bool f)
+            {
+                return negate ? f : (!f);
+            };
+
+            if( ARGS.size() > 2 && ARGS[1] == "!" )
+            {
+                negate = !negate;
+            }
+
             if(ARGS.size() == 3)
             {
                 auto const & flag = ARGS[1];
@@ -2123,11 +2134,11 @@ public:
                 auto const & right = ARGS[3];
                 if(op == "=")
                 {
-                    co_return !(left==right);
+                    co_return _cmp(left==right);
                 }
                 else if(op == "=")
                 {
-                    co_return !(left!=right);
+                    co_return _cmp(left!=right);
                 }
                 else
                 {
@@ -2144,15 +2155,15 @@ public:
                         co_return 2;
                     }
                     if( op == "-eq")
-                        co_return !(left_int == right_int);
+                        co_return _cmp(left_int == right_int);
                     if( op == "-le")
-                        co_return !(left_int <= right_int);
+                        co_return _cmp(left_int <= right_int);
                     if( op == "-lt")
-                        co_return !(left_int < right_int);
+                        co_return _cmp(left_int < right_int);
                     if( op == "-ge")
-                        co_return !(left_int >= right_int);
+                        co_return _cmp(left_int >= right_int);
                     if( op == "-gt")
-                        co_return !(left_int > right_int);
+                        co_return _cmp(left_int > right_int);
                 }
                 // test  AA == BB
             }
