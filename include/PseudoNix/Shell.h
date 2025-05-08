@@ -341,7 +341,7 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
         else
         {
             auto & tok = *tok_opt;
-            if(tok == "done" || tok == "fi" || tok == "else")
+            if(tok == "done" || tok == "fi" || tok == "else" || tok == "elif")
             {
                 break;
             }
@@ -381,12 +381,12 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
 }
 
 
-
-Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
+Generator<WhatToDo> parse_condition(Generator<std::optional<std::string>> & gen,
                              Generator<std::optional<std::string>>::iterator & a,
                              System::ProcessControl * proc,
                              std::shared_ptr<System::stream_type> in,
-                             std::shared_ptr<System::stream_type> out)
+                             std::shared_ptr<System::stream_type> out,
+                             bool evaluate_condition)
 {
     auto tok = *a;
 
@@ -428,8 +428,6 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
     if(condition.back() == "]]")
         condition.pop_back();
 
-    bool condition_true = false;
-
     {
         if(condition.back() == ";")
         {
@@ -440,24 +438,86 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
             v = var_sub1(v, proc->env);
         }
 
-        auto subs = execute_pipes(condition, proc, in, out);
-        auto ret_code = proc->system->getProcessExitCode(subs[0]);
-        co_yield subs;
-
-        condition_true = *ret_code == 0;
+        if(evaluate_condition)
+        {
+            auto subs = execute_pipes(condition, proc, in, out);
+            auto ret_code = proc->system->getProcessExitCode(subs[0]);
+            co_yield subs;
+            proc->env["?"] = std::format("{}",*ret_code);
+        }
     }
+}
 
-    auto block = parse_block(gen, a, proc, in, out, condition_true);
-    for(auto c : block)
+Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
+                             Generator<std::optional<std::string>>::iterator & a,
+                             System::ProcessControl * proc,
+                             std::shared_ptr<System::stream_type> in,
+                             std::shared_ptr<System::stream_type> out)
+{
+
+    assert(*a == "if");
+
+    std::string condition_ret_code = "0";
+
+    // Profess the first if-statement
     {
-        co_yield c;
+        // Read and evaluate the condition
+        //
+        auto cond = parse_condition(gen, a, proc, in, out, true);
+        for(auto c : cond)
+        {
+            co_yield c;
+        }
+        condition_ret_code = proc->env["?"];
+
+        // Read the block and evaluate it if the condition_ret_code == "0"
+        auto block = parse_block(gen, a, proc, in, out, condition_ret_code == "0");
+        for(auto c : block)
+        {
+            co_yield c;
+        }
     }
 
     auto next = *a;
-    if(next.value() == "else")
+    if(next == "elif")
+    {
+        // parse the condition, and evaluate it it
+        // only if the prior condition_ret_code != "0"
+        if(condition_ret_code != "0")
+        {
+            auto cond = parse_condition(gen, a, proc, in, out, true);
+            for(auto c : cond)
+            {
+                co_yield c;
+            }
+            condition_ret_code = proc->env["?"];
+            auto block = parse_block(gen, a, proc, in, out, condition_ret_code == "0");
+            for(auto c : block)
+            {
+                co_yield c;
+            }
+        }
+        else
+        {
+            auto cond = parse_condition(gen, a, proc, in, out, false);
+            for(auto c : cond)
+            {
+                co_yield c;
+            }
+            condition_ret_code = proc->env["?"];
+            auto block = parse_block(gen, a, proc, in, out, false);
+            for(auto c : block)
+            {
+                co_yield c;
+            }
+        }
+    }
+    next = *a;
+
+    if(next == "else")
     {
         ++a;
-        auto else_block = parse_block(gen, a, proc, in, out, !condition_true);
+        auto else_block = parse_block(gen, a, proc, in, out, condition_ret_code != "0");
         for(auto c : else_block)
         {
             co_yield c;
