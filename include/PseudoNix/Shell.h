@@ -560,6 +560,15 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
     }
 
     condition = std::vector(condition.begin()+1, condition.end()-1);
+    if(condition.front() == "[[")
+    {
+        condition.front() = "test";
+    }
+
+    if(condition.back() == ";")
+        condition.pop_back();
+    if(condition.back() == "]]")
+        condition.pop_back();
 
     bool condition_true = false;
 

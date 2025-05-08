@@ -13,6 +13,10 @@ if test "${USER}" = "bob" ; then
     echo "You are the correct user: bob"
 fi
 
+if [[ "${USER}" = "bob" ]]; then
+    echo "You are the correct user: bob"
+fi
+
 echo "post-if"
 
 
