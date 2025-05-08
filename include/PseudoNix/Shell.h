@@ -341,7 +341,7 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
         else
         {
             auto & tok = *tok_opt;
-            if(tok == "done" || tok == "fi" )
+            if(tok == "done" || tok == "fi" || tok == "else")
             {
                 break;
             }
@@ -453,7 +453,19 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
         co_yield c;
     }
 
-    assert((*a).value() == "fi");
+    auto next = *a;
+    if(next.value() == "else")
+    {
+        ++a;
+        auto else_block = parse_block(gen, a, proc, in, out, !condition_true);
+        for(auto c : else_block)
+        {
+            co_yield c;
+        }
+    }
+
+    next = *a;
+    assert(next.value() == "fi");
     ++a;
 
     co_return;
@@ -645,306 +657,6 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
 }
 //===========================
 
-
-
-inline System::task_type shell_coro_old(System::e_type ctrl)
-{
-    PSEUDONIX_PROC_START(ctrl);
-
-    std::string const &shell_name = ARGS[0];
-    std::string _current;
-    std::string script = "";
-    int ret_value = 0;
-
-    ctrl->exported["SHELL_PID"] = true;
-    ctrl->env["SHELL_PID"] = std::to_string(PID);
-    //===========================================================================
-    // Parse arguments. Probably should use an external library for this
-    // but didn't want to add the dependnecy
-    //===========================================================================
-    auto _args = ARGS;
-    auto no_profile = std::find(_args.begin(), _args.end(), "--noprofile");
-    bool load_etc_profile = true;
-    if(_args.end() != no_profile)
-    {
-        // Copy the rc_text into the
-        // the input stream so that
-        // it will be executed first
-        //script += shellEnv.rc_text;
-        _args.erase(no_profile);
-        load_etc_profile = false;
-    }
-    if(load_etc_profile && SYSTEM.exists("/etc/profile"))
-    {
-        script += SYSTEM.file_to_string("/etc/profile");
-    }
-
-    auto dash_c = std::find(_args.begin(), _args.end(), "-c");
-    if(dash_c != _args.end())
-    {
-        auto cmd_i = std::next(dash_c);
-        if(cmd_i != ARGS.end())
-        {
-            script += *cmd_i;
-            // make sure there is an exit statement at the
-            // end of the script so that it will
-            // exit the the process when done
-            script += "\nexit;";
-            _args.erase(dash_c, dash_c + 2);
-        }
-    }
-
-    if(_args.size() > 1)
-    {
-        if(SYSTEM.exists(_args[1]))
-        {
-            script = SYSTEM.file_to_string(_args[1]);
-            script += "\nexit;";
-        }
-        else
-        {
-            COUT << std::format("{}: {}: no such file or directory\n", ARGS[0], _args[1]);
-        }
-    }
-
-    std::vector<System::pid_type> subProcess;
-
-    std::istringstream i_script(script);
-    bool from_script = script.size() > 0;
-    char c;
-    bool quoted=false;
-
-    auto & EXIT_SHELL = ENV["EXIT_SHELL"];
-    while(EXIT_SHELL.empty())
-    {
-        if(from_script)
-        {
-            while(true)
-            {
-                i_script.get(c);
-                if(!i_script.eof())
-                {
-                    _current.push_back(c);
-                    if(_current.back() == ';' || _current.back() == '\n')
-                    {
-                        _current.pop_back();
-                        break;
-                    }
-                }
-                else
-                {
-                    break;
-                }
-            }
-            if(i_script.eof() && _current.empty())
-            {
-                // if we're done reading from the input script
-                // continue as normal.
-                from_script = false;
-                continue;
-            }
-        }
-        else
-        {
-            HANDLE_AWAIT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
-            while(true)
-            {
-                auto r = CIN.get(&c);
-                if(r == System::stream_type::Result::END_OF_STREAM)
-                    EXIT_SHELL = "1";
-                else if(r == System::stream_type::Result::SUCCESS)
-                {
-                    _current += c;
-                    if(c=='"') quoted = !quoted;
-                    if(!quoted && (_current.back() == ';' || _current.back() == '\n') )
-                    {
-                        _current.pop_back();
-                        break;
-                    }
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-
-        if(_current.empty())
-        {
-            continue;
-        }
-
-        auto args = Tokenizer3::to_vector(var_sub1(_current, ENV));
-        _current.clear();
-
-        auto first_comment = std::find(args.begin(), args.end(), "#");
-        args.erase(first_comment, args.end());
-        if(args.empty())
-            continue;
-
-        bool run_in_background = false;
-
-        if(args.size() >= 2 && args[0] == "yield")
-        {
-            if(SYSTEM.taskQueueExists(args[1]))
-            {
-                HANDLE_AWAIT_TERM(co_await ctrl->await_yield(args[1]), ctrl)
-            }
-            else
-            {
-                COUT << std::format("Queue, {}, does not exist. Staying on {}\n", args[1], QUEUE);
-            }
-            continue;
-        }
-
-        if(args.back() == "&")
-        {
-            run_in_background = true;
-            args.erase(args.end()-1);
-        }
-        else if(args.back().back() == '&')
-        {
-            args.back().pop_back();
-            run_in_background = true;
-        }
-
-        // Check the Path variable
-        {
-            auto & PATH = ENV["PATH"];
-            auto parts = PATH
-                         | std::views::split(':')
-                         | std::views::transform([](auto &&subrange) {
-                               return std::string_view(&*subrange.begin(), static_cast<size_t>(std::ranges::distance(subrange)));
-                           });
-            for(auto subPath : parts)
-            {
-                auto bin_loc = System::path_type(subPath) / args[0];
-                if(SYSTEM.exists(bin_loc))
-                {
-                    std::vector<std::string> newargs;
-
-                    // Set all the argument variables $0, $1, $2...
-                    // first
-                    for(size_t i=0;i<args.size();i++)
-                    {
-                        newargs.push_back(std::format("{}={}", i, args[i]));
-                    }
-                    // add the sh shell
-                    newargs.push_back("sh");
-
-                    // and the location of the script
-                    newargs.push_back(bin_loc.generic_string());
-
-                    args = newargs;
-                    break;
-                }
-            }
-        }
-
-
-        if( run_in_background )
-        {
-#if 0
-            auto STDIN = System::make_stream();
-            STDIN->set_eof();
-            auto pids = execute_pipes( args, ctrl.get(), STDIN, ctrl->out);
-#else
-            auto STDIN = System::make_stream();
-
-            for(auto & a : args)
-            {
-                // pipe the data into stdin, and make sure each argument
-                // is in quotes. We may need to tinker with this
-                // to have properly escaped characters
-                *STDIN << std::format("\"{}\" ", a);
-            }
-            *STDIN << std::format(";");
-            STDIN->set_eof();
-            auto pids = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), STDIN, ctrl->out);
-#endif
-            COUT << std::format("{}\n", pids[0]);
-            ENV["!"] = std::format("{}", pids[0]);
-            continue;
-        }
-
-        auto op_args = parse_operands(args);
-
-        std::reverse(op_args.begin(), op_args.end());
-
-        while(op_args.size())
-        {
-            auto & cmd = op_args.back();
-            auto _operator = cmd.front();
-
-            if(_operator == "&&" && ret_value != 0)
-            {
-                op_args.pop_back();
-                continue;
-            }
-            if(_operator == "||" && ret_value == 0)
-            {
-                op_args.pop_back();
-                continue;
-            }
-            //======================================================================
-            // Loop through all the arguments in the
-            // cmd and see if any of them look like: $(cmdname arg1 arg2)
-            //
-            // If so, execute a new shell and pipe the "cmdname arg1 arg2" into
-            // the input stream so that it can be executed
-            for(auto it=cmd.begin(); it != cmd.end();)
-            {
-                if(it->size() >= 3 && it->substr(0,2) == "$(" && it->back() == ')')
-                {
-                    // we have a $(cmd arg1 arg2 arg3) situtation going on here
-                    // so execute this as a new shell
-                    auto STDIN = System::make_stream();
-                    auto STDOUT = System::make_stream();
-                    subProcess = execute_pipes( {shell_name, "--noprofile"}, ctrl.get(), STDIN, STDOUT);
-                    *STDIN << it->substr(2, it->size()-3);
-                    *STDIN << ';';
-                    STDIN->set_eof(); // make sure to set the eof of the output stream otherwise
-                                    // sh will block waiting for bytes
-
-                    HANDLE_AWAIT_TERM(co_await ctrl->await_finished(subProcess), ctrl)
-
-                    std::string out;
-                    *STDOUT >> out;
-                    auto new_args = Tokenizer3::to_vector(out);
-                    it = cmd.erase(it);
-                    it = cmd.insert(it, new_args.begin(), new_args.end());
-                }
-                else
-                {
-                    ++it;
-                }
-            }
-
-            //======================================================================
-
-            subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), ctrl.get(), ctrl->in, ctrl->out);
-            auto f_exit_code = SYSTEM.getProcessExitCode(subProcess.back());
-
-            HANDLE_AWAIT_TERM(co_await ctrl->await_finished(subProcess), ctrl)
-
-            if(!f_exit_code)
-            {
-                COUT << std::format("Command not found: [{}]\n", cmd[1] );
-                ret_value = 127;
-            }
-            else
-            {
-                ret_value = *f_exit_code;
-            }
-
-            ENV["?"] = std::to_string(ret_value);
-
-            op_args.pop_back();
-        }
-    }
-
-    co_return std::move(ret_value);
-}
 
 
 inline System::task_type shell_coro(System::e_type ctrl)
