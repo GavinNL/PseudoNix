@@ -237,6 +237,7 @@ Generator< std::optional<std::string> > BashTokenizerGen2(std::shared_ptr<System
     char c = 0;
     bool quoted = false;
 
+    int bracket_count = 0;
     while(true)
     {
         auto res = in->get(&c);
@@ -288,7 +289,17 @@ Generator< std::optional<std::string> > BashTokenizerGen2(std::shared_ptr<System
                 co_yield std::string("\n");
                 _token.clear();
             }
-            else if( c == ' ' )
+            else if( c == '(' )
+            {
+                _token.push_back(c);
+                bracket_count++;
+            }
+            else if( c== ')')
+            {
+                _token.push_back(c);
+                bracket_count--;
+            }
+            else if( c == ' ' && bracket_count == 0 )
             {
                 if(!_token.empty())
                 {
