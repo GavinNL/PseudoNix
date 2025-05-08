@@ -412,7 +412,7 @@ int main()
 }
 ```
 
-## Example 6: Multi-Task Queue
+### Example 6: Multi-Task Queue
 
 Processes in the PseudoNix System are executed on a Task Queue. There is a
 `"MAIN"` queue which is executed when you call  `system.taskQueueExecute()` or
@@ -747,3 +747,44 @@ spawn 3 bgrunner THREADPOOL
 spawn 5 queueHopper THREADPOOL
 
 ```
+
+## FileSystem
+
+PseudoNix provides a virtual filesystem implementation. Files/Folders can exist
+completely in memory, or be mounted from the host.
+
+```c++
+
+PseudoNix::System M;
+
+// create a folder in the virtual file system
+M.mkdir("/bin");
+
+// create an empty file
+M.touch("/bin/hello.sh");
+
+// Mount a host directory inside the virtual
+// filesystem
+M.mkdir("/mnt");
+M.mount(path_on_host, "/mnt");
+
+// List all files/folders
+for(auto u : M.list_dir(/mnt))
+{
+    COUT << std::format("{}\n", u.generic_string());
+}
+```
+
+Some common filesystem utilities are also provided for the shell:
+
+ * ls
+ * cd
+ * mount/umount
+ * pwd
+ * mkdir
+ * touch
+ * cp - single file only. No directories, no globbing
+ * mv - single file only. No directories, no globbing
+
+See the [Filesystem Unit Test](/test/unit-FileSystem.cpp) for more detail.
+
