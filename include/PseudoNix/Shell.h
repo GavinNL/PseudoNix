@@ -477,13 +477,14 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
             co_yield c;
         }
     }
-
+    bool success = condition_ret_code == "0";
     auto next = *a;
-    if(next == "elif")
+
+    while(next == "elif")
     {
         // parse the condition, and evaluate it it
         // only if the prior condition_ret_code != "0"
-        if(condition_ret_code != "0")
+        if(!success)
         {
             auto cond = parse_condition(gen, a, proc, in, out, true);
             for(auto c : cond)
@@ -491,11 +492,13 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
                 co_yield c;
             }
             condition_ret_code = proc->env["?"];
+
             auto block = parse_block(gen, a, proc, in, out, condition_ret_code == "0");
             for(auto c : block)
             {
                 co_yield c;
             }
+            success = condition_ret_code == "0";
         }
         else
         {
@@ -511,8 +514,8 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
                 co_yield c;
             }
         }
+        next = *a;
     }
-    next = *a;
 
     if(next == "else")
     {
