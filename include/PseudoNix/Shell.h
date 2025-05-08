@@ -573,12 +573,6 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
         {
             v = var_sub1(v, proc->env);
         }
-        //auto if_in = System::make_stream();
-        //for(auto &_ar : condition)
-        //{
-        //    *if_in << std::format("\"{}\" ", _ar);
-        //}
-        //if_in->set_eof();
 
         auto subs = execute_pipes(condition, proc, in, out);
         auto ret_code = proc->system->getProcessExitCode(subs[0]);
@@ -625,11 +619,13 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
     }
 
     // we need to execute the command here and wait for
+    args.erase(std::find_if(args.begin(), args.end(), [](auto const & s)
+                            {
+                                return s.size() && s.front() == '#' ;
+                            }), args.end());
+
     if(!args.empty())
-    {
-        args.erase(std::find(args.begin(), args.end(), "#"), args.end());
-
-
+    {      
         for(auto & v : args)
         {
             v = var_sub1(v, proc->env);
@@ -745,7 +741,7 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
                     co_yield subProcess;
 
                     std::string _out2;
-                    *Sauto it = TDOUT >> _out2;
+                    *STDOUT >> _out2;
                     auto new_args = Tokenizer3::to_vector(_out2);
                     it = cmd.erase(it);
                     it = cmd.insert(it, new_args.begin(), new_args.end());

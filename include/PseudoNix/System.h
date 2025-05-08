@@ -2089,6 +2089,76 @@ public:
             co_return 1;
         };
 
+        DEF_FUNC_HELP("test", "Test filetypes and compares values")
+        {
+            // very simple implemntation of the "test" function in linux
+            // mostly used in if statements in shell scripts
+            PSEUDONIX_PROC_START(ctrl);
+            if(ARGS.size() == 1)
+                co_return 0;
+
+            // test [flag] [file_path]
+            if(ARGS.size() == 3)
+            {
+                auto const & flag = ARGS[1];
+                path_type path = ARGS[2];
+                if(!path.has_root_directory())
+                    path = CWD / path;
+
+                if(flag == "-f")
+                {
+                    // note: 0 == true and 1 == false in
+                    // a shell
+                    co_return SYSTEM.is_file(path) != true;
+                }
+                else if(flag == "-d")
+                {
+                    co_return SYSTEM.is_dir(path) != true;
+                }
+            }
+            else if (ARGS.size() == 4)
+            {
+                auto const & left = ARGS[1];
+                auto const & op = ARGS[2];
+                auto const & right = ARGS[3];
+                if(op == "=")
+                {
+                    co_return !(left==right);
+                }
+                else if(op == "=")
+                {
+                    co_return !(left!=right);
+                }
+                else
+                {
+                    int32_t left_int=0;
+                    int32_t right_int=0;
+                    if(std::from_chars(left.data(), left.data() + left.size(), left_int).ec != std::errc())
+                    {
+                        COUT << std::format("test: {}: integer expression expected\n", left);
+                        co_return 2;
+                    }
+                    if(std::from_chars(right.data(), right.data() + right.size(), right_int).ec != std::errc())
+                    {
+                        COUT << std::format("test: {}: integer expression expected\n", right);
+                        co_return 2;
+                    }
+                    if( op == "-eq")
+                        co_return !(left_int == right_int);
+                    if( op == "-le")
+                        co_return !(left_int <= right_int);
+                    if( op == "-lt")
+                        co_return !(left_int < right_int);
+                    if( op == "-ge")
+                        co_return !(left_int >= right_int);
+                    if( op == "-gt")
+                        co_return !(left_int > right_int);
+                }
+                // test  AA == BB
+            }
+            co_return 0;
+        };
+
         DEF_FUNC_HELP("cat", "Concatenates files to standard output")
         {
             PSEUDONIX_PROC_START(ctrl);

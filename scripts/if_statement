@@ -1,9 +1,18 @@
 #!/bin/bash
 
 echo "Pre-if"
-if true ; then
-    echo /etc/profile exists
+if test -d /bin ; then
+    echo /bin exists and is a directory
 fi
+
+if test -f /etc/profile ; then
+    echo /etc/profile exists and is a file
+fi
+
+if test "${USER}" = "bob" ; then
+    echo "You are the correct user: bob"
+fi
+
 echo "post-if"
 
 
