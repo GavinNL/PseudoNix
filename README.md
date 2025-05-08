@@ -73,6 +73,7 @@ the system. After add more and more features, I decided to turn it into its own 
 ### Features
 
  - Bash-like shell interface
+ - Simple shell scripts
  - Define your own process coroutines similar to a linux process
  - Run your processes within the system's scheduler
  - Chain processes together `proc1 | proc2` just like in Linux
