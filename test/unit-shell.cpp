@@ -9,24 +9,25 @@ using namespace PseudoNix;
 
 SCENARIO("Tokenizer Generator")
 {
-    auto s = System::make_stream(R"foo(
-"echo" "hello world"
-# This is a comment
-echo post comment #
-)foo");
-    //    s->set_eof();
+    auto s = System::make_stream(R"foo(echo Hello $(get name))foo");
+    s->set_eof();
 
     auto gn = BashTokenizerGen2(s);
 
+    std::vector<std::string> args;
     for(auto a : gn)
     {
         if(a)
         {
-            std::cout << *a << std::endl;
+            args.push_back(*a);
         }
     }
-
-    exit(0);
+    REQUIRE(args.size() == 5);
+    REQUIRE(args[0] == "echo");
+    REQUIRE(args[1] == "Hello");
+    REQUIRE(args[2] == "$(get name)");
+    REQUIRE(args[3] == ";");
+    REQUIRE(args[4] == "done");
 }
 
 
@@ -40,8 +41,6 @@ SCENARIO("Tokenizer Generator")
     auto a = gn.begin();
     std::cout << (*a).has_value() << std::endl;
     std::cout << *(*a) << std::endl;
-
-    exit(0);
 }
 
 SCENARIO("Tokenizer 3")
@@ -169,7 +168,7 @@ SCENARIO("Test Shell features")
     {
         auto [out, code] = testS(
             "echo hello world;"
-            "sleep 2 && echo sleep finished &;"
+            "sleep 1 && echo sleep finished &;"
             "echo done;"
             "");
         REQUIRE(out ==
@@ -181,3 +180,87 @@ SCENARIO("Test Shell features")
     }
 }
 
+
+
+SCENARIO("Test Shell if-statements")
+{
+    {
+        auto [out, code] = testS(R"foo(
+if  true ; then
+    echo "true"
+fi
+)foo");
+        REQUIRE(out == "true");
+        REQUIRE(code == 0);
+    }
+
+    {
+        auto [out, code] = testS(R"foo(
+if  false ; then
+    echo "true"
+fi
+)foo");
+        REQUIRE(out == "");
+        REQUIRE(code == 0);
+    }
+}
+
+
+SCENARIO("Test Shell if-else statements")
+{
+    {
+        auto [out, code] = testS(R"foo(
+if  true ; then
+    echo "true"
+else
+    echo "false"
+fi
+)foo");
+        REQUIRE(out == "true");
+        REQUIRE(code == 0);
+    }
+
+    {
+        auto [out, code] = testS(R"foo(
+if  false ; then
+    echo "true"
+else
+    echo "false"
+fi
+)foo");
+
+        REQUIRE(out == "false");
+        REQUIRE(code == 0);
+    }
+}
+
+
+SCENARIO("Test Shell if-else statements")
+{
+    {
+        auto [out, code] = testS(R"foo(
+if  false ; then
+    echo "false"
+elif  true ; then
+    echo "true"
+else
+    echo "false"
+fi
+)foo");
+        REQUIRE(out == "true");
+        REQUIRE(code == 0);
+    }
+
+    {
+        auto [out, code] = testS(R"foo(
+if  false ; then
+    echo "true"
+else
+    echo "false"
+fi
+)foo");
+
+        REQUIRE(out == "false");
+        REQUIRE(code == 0);
+    }
+}

@@ -468,7 +468,7 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
 {
 
     assert(*a == "if");
-
+    auto current_ret_code = proc->env["?"];
     std::string condition_ret_code = "0";
 
     // Profess the first if-statement
@@ -543,6 +543,7 @@ Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
     assert(next.value() == "fi");
     ++a;
 
+    proc->env["?"] = current_ret_code;
     co_return;
 }
 
@@ -740,11 +741,11 @@ inline System::task_type shell_coro(System::e_type ctrl)
 
     std::string _current;
     std::string script = "";
-    int ret_value = 0;
+    //int ret_value = 0;
 
     ctrl->exported["SHELL_PID"] = true;
     ctrl->env["SHELL_PID"] = std::to_string(PID);
-
+    ctrl->env["?"] = "0";
     auto _in  = ctrl->in;
     auto _out = ctrl->out;
 
@@ -813,11 +814,11 @@ inline System::task_type shell_coro(System::e_type ctrl)
         }
     }
 
+    int ret_value=0;
     if(std::errc() != std::from_chars(ENV["?"].data(), ENV["?"].data() + ENV["?"].size(), ret_value).ec)
     {
-        co_return 1;
+        co_return ret_value;
     }
-
     co_return std::move(ret_value);
 }
 
