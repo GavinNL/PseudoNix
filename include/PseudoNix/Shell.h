@@ -388,6 +388,7 @@ Generator<WhatToDo> parse_condition(Generator<std::optional<std::string>> & gen,
                              std::shared_ptr<System::stream_type> out,
                              bool evaluate_condition)
 {
+    (void)gen;
     auto tok = *a;
 
     std::vector<std::string> condition;
@@ -696,7 +697,7 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
             //======================================================================
 
             auto subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), proc, _in, _out);
-            //auto procIDs = execute_pipes(args, proc, in, out);
+
             auto f_exit_code = proc->system->getProcessExitCode(subProcess.back());
             if(cmd.back() != "&")
             {
@@ -799,6 +800,11 @@ inline System::task_type shell_coro(System::e_type ctrl)
             if(!EXIT_SHELL.empty())
                 co_return 0;
         }
+    }
+
+    if(std::errc() != std::from_chars(ENV["?"].data(), ENV["?"].data() + ENV["?"].size(), ret_value).ec)
+    {
+        co_return 1;
     }
 
     co_return std::move(ret_value);
