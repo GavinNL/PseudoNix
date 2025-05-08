@@ -9,7 +9,11 @@ using namespace PseudoNix;
 
 SCENARIO("Tokenizer Generator")
 {
-    auto s = System::make_stream(R"foo("echo" "hello world" )foo");
+    auto s = System::make_stream(R"foo(
+"echo" "hello world"
+# This is a comment
+echo post comment #
+)foo");
     //    s->set_eof();
 
     auto gn = BashTokenizerGen2(s);

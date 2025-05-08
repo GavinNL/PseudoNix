@@ -374,6 +374,7 @@ Generator< std::optional<std::string> > BashTokenizerGen2(std::shared_ptr<System
 
     char c = 0;
     bool quoted = false;
+
     while(true)
     {
         auto res = in->get(&c);
@@ -626,6 +627,9 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
     // we need to execute the command here and wait for
     if(!args.empty())
     {
+        args.erase(std::find(args.begin(), args.end(), "#"), args.end());
+
+
         for(auto & v : args)
         {
             v = var_sub1(v, proc->env);
@@ -740,9 +744,9 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
 
                     co_yield subProcess;
 
-                    std::string _out;
-                    *STDOUT >> _out;
-                    auto new_args = Tokenizer3::to_vector(_out);
+                    std::string _out2;
+                    *Sauto it = TDOUT >> _out2;
+                    auto new_args = Tokenizer3::to_vector(_out2);
                     it = cmd.erase(it);
                     it = cmd.insert(it, new_args.begin(), new_args.end());
                 }
