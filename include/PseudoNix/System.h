@@ -38,6 +38,12 @@
 #define DEBUG_ERROR(...)
 #endif
 
+#if defined PSEUDONIX_LOG_LEVEL_SYSTEM
+#define DEBUG_SYSTEM(...) std::cerr << std::format("[trace] " __VA_ARGS__) << std::endl;
+#else
+#define DEBUG_SYSTEM(...)
+#endif
+
 template <>
 struct std::formatter<std::thread::id> : std::formatter<std::string> {
     auto format(std::thread::id id, auto& ctx) const {
@@ -138,6 +144,16 @@ struct System : public PseudoNix::FileSystem
 
     constexpr static const char * const DEFAULT_QUEUE = "MAIN";
 
+    auto& PROC_AT(auto && key)
+    {
+        auto it = m_procs2.find(key);
+        if(it == m_procs2.end())
+        {
+            throw std::runtime_error(std::format("Cannot find PID: {}", key));
+        }
+        return it->second;
+    }
+
     struct Exec
     {
         std::vector<std::string>           args;
@@ -159,7 +175,7 @@ struct System : public PseudoNix::FileSystem
                          std::string queuName = "")
             : m_pid(p), m_system(S), m_pred(f), m_queueName(queuName)
         {
-            m_signal = &m_system->m_procs2.at(p)->lastSignal;
+            m_signal = &m_system->PROC_AT(p)->lastSignal;
         }
 
         Awaiter(){};
@@ -266,7 +282,7 @@ struct System : public PseudoNix::FileSystem
         }
         void setSignalHandler(std::function<void(int)> f)
         {
-            system->m_procs2.at(pid)->signal = f;
+            system->PROC_AT(pid)->signal = f;
         }
 
         pid_type get_pid() const
@@ -483,7 +499,6 @@ struct System : public PseudoNix::FileSystem
         setDefaultFunctions();
     }
 
-
     /**
      * @brief spawnProcess
      * @param args
@@ -560,7 +575,7 @@ struct System : public PseudoNix::FileSystem
     {
         if(isRunning(pid))
         {
-            auto & proc = m_procs2.at(pid);
+            auto & proc = PROC_AT(pid);
             proc->force_terminate = true;
             return true;
         }
@@ -645,8 +660,8 @@ struct System : public PseudoNix::FileSystem
 
         if(parent != invalid_pid)
         {
-            auto & exported = m_procs2.at(parent)->control->exported;
-            auto & parent_env= m_procs2.at(parent)->control->env;
+            auto & exported = PROC_AT(parent)->control->exported;
+            auto & parent_env= PROC_AT(parent)->control->env;
 
             for(auto & [var, exp] : exported)
             {
@@ -707,7 +722,7 @@ struct System : public PseudoNix::FileSystem
 
         if(parent != invalid_pid)
         {
-            m_procs2.at(parent)->child_processes.push_back(_pid);
+            PROC_AT(parent)->child_processes.push_back(_pid);
         }
 
         std::weak_ptr<ProcessControl> p = arg;
@@ -720,7 +735,7 @@ struct System : public PseudoNix::FileSystem
             {
                 // Default signal handler will pass through the
                 // signal to its children
-                for(auto c : this->m_procs2.at(aa->pid)->child_processes)
+                for(auto c : this->PROC_AT(aa->pid)->child_processes)
                 {
                     this->signal(c, s);
                 }
@@ -730,7 +745,7 @@ struct System : public PseudoNix::FileSystem
 
         // Create custom awaiter that will
         // be placed in the main thread pool
-        DEBUG_INFO("Process Registered: {}", join(arg->args) );
+        DEBUG_SYSTEM("  Process Registered. PID {}  PARENT: {} : {}", _pid, parent, join(arg->args) );
         Proc.first->second->initialAwaiter = Awaiter(_pid, this, [](Awaiter*){return true;}, arg->queue_name);
         Proc.first->second->initialAwaiter.handle_ = handle;
         Proc.first->second->initialAwaiter.await_suspend(handle);
@@ -787,7 +802,7 @@ struct System : public PseudoNix::FileSystem
     {
         if(isRunning(pid))
         {
-            auto & proc = *m_procs2.at(pid);
+            auto & proc = *PROC_AT(pid);
             if(proc.signal && !proc.has_been_signaled)
             {
                 proc.has_been_signaled = true;
@@ -812,7 +827,7 @@ struct System : public PseudoNix::FileSystem
     {
         if(isRunning(pid))
         {
-            auto & proc = *m_procs2.at(pid);
+            auto & proc = *PROC_AT(pid);
             proc.lastSignal = 0;
         }
     }
@@ -828,7 +843,7 @@ struct System : public PseudoNix::FileSystem
     {
         if(isRunning(pid))
         {
-            return {m_procs2.at(pid)->control->in, m_procs2.at(pid)->control->out};
+            return {PROC_AT(pid)->control->in, PROC_AT(pid)->control->out};
         }
         return {};
     }
@@ -838,7 +853,7 @@ struct System : public PseudoNix::FileSystem
     // Does not remove the pid from the process list
     void _finalizePID(pid_type p)
     {
-        auto & coro = *m_procs2.at(p);
+        auto & coro = *PROC_AT(p);
         coro.control->queue_name = DEFAULT_QUEUE;
         if( coro.task.valid() )
         {
@@ -867,10 +882,10 @@ struct System : public PseudoNix::FileSystem
 
     void _detachFromParent(pid_type p)
     {
-        auto & coro = *m_procs2.at(p);
+        auto & coro = *PROC_AT(p);
         if(coro.parent != invalid_pid && m_procs2.count(coro.parent))
         {
-            auto & cp = m_procs2.at(coro.parent)->child_processes;
+            auto & cp = PROC_AT(coro.parent)->child_processes;
             cp.erase(std::remove_if(cp.begin(), cp.end(), [p](auto && ch)
                                     {
                                         return ch==p;
@@ -905,11 +920,13 @@ struct System : public PseudoNix::FileSystem
             if(a.second->force_terminate || a.second->is_complete || a.second->should_remove)
                 return found;
 
+            assert(!a.second->should_remove);
             if(a.first->await_ready())
             {
                 a.second->control->queue_name = queue_name;
                 a.second->control->env["QUEUE"] = queue_name;
                 a.second->control->env["THREAD_ID"] = std::format("{}", std::this_thread::get_id());
+                DEBUG_SYSTEM("  Resuming PID: {} : {}", a.second->control->pid, join(a.second->control->args));
                 a.first->resume();
             }
             else
@@ -955,10 +972,10 @@ struct System : public PseudoNix::FileSystem
             // Process everything on the queue
             // New tasks will not be added to this queue
             // because of the double buffering
-            DEBUG_TRACE("{}: Total size: {}", queue_name, POP_Q.size_approx());
+            DEBUG_SYSTEM("\n\nExecuting {}.  Total Size: {}", queue_name, POP_Q.size_approx());
             while(_processQueue(POP_Q, PUSH_Q,  queue_name))
                 ;
-            DEBUG_TRACE(": {}Finished Total size: {}", queue_name, POP_Q.size_approx());
+            DEBUG_TRACE("{} Finished Total size: {}", queue_name, POP_Q.size_approx());
             if(queue_name != DEFAULT_QUEUE)
                 return PUSH_Q.size_approx() + POP_Q.size_approx();
 
@@ -989,6 +1006,7 @@ struct System : public PseudoNix::FileSystem
 
                 if(coro.should_remove)
                 {
+                    DEBUG_SYSTEM("  Removing PID: {}: {}", coro.control->pid, join(coro.control->args));
                     it = m_procs2.erase(it);
                 }
                 else
@@ -1007,7 +1025,7 @@ struct System : public PseudoNix::FileSystem
     void handleAwaiter(Awaiter *a)
     {
         auto pid = a->get_pid();
-        auto proc = m_procs2.at(pid);
+        auto proc = PROC_AT(pid);
 
         // the queue must have been created prior to
         // adding tasks
@@ -1090,12 +1108,12 @@ struct System : public PseudoNix::FileSystem
      */
     std::shared_ptr<ProcessControl> getProcessControl(pid_type pid)
     {
-        return m_procs2.at(pid)->control;
+        return PROC_AT(pid)->control;
     }
 
     pid_type getParentProcess(pid_type pid)
     {
-        return m_procs2.at(pid)->parent;
+        return PROC_AT(pid)->parent;
     }
 
     /**

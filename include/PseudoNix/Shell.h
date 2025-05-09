@@ -385,7 +385,7 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
             }
         }
     }
-    std::cout << "-- End of Block -- " << std::endl;
+//    std::cout << "-- End of Block -- " << std::endl;
 
     co_return;
 }
@@ -804,7 +804,10 @@ inline System::task_type shell_coro(System::e_type ctrl)
         if(SYSTEM.exists(_args[1]))
         {
             script = SYSTEM.file_to_string(_args[1]);
-            script += "\nexit;";
+            // add the exit command just in case
+            // so that the shell command will return the last
+            // exit code
+            script += "\nexit ${?};";
         }
         else
         {
@@ -821,6 +824,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
 
     auto block = parse_block(gen, a_it, ctrl.get(), _in, _out, true);
 
+    System::exit_code_type ret_value=0;
     //while(EXIT_SHELL.empty())
     {
         auto it = block.begin();
@@ -837,16 +841,22 @@ inline System::task_type shell_coro(System::e_type ctrl)
             }
             else if( std::holds_alternative<std::vector<System::pid_type>>(_cc))
             {
-                HANDLE_AWAIT_TERM(co_await ctrl->await_finished(std::get<std::vector<System::pid_type>>(_cc)), ctrl);
+                auto & pids = std::get<std::vector<System::pid_type>>(_cc);
+                auto ret_code = SYSTEM.getProcessExitCode(pids.back());
+                HANDLE_AWAIT_TERM(co_await ctrl->await_finished(pids), ctrl);
+                ret_value = *ret_code;
+                ENV["?"] = std::to_string(ret_value);
+            }
+            if(!EXIT_SHELL.empty())
+            {
+                //std::cout << "Shell exiting" << std::endl;
+                break;
             }
             ++it;
-
-            if(!EXIT_SHELL.empty())
-                break;
         }
     }
 
-    System::exit_code_type ret_value=0;
+
     if(std::errc() != std::from_chars(ENV["?"].data(), ENV["?"].data() + ENV["?"].size(), ret_value).ec)
     {
         co_return 0;
