@@ -1567,7 +1567,12 @@ public:
             // when to quit
             SHELL_PROC->env["EXIT_SHELL"] = "1";
 
-            co_return 0;
+            int32_t ret_value = 0;
+            if( ARGS.size() > 1)
+            {
+                std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), ret_value);
+            }
+            co_return std::move(ret_value);
         };
 
         DEF_FUNC("")

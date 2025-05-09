@@ -726,8 +726,8 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
                 {
                     ret_value = *f_exit_code;
                 }
-                proc->env["?"] = std::to_string(ret_value);
             }
+            proc->env["?"] = std::to_string(ret_value);
 
             op_args.pop_back();
         }
@@ -813,7 +813,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
             }
 
             if(!EXIT_SHELL.empty())
-                co_return 0;
+                break;
         }
     }
 
