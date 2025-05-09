@@ -1453,13 +1453,10 @@ public:
         {
             PSEUDONIX_PROC_START(ctrl);
 
-            COUT << std::format("PID   CMD\n");
+            COUT << std::format("{:<8} {:<10} {}\n", "PID", "QUEUE", "CMD");
             for(auto & [pid, P] : SYSTEM.m_procs2)
             {
-                std::string cmd;
-                for(auto & c : P->control->args)
-                    cmd += c + " ";
-                COUT<< std::format("{}     {}\n", pid, cmd);
+                COUT<< std::format("{:<8} {:<10} {}\n", pid, P->control->queue_name, join(P->control->args));
             }
 
             //std::cout << std::to_string(i);

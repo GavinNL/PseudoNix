@@ -317,7 +317,7 @@ Generator< std::optional<std::string> > BashTokenizerGen2(std::shared_ptr<System
     co_return;
 }
 
-using WhatToDo = std::variant< std::vector<System::pid_type>, int >;
+using WhatToDo = std::variant< std::vector<System::pid_type>, int, std::string>;
 
 
 Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
@@ -610,7 +610,8 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
                         newargs.push_back(std::format("{}={}", i, args[i]));
                     }
                     // add the sh shell
-                    newargs.push_back("sh");
+
+                    newargs.push_back(proc->args[0]);
 
                     // and the location of the script
                     newargs.push_back(bin_loc.generic_string());
@@ -630,6 +631,31 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
             run_in_background = true;
             args.pop_back();
         }
+
+        //===============================================================
+        // Process special shell functions
+        //===============================================================
+        if(args[0] == "yield")
+        {
+            // Yield to another Task queue
+            if(args.size() == 1)
+            {
+                co_yield std::string(System::DEFAULT_QUEUE);
+                proc->env["?"] = "0";
+            }
+            else if(args.size() >= 2 && proc->system->taskQueueExists(args[1]))
+            {
+                co_yield args[1];
+                proc->env["?"] = "0";
+            }
+            else
+            {
+                *_out << std::format("Task queue, {}, does not exist. Staying on queue {}", args[1], proc->queue_name);
+                proc->env["?"] = "1";
+            }
+            co_return;
+        }
+        //===============================================================
 
         if( run_in_background )
         {
@@ -801,16 +827,19 @@ inline System::task_type shell_coro(System::e_type ctrl)
         while(it != block.end())
         {
             auto _cc = *it;
-            if( std::holds_alternative<int>(_cc) && std::get<int>(_cc) == 0)
+            if( std::holds_alternative<std::string>(_cc))
+            {
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(std::get<std::string>(_cc)), ctrl);
+            }
+            else if( std::holds_alternative<int>(_cc) && std::get<int>(_cc) == 0)
             {
                 HANDLE_AWAIT_TERM( co_await ctrl->await_has_data(_in), ctrl);
-                ++it;
             }
             else if( std::holds_alternative<std::vector<System::pid_type>>(_cc))
             {
                 HANDLE_AWAIT_TERM(co_await ctrl->await_finished(std::get<std::vector<System::pid_type>>(_cc)), ctrl);
-                ++it;
             }
+            ++it;
 
             if(!EXIT_SHELL.empty())
                 break;
