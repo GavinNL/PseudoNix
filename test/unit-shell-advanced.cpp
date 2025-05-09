@@ -1,15 +1,21 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+
+//#define PSEUDONIX_LOG_LEVEL_SYSTEM
+//#define PSEUDONIX_LOG_LEVEL_TRACE
+//#define PSEUDONIX_LOG_LEVEL_INFO
+
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
 
 using namespace PseudoNix;
 
 
-std::pair<std::string, System::exit_code_type> testS(std::string script)
+std::pair<std::string, System::exit_code_type> testS1(std::string script)
 {
     System M;
 
+    M.taskQueueCreate("PRE_MAIN");
     M.setFunction("sh", PseudoNix::shell_coro);
 
 
@@ -24,7 +30,8 @@ std::pair<std::string, System::exit_code_type> testS(std::string script)
     REQUIRE(pid == 1);
     auto exit_code = M.getProcessExitCode(pid);
 
-    while(M.taskQueueExecute());
+
+    while(M.taskQueueExecute("PRE_MAIN") + M.taskQueueExecute("MAIN"));
 
     auto str = E.out->str();
     while(str.size() && str.back() == '\n')
@@ -32,6 +39,38 @@ std::pair<std::string, System::exit_code_type> testS(std::string script)
     return {str, *exit_code};
 }
 
+std::pair<std::string, System::exit_code_type> testS(std::string script)
+{
+    System M;
+
+    M.touch("/script.sh");
+    M.fs("/script.sh") << script;
+
+    M.taskQueueCreate("PRE_MAIN");
+    M.setFunction("sh", PseudoNix::shell_coro);
+
+
+    auto E = System::parseArguments({"sh", "/script.sh"});
+    // Here we're going to put our shell script code into the input
+    // stream of the process function, similar to how linux works
+    E.in  = System::make_stream();
+    E.out = System::make_stream();
+    //E.in->set_eof();
+
+    auto pid = M.runRawCommand(E);
+    REQUIRE(pid == 1);
+    auto exit_code = M.getProcessExitCode(pid);
+
+
+    while(M.taskQueueExecute("PRE_MAIN") + M.taskQueueExecute("MAIN"));
+
+    auto str = E.out->str();
+    while(str.size() && str.back() == '\n')
+        str.pop_back();
+    return {str, *exit_code};
+}
+
+#if 1
 SCENARIO("Test Shell features")
 {
     {
@@ -83,6 +122,9 @@ SCENARIO("Test Shell features")
         REQUIRE(code == 0);
     }
 }
+#endif
+
+
 
 SCENARIO("Test shell exit code")
 {
@@ -102,7 +144,7 @@ exit 1
         REQUIRE(code == 1);
     }
 }
-
+#if 1
 SCENARIO("Test the test command")
 {
     {
@@ -243,3 +285,21 @@ fi
         REQUIRE(code == 0);
     }
 }
+
+
+SCENARIO("Test Task queue switching")
+{
+    {
+        auto [out, code] = testS(R"foo(
+echo $QUEUE
+yield PRE_MAIN
+echo $QUEUE
+yield MAIN
+echo $QUEUE
+)foo");
+        REQUIRE(out == "MAIN\nPRE_MAIN\nMAIN");
+        REQUIRE(code == 0);
+    }
+}
+
+#endif

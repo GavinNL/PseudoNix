@@ -416,7 +416,6 @@ Generator<WhatToDo> parse_condition(Generator<std::optional<std::string>> & gen,
     }
 
     // condition = {"if", "[[", ..... , "]]" }
-    std::cout << std::format("Condition: {}", join(condition)) << std::endl;
 
     ++a;
     if((*a).has_value() && (*a).value() == ";")
