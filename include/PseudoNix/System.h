@@ -2154,7 +2154,7 @@ public:
                 {
                     co_return _cmp(left==right);
                 }
-                else if(op == "=")
+                else if(op == "!=")
                 {
                     co_return _cmp(left!=right);
                 }
