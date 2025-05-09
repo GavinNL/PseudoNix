@@ -86,7 +86,7 @@ inline void setup_functions(PseudoNix::System & sys)
     sys.touch("/bin/hello.sh");
     sys.fs("/bin/hello.sh") <<
         R"foo(
-echo Hello World! ${1} ${2} ${3}
+echo Arguments: ${1} ${2} ${3} ${4}
 echo "this is a script defined inside the virtual file system"
 echo "I'm going to sleep now for a few seconds"
 sleep 3
@@ -105,18 +105,18 @@ echo "Hey! I'm awake!"
 export PATH=/usr/bin:/bin
 echo "###################################"
 echo "Welcome to the shell!"
-echo ""
+echo " "
 echo "The shell process automatically sources the"
-echo "/etc/profile" in the Virtual File System"
-echo ""
-echo "You are user: ${USER}
-echo "This is SHELL_PID: ${SHELL_PID}
-echo "Compiled Date: ${COMPILE_DATE}
-echo ""
+echo "/etc/profile in the Virtual File System"
+echo " "
+echo "You are user: ${USER}"
+echo "This is SHELL_PID: ${SHELL_PID}"
+echo "Compiled Date: ${COMPILE_DATE}"
+echo " "
 echo "/bin contains in-memory scripts"
 echo "/etc contains the profile that sh reads"
 echo "/usr/bin a mounted directory"
-echo ""
+echo " "
 echo "type 'help' for a list of commands"
 echo "###################################"
 )foo";

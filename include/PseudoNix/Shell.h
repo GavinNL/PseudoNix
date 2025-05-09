@@ -202,7 +202,7 @@ inline std::string var_sub1(std::string_view str, std::map<std::string,std::stri
     {
         auto sub = str.substr(i,2);
 
-        if(sub == "$?" || sub == "$!" || sub == "${" || (sub[0]=='$' && std::isalpha(sub[1])) )
+        if(sub == "$?" || sub == "$!" || sub == "${" || (sub[0]=='$' && std::isalnum(sub[1])) )
         {
             std::string var_name;
             for(i=i+1; i<str.size(); i++)

@@ -610,16 +610,27 @@ struct System : public PseudoNix::FileSystem
         if(it ==  m_funcs.end())
             return invalid_pid;
 
-        auto & exec_args = args;
+        //auto & exec_args = args;
 
-        if(!exec_args.in)
+        if(!args.in)
         {
-            exec_args.in = make_stream();
+            args.in = make_stream();
             //exec_args.in->close();
         }
 
+        // Copies all the arguments into $0 $1 $2 environment
+        // variables
+        {
+            int i=0;
+            for(auto & a : args.args)
+            {
+                args.env[std::to_string(i)] = a;
+                ++i;
+            }
+        }
+
         if(m_preExec)
-            m_preExec(exec_args);
+            m_preExec(args);
 
         if(!args.out) args.out = make_stream();
         if(!args.in) args.in = make_stream();
