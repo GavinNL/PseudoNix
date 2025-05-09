@@ -1720,6 +1720,11 @@ public:
                 co_return 1;
             }
 
+            if(TASK_QUEUE == System::DEFAULT_QUEUE)
+            {
+                COUT << std::format("{}: Cannot run background thread on {} queue.\n", ARGS[0], TASK_QUEUE);
+                co_return 1;
+            }
             std::thread worker([sys=ctrl->system, TASK_QUEUE, &stop_token, &_semaphore]()
             {
                 while (true)

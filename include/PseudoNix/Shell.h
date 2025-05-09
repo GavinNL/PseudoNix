@@ -6,7 +6,6 @@
 #include "System.h"
 #include "defer.h"
 #include <ranges>
-#include "Shell2.h"
 
 namespace PseudoNix
 {
@@ -572,7 +571,7 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
         args.push_back(*a);
     }
 
-    // we need to execute the command here and wait for
+    // Erase all the arguments after the first argument that starts with #
     args.erase(std::find_if(args.begin(), args.end(), [](auto const & s)
                             {
                                 return s.size() && s.front() == '#' ;
@@ -586,6 +585,10 @@ Generator<WhatToDo> parse_pipeline(std::string cmd1,
         }
 
         {
+            // Check the PATH variable for
+            // scripts that may exist there
+            //
+
             auto & PATH = proc->env["PATH"];
             auto & SYSTEM = *proc->system;
             auto parts = PATH
@@ -814,7 +817,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
         }
     }
 
-    int ret_value=0;
+    System::exit_code_type ret_value=0;
     if(std::errc() != std::from_chars(ENV["?"].data(), ENV["?"].data() + ENV["?"].size(), ret_value).ec)
     {
         co_return ret_value;
