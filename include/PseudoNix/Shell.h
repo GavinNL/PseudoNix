@@ -311,7 +311,6 @@ Generator< std::optional<std::string> > BashTokenizerGen2(std::shared_ptr<System
                 _token.push_back(c);
             }
         }
-
     }
 
     co_return;
@@ -320,18 +319,21 @@ Generator< std::optional<std::string> > BashTokenizerGen2(std::shared_ptr<System
 using WhatToDo = std::variant< std::vector<System::pid_type>, int, std::string>;
 
 
+inline
 Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
                              Generator<std::optional<std::string>>::iterator & a,
                              System::ProcessControl * proc,
                              std::shared_ptr<System::stream_type> in,
                              std::shared_ptr<System::stream_type> out);
 
+inline
 Generator<WhatToDo> parse_pipeline(std::string cmd,  Generator<std::optional<std::string>> & gen,
                                                  Generator<std::optional<std::string>>::iterator & a,
                                                  System::ProcessControl * proc,
                                                  std::shared_ptr<System::stream_type> in,
                                std::shared_ptr<System::stream_type> out);
 
+inline
 Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
                                 Generator<std::optional<std::string>>::iterator & a,
                                 System::ProcessControl * proc,
@@ -391,6 +393,7 @@ Generator<WhatToDo> parse_block(Generator<std::optional<std::string>> & gen,
 }
 
 
+inline
 Generator<WhatToDo> parse_condition(Generator<std::optional<std::string>> & gen,
                              Generator<std::optional<std::string>>::iterator & a,
                              System::ProcessControl * proc,
@@ -458,6 +461,7 @@ Generator<WhatToDo> parse_condition(Generator<std::optional<std::string>> & gen,
     }
 }
 
+inline
 Generator<WhatToDo> parse_if(Generator<std::optional<std::string>> & gen,
                              Generator<std::optional<std::string>>::iterator & a,
                              System::ProcessControl * proc,
