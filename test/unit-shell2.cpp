@@ -223,109 +223,123 @@ Generator<WhatToDo3> execute_if(std::vector< std::vector<std::string> > & if_blo
 }
 
 
+Generator<WhatToDo3> process_command(std::vector<std::string> args, System::ProcessControl * proc)
+{
+    auto E = proc->system->parseArguments(args);
+    E.in = proc->in;
+    E.out = proc->out;
+    auto pid = proc->system->runRawCommand(E, proc->get_pid());
+    auto ex = proc->system->getProcessExitCode(pid);
+    std::vector<System::pid_type> pp;
+    pp.push_back(pid);
+    co_yield pp;
+}
+Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > script, System::ProcessControl * proc);
+
+Generator<WhatToDo3> process_if(std::vector< std::vector<std::string> > script, System::ProcessControl * proc)
+{
+    assert(script.front().front() == "if");
+    //for(size_t i=0; i < script.size(); i++)
+    auto _find_next_block = [&script](auto first_it)
+    {
+        auto & S = *first_it;
+        (void)S;
+        assert(first_it->front() == "if" || first_it->front() == "elif" || first_it->front() == "else");
+        ++first_it;
+        size_t if_count = 1;
+        while(first_it != script.end())
+        {
+            if( first_it->front() == "if") ++if_count;
+            if( first_it->front() == "fi") --if_count;
+
+            if((first_it->front() == "else" && if_count == 1) ||
+                (first_it->front() == "elif" && if_count == 1) ||
+                (first_it->front() == "fi" && if_count == 0) )
+            {
+                return first_it;
+            }
+            ++first_it;
+        }
+        return script.end();
+    };
+
+
+    System::exit_code_type exit_code = 1;
+    auto first_it = script.begin() ;
+    while(first_it != script.end())
+    {
+        auto second_it = _find_next_block(first_it);
+        auto block_script = std::vector(first_it, second_it);
+        first_it = second_it;
+
+        if( exit_code != 0)
+        {
+            auto condition = std::vector(block_script[0].begin()+1, block_script[0].end());
+            //if(false)
+            {
+                // regular command
+                for(auto c : process_command(condition, proc))
+                {
+                    auto ex = proc->system->getProcessExitCode( std::get<std::vector<System::pid_type>>(c).back() );
+                    co_yield c;
+                    exit_code = *ex;
+                    break;
+                }
+
+                if(exit_code == 0)
+                {
+                    auto block = std::vector(block_script.begin()+2, block_script.end());
+                    for(auto cc : process_block(block, proc))
+                    {
+                        co_yield cc;
+                    }
+                }
+            }
+        }
+
+
+        assert(first_it != script.end());
+        if(first_it->front() == "fi")
+            break;
+    }
+
+
+}
+
 Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > script, System::ProcessControl * proc)
 {
     for(size_t i=0; i < script.size(); i++)
     {
         if(script[i].front() == "if")
         {
-            // check if condition
-            // regular command
-            // regular command
-            auto E = proc->system->parseArguments( std::vector<std::string>(script[i].begin()+1, script[i].end() ) );
-            E.in = proc->in;
-            E.out = proc->out;
-            auto pid = proc->system->runRawCommand(E, proc->get_pid());
-            auto exit_code  = proc->system->getProcessExitCode(pid);
-
-            std::vector<System::pid_type> pp;
-            pp.push_back(pid);
-
-            co_yield pp;
-            ++i;
-            assert( script[i].front() == "then");
-            ++i;
-            if(*exit_code == 0)
+            int if_count=1;
+            auto j=i+1;
+            while(true)
             {
-                size_t if_count = 1;
-                // find the end of the "if-block",
-                // the end of the if-block is either the last fi, or the else
-                for(size_t j=i; j<script.size() ; j++)
-                {
-                    if(script[j].front() == "if") ++if_count;
-                    if(script[j].front() == "fi") --if_count;
-
-                    if((script[j].front() == "else" && if_count == 1) ||
-                       (script[j].front() == "fi" && if_count == 0) )
-                    {
-                        auto new_block = std::vector<std::vector<std::string> >( script.begin() + static_cast<int64_t>(i), script.begin()+static_cast<int64_t>(j));
-                        if(!new_block.empty())
-                        {
-                            for(auto ccc : process_block(new_block, proc) )
-                            {
-                                co_yield ccc;
-                            }
-                        }
-                        break;
-                    }
-                }
-                //process the if block
+                if(script[j].front() == "if") if_count++;
+                if(script[j].front() == "fi") if_count--;
+                if(if_count == 0)
+                    break;
+                ++j;
             }
-            else
+
+            auto if_statement = std::vector( script.begin()+ssize_t(i), script.begin()+ssize_t(j)+1);
+            for(auto c : process_if(if_statement, proc))
             {
-                // find the else block
-                size_t if_count = 1;
-                // find the end of the "if-block",
-                // the end of the if-block is either the last fi, or the else
-                size_t else_index = 0;
-                size_t fi_index = 0;
-                for(size_t j=i; j<script.size() ; j++)
-                {
-                    if(script[j].front() == "if") ++if_count;
-                    if(script[j].front() == "fi") --if_count;
-
-                    if((script[j].front() == "else" && if_count == 1) )
-                    {
-                        else_index = j;
-                    }
-                    if((script[j].front() == "fi" && if_count == 0) )
-                    {
-                        fi_index = j;
-                    }
-
-                    if(else_index != 0 && fi_index != 0)
-                    {
-                        auto new_block = std::vector<std::vector<std::string> >( script.begin() + static_cast<int64_t>(else_index+1), script.begin()+static_cast<int64_t>(fi_index));
-
-                        if(!new_block.empty())
-                        {
-                            for(auto ccc : process_block(new_block, proc) )
-                            {
-                                co_yield ccc;
-                            }
-                        }
-                        break;
-                    }
-                }
-                // process the else block
+                co_yield c;
             }
+            i = j+1;
         }
         else
         {
-            // regular command
-            // regular command
-            auto E = proc->system->parseArguments(script.back());
-            E.in = proc->in;
-            E.out = proc->out;
-            auto pid = proc->system->runRawCommand(E, proc->get_pid());
-
-            std::vector<System::pid_type> pp;
-            pp.push_back(pid);
-            script.clear();
-            co_yield pp;
+            for(auto c : process_command(script[i], proc))
+            {
+                co_yield c;
+            }
         }
     }
 }
+
 
 inline System::task_type shell3_coro(System::e_type ctrl)
 {
@@ -415,7 +429,7 @@ echo finishied if
 
     auto in = System::make_stream(script);
     in->set_eof();
-    for(auto c : bash_line_generator2(in))
+    for(auto c : bash_line_generator(in))
     {
         if(!c->empty())
             std::cout << std::format("{}", join(*c)) << std::endl;;
@@ -426,13 +440,12 @@ echo finishied if
 SCENARIO("Tokenizer Generator")
 {
     std::string script = R"foo(
-echo hello world
-echo hello world2
-echo finishied if
 if false; then
-    echo true
+    echo if
+elif true; then
+    echo elif
 else
-    echo false
+    echo else
 fi
 )foo";
 
