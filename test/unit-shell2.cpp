@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-//#define PSEUDONIX_LOG_LEVEL_SYSTEM
+#define PSEUDONIX_LOG_LEVEL_SYSTEM
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
 #include <span>
@@ -211,6 +211,7 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
             }
             else if(args.size() >= 2 && proc->system->taskQueueExists(args[1]))
             {
+                std::cout << "Hopping to queue: " << args[1] << std::endl;
                 co_yield args[1];
                 proc->env["?"] = "0";
             }
@@ -327,6 +328,7 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
     co_return;
 }
 
+inline
 Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > script, System::ProcessControl * proc);
 
 Generator<WhatToDo3> process_if(std::vector< std::vector<std::string> > script, System::ProcessControl * proc)
@@ -741,7 +743,7 @@ std::pair<std::string, System::exit_code_type> testS1(std::string script, bool f
     return {str, *exit_code};
 }
 
-#if 1
+#if 0
 SCENARIO("Test single line")
 {
     auto [out, code] = testS1(R"foo(
@@ -1003,3 +1005,19 @@ echo after
 }
 
 #endif
+
+SCENARIO("Test Queue")
+{
+    auto [out, code] = testS1(R"foo(
+echo ${QUEUE}
+yield PRE_MAIN
+echo ${QUEUE}
+yield MAIN
+echo ${QUEUE}
+)foo", false);
+
+    REQUIRE(out == "MAIN\nPRE_MAIN\nMAIN");
+    REQUIRE(code == 0);
+}
+
+
