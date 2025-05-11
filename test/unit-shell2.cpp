@@ -108,10 +108,18 @@ Generator<std::optional<std::vector<std::string>>> bash_line_generator(std::shar
     {
         if(!a.has_value())
             co_yield std::nullopt;
+
+
         line_args.push_back(*a);
         if(line_args.back() == "\n")
         {
             line_args.pop_back();
+            // Erase all the arguments after the first argument that starts with #
+            line_args.erase(std::find_if(line_args.begin(), line_args.end(), [](auto const & s)
+            {
+                return s.size() && s.front() == '#' ;
+            }), line_args.end());
+
             co_yield line_args;
             line_args.clear();
         }
@@ -130,10 +138,10 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
                                    System::ProcessControl * proc)
 {
     // Erase all the arguments after the first argument that starts with #
-    args.erase(std::find_if(args.begin(), args.end(), [](auto const & s)
-                            {
-                                return s.size() && s.front() == '#' ;
-                            }), args.end());
+    //args.erase(std::find_if(args.begin(), args.end(), [](auto const & s)
+    //                        {
+    //                            return s.size() && s.front() == '#' ;
+    //                        }), args.end());
 
     if(!args.empty())
     {
@@ -378,8 +386,9 @@ Generator<WhatToDo3> process_if(std::vector< std::vector<std::string> > script, 
             {
                 exit_code = 0;
             }
-            else if(block_script[0][0] == "elif")
+            else if(block_script[0][0] == "if" || block_script[0][0] == "elif")
             {
+                auto preRet = proc->env["?"];
                 for(auto c : process_command(condition, proc))
                 {
                     auto ex = proc->system->getProcessExitCode( std::get<std::vector<System::pid_type>>(c).back() );
@@ -387,6 +396,7 @@ Generator<WhatToDo3> process_if(std::vector< std::vector<std::string> > script, 
                     exit_code = *ex;
                     break;
                 }
+                proc->env["?"] = preRet;
                 skip_count = 2;
             }
 
@@ -419,6 +429,7 @@ Generator<WhatToDo3> process_while(std::vector< std::vector<std::string> > scrip
     while(true)
     {
         auto condition = std::vector(script[0].begin()+1, script[0].end());
+        auto preRet = proc->env["?"];
         for(auto c : process_command(condition, proc))
         {
             auto ex = proc->system->getProcessExitCode( std::get<std::vector<System::pid_type>>(c).back() );
@@ -426,6 +437,7 @@ Generator<WhatToDo3> process_while(std::vector< std::vector<std::string> > scrip
             exit_code = *ex;
             break;
         }
+        proc->env["?"] = preRet;
         if(exit_code == 0)
         {
             auto block = std::vector(script.begin()+2, script.end()-1);
@@ -506,10 +518,25 @@ inline System::task_type shell3_coro(System::e_type ctrl)
 
     auto gn = bash_line_generator(ctrl->in);
 
+    // Make sure this variable exists
+    // and is exported otherwize
+    // some of the shell commands wont work
+    ENV["SHELL_PID"] = std::to_string(PID);
+    EXPORTED["SHELL_PID"] = true;
+
+    // the initial exit code
+    ENV["?"] = "0";
+
+    // Flag for when to exit the shell
+    // this is used by the "exit" process
+    // we might not need to use this
+    auto & EXIT_SHELL = ENV["EXIT_SHELL"];
+    EXIT_SHELL = {};
+
     std::vector< std::vector<std::string> > script;
     int if_count=0;
     int while_count=0;
-
+    System::exit_code_type ret_value = 0;
     auto a_it = gn.begin();
     while(a_it != gn.end())
     {
@@ -565,9 +592,18 @@ inline System::task_type shell3_coro(System::e_type ctrl)
             }
             script.clear();
         }
+        if(!EXIT_SHELL.empty())
+        {
+            //std::cout << "Shell exiting" << std::endl;
+            break;
+        }
         ++a_it;
     }
-    co_return 0;
+    if(std::errc() != std::from_chars(ENV["?"].data(), ENV["?"].data() + ENV["?"].size(), ret_value).ec)
+    {
+        co_return 0;
+    }
+    co_return std::move(ret_value);
 }
 
 #if 0
@@ -624,29 +660,273 @@ fi
 }
 #endif
 
-#if 1
-SCENARIO("Test While Loop")
+
+std::pair<std::string, System::exit_code_type> testS1(std::string script)
 {
-    std::string script = R"foo(
-
-sleep 2 && echo hello &
-echo hello
-while false; do
-echo loop
-done
-echo after
-sleep 3
-)foo";
-
     System M;
+
+    M.taskQueueCreate("PRE_MAIN");
     M.setFunction("sh", shell3_coro);
 
-    auto pids = M.spawnPipelineProcess( {{"sh"}, {"to_std_cout"} });
-    *M.getProcessControl(pids[0])->in << script;
-    M.getProcessControl(pids[0])->in->set_eof();
+    auto E = System::parseArguments({"sh"});
+    // Here we're going to put our shell script code into the input
+    // stream of the process function, similar to how linux works
+    E.in  = System::make_stream(script);
+    E.out = System::make_stream();
+    E.in->set_eof();
 
-    while(M.taskQueueExecute());
+    auto pid = M.runRawCommand(E);
+    REQUIRE(pid == 1);
+    auto exit_code = M.getProcessExitCode(pid);
+
+
+    while(M.taskQueueExecute("PRE_MAIN") + M.taskQueueExecute("MAIN"));
+
+    auto str = E.out->str();
+    while(str.size() && str.back() == '\n')
+        str.pop_back();
+    return {str, *exit_code};
+}
+
+#if 1
+SCENARIO("Test single line")
+{
+    auto [out, code] = testS1(R"foo(
+echo hello world
+)foo");
+
+    REQUIRE(out == "hello world");
+    REQUIRE(code == 0);
 
 }
+
+
+SCENARIO("Test two lines line")
+{
+    auto [out, code] = testS1(R"foo(
+echo hello world
+echo hello world
+)foo");
+
+    REQUIRE(out == "hello world\nhello world");
+    REQUIRE(code == 0);
+}
+
+SCENARIO("Test comments")
+{
+    auto [out, code] = testS1(R"foo(
+#echo hello world
+echo hello # world
+)foo");
+
+    REQUIRE(out == "hello");
+    REQUIRE(code == 0);
+}
+
+SCENARIO("Test exit codes")
+{
+    auto [out, code] = testS1(R"foo(
+exit 0
+)foo");
+
+    REQUIRE(out == "");
+    REQUIRE(code == 0);
+}
+
+SCENARIO("Test exit codes")
+{
+    auto [out, code] = testS1(R"foo(
+exit 1
+)foo");
+
+    REQUIRE(out == "");
+    REQUIRE(code == 1);
+}
+
+
+SCENARIO("Test exit codes")
+{
+    auto [out, code] = testS1(R"foo(
+exit 156
+echo after exit
+)foo");
+
+    REQUIRE(out == "");
+    REQUIRE(code == 156);
+}
+
+SCENARIO("Test Single if: true condition")
+{
+    auto [out, code] = testS1(R"foo(
+if true; then
+    echo true
+fi
+)foo");
+
+    REQUIRE(out == "true");
+    REQUIRE(code == 0);
+}
+
+SCENARIO("Test Single if: false condition")
+{
+    auto [out, code] = testS1(R"foo(
+if false; then
+    echo true
+fi
+)foo");
+
+    REQUIRE(out == "");
+    REQUIRE(code == 0);
+}
+
+SCENARIO("Test Single if-else: false condition")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+if true; then
+    echo true
+else
+    echo false
+fi
+echo after
+)foo");
+
+    REQUIRE(out == "before\ntrue\nafter");
+    REQUIRE(code == 0);
+}
+
+SCENARIO("Test if-else: false condition")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+if false; then
+    echo true
+else
+    echo false
+fi
+echo after
+)foo");
+
+    REQUIRE(out == "before\nfalse\nafter");
+    REQUIRE(code == 0);
+}
+
+
+SCENARIO("Test if-elif-else: false condition")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+if true; then
+    echo if
+elif true; then
+    echo elif
+else
+    echo else
+fi
+echo after
+)foo");
+
+    REQUIRE(out == "before\nif\nafter");
+    REQUIRE(code == 0);
+}
+
+SCENARIO("Test if-elif-else: false condition")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+if false; then
+    echo if
+elif true; then
+    echo elif
+else
+    echo else
+fi
+echo after
+)foo");
+
+    REQUIRE(out == "before\nelif\nafter");
+    REQUIRE(code == 0);
+}
+
+SCENARIO("Test if-elif-else: false condition")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+if false; then
+    echo if
+elif false; then
+    echo elif
+else
+    echo else
+fi
+echo after
+)foo");
+
+    REQUIRE(out == "before\nelse\nafter");
+    REQUIRE(code == 0);
+}
+
+
+SCENARIO("Test nested if-statement")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+if true; then
+    echo if
+    if true; then
+        echo if
+    elif false; then
+        echo elif
+    else
+        echo else
+    fi
+elif false; then
+    echo elif
+else
+    echo else
+fi
+echo after
+)foo");
+
+    REQUIRE(out == "before\nif\nif\nafter");
+    REQUIRE(code == 0);
+}
+
+
+SCENARIO("Test While-loop")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+while false; do
+    echo false
+done
+echo after
+)foo");
+
+    REQUIRE(out == "before\nafter");
+    REQUIRE(code == 0);
+}
+
+SCENARIO("Test While-loop")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+A=""
+while test ${A} != AA; do
+    A=${A}A
+    B=""
+    echo Outer
+    while test ${B} != BB; do
+        B=${B}B
+        echo Inner
+    done
+done
+echo after
+)foo");
+
+    REQUIRE(out == "before\nOuter\nInner\nInner\nOuter\nInner\nInner\nafter");
+    REQUIRE(code == 0);
+}
+
 
 #endif
