@@ -222,7 +222,10 @@ Generator<std::optional<std::vector<std::string>>> bashLineGenerator(std::shared
     for(auto a : gn)
     {
         if(!a.has_value())
-            co_yield std::nullopt;
+        {
+            co_yield {};
+            continue;
+        }
 
 
         line_args.push_back(*a);
