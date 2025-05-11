@@ -2,8 +2,6 @@
 #include <thread>
 
 //#define PSUEDONIX_ENABLE_DEBUG
-#include <PseudoNix/System.h>
-#include <PseudoNix/Shell.h>
 #include <PseudoNix/Launcher.h>
 #include "common_setup.h"
 

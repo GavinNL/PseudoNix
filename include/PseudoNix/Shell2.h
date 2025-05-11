@@ -1,5 +1,5 @@
-#ifndef PSEUDONIX_SHELL3_H
-#define PSEUDONIX_SHELL3_H
+#ifndef PSEUDONIX_SHELL2_H
+#define PSEUDONIX_SHELL2_H
 
 #include <map>
 
@@ -213,7 +213,7 @@ Generator< std::optional<std::string> > bashTokenGenerator(std::shared_ptr<Syste
 
 
 
-Generator<std::optional<std::vector<std::string>>> bashLineGenerator(std::shared_ptr<System::stream_type> s_in)
+Generator<std::vector<std::string>> bashLineGenerator(std::shared_ptr<System::stream_type> s_in)
 {
     auto gn = bashTokenGenerator(s_in);
 
@@ -288,7 +288,7 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
     }
 
     auto pids = proc->executeSubProcess(E);
-    auto me = proc->get_pid();//exported_environment->shellPID;
+    auto me = proc->get_pid();
     auto my_cwd = proc->system->getProcessControl(me)->cwd;
     for(auto p : pids)
     {
@@ -298,7 +298,15 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
     return pids;
 }
 
-
+/**
+ * @brief parse_operands
+ * @param tokens
+ * @return
+ *
+ * Given a single vector of string arguments separated by && or ||
+ * Return a vector of vector<strings> where each internal vector
+ * is prepended with either &&, || or )(
+ */
 inline std::vector< std::vector<std::string> > parse_operands(std::vector<std::string> tokens)
 {
     std::vector< std::vector<std::string> > args(1);
@@ -361,15 +369,9 @@ inline std::string var_sub1(std::string_view str, std::map<std::string,std::stri
 
 
 inline
-    Generator<WhatToDo3> process_command(std::vector<std::string> args,
+Generator<WhatToDo3> process_command(std::vector<std::string> args,
                     System::ProcessControl * proc)
 {
-    // Erase all the arguments after the first argument that starts with #
-    //args.erase(std::find_if(args.begin(), args.end(), [](auto const & s)
-    //                        {
-    //                            return s.size() && s.front() == '#' ;
-    //                        }), args.end());
-
     if(!args.empty())
     {
         for(auto & v : args)
@@ -381,7 +383,6 @@ inline
             // Check the PATH variable for
             // scripts that may exist there
             //
-
             auto & PATH = proc->env["PATH"];
             auto & SYSTEM = *proc->system;
             auto parts = PATH
@@ -438,7 +439,6 @@ inline
             }
             else if(args.size() >= 2 && proc->system->taskQueueExists(args[1]))
             {
-                std::cout << "Hopping to queue: " << args[1] << std::endl;
                 co_yield args[1];
                 proc->env["?"] = "0";
             }
@@ -453,11 +453,6 @@ inline
 
         if( run_in_background )
         {
-#if 0
-            auto STDIN = System::make_stream();
-            STDIN->set_eof();
-            auto pids = execute_pipes( args, ctrl.get(), STDIN, ctrl->out);
-#else
             auto STDIN = System::make_stream();
 
             for(auto & a : args)
@@ -470,7 +465,7 @@ inline
             *STDIN << std::format(";");
             STDIN->set_eof();
             auto pids = execute_pipes( {"sh", "--noprofile"}, proc, STDIN, proc->out);
-#endif
+
             *proc->out << std::format("{}\n", pids[0]);
             proc->env["!"] = std::format("{}", pids[0]);
             co_return;
@@ -739,7 +734,7 @@ inline
     }
 }
 
-inline System::task_type shell3_coro(System::e_type ctrl)
+inline System::task_type shell_coro(System::e_type ctrl)
 {
     PSEUDONIX_PROC_START(ctrl);
 
@@ -807,20 +802,13 @@ inline System::task_type shell3_coro(System::e_type ctrl)
     auto a_it = gn.begin();
     while(a_it != gn.end())
     {
-        auto a = *a_it;
-        if(!a.has_value())
+        auto line = *a_it;
+        if(line.empty())
         {
             HANDLE_AWAIT_TERM( co_await ctrl->await_has_data(ctrl->in), ctrl);
             ++a_it;
             continue;
         }
-        auto & line = *a;
-        if(line.empty())
-        {
-            ++a_it;
-            continue;
-        }
-        //std::cout << std::format("{}", join(line)) << std::endl;
 
         // Push the line into the script
         script.push_back(line);
@@ -837,7 +825,7 @@ inline System::task_type shell3_coro(System::e_type ctrl)
             {
                 if( std::holds_alternative<int>(doWhat) )
                 {
-                    //HANDLE_AWAIT_INT_TERM( co_await ctrl->await_yield(), ctrl);
+                    // do nothing
                 }
                 else if( std::holds_alternative<std::string>(doWhat))
                 {

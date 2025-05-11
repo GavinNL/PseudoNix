@@ -926,7 +926,7 @@ struct System : public PseudoNix::FileSystem
                 a.second->control->queue_name = queue_name;
                 a.second->control->env["QUEUE"] = queue_name;
                 a.second->control->env["THREAD_ID"] = std::format("{}", std::this_thread::get_id());
-                DEBUG_SYSTEM("  Resuming on QUEUE: {} PID: {} : {}", queue_name, a.second->control->pid, join(a.second->control->args));
+                //DEBUG_SYSTEM("  Resuming on QUEUE: {} PID: {} : {}", queue_name, a.second->control->pid, join(a.second->control->args));
                 a.first->resume();
             }
             else
@@ -972,10 +972,10 @@ struct System : public PseudoNix::FileSystem
             // Process everything on the queue
             // New tasks will not be added to this queue
             // because of the double buffering
-            DEBUG_SYSTEM("\n\nExecuting {}.  Total Size: {}", queue_name, POP_Q.size_approx());
+            //DEBUG_SYSTEM("\n\nExecuting {}.  Total Size: {}", queue_name, POP_Q.size_approx());
             while(_processQueue(POP_Q, PUSH_Q,  queue_name))
                 ;
-            DEBUG_TRACE("{} Finished Total size: {}", queue_name, POP_Q.size_approx());
+            //DEBUG_TRACE("{} Finished Total size: {}", queue_name, POP_Q.size_approx());
             if(queue_name != DEFAULT_QUEUE)
                 return PUSH_Q.size_approx() + POP_Q.size_approx();
 
@@ -1299,7 +1299,7 @@ public:
             auto const & QUEUE = control->queue_name; (void)QUEUE; \
             auto const & CWD = control->cwd; (void)CWD;\
             auto const PARENT_SHELL_PID = ENV.count("SHELL_PID") ? static_cast<PseudoNix::System::pid_type>(std::stoul(ENV["SHELL_PID"])) : PseudoNix::invalid_pid; (void)PARENT_SHELL_PID;\
-            auto const & LAST_SIGNAL = SYSTEM.m_procs2.at(PID)->lastSignal; \
+            auto const & LAST_SIGNAL = SYSTEM.m_procs2.at(PID)->lastSignal; (void)LAST_SIGNAL;\
             auto SHELL_PROC = PARENT_SHELL_PID != PseudoNix::invalid_pid ? SYSTEM.getProcessControl(PARENT_SHELL_PID) : nullptr; (void)SHELL_PROC
 
 
