@@ -1295,6 +1295,7 @@ public:
             auto & SYSTEM = *control->system; (void)SYSTEM;\
             auto const & ARGS = control->args; (void)ARGS;\
             auto & ENV = control->env; (void)ENV; \
+            auto & EXPORTED = control->exported; (void)EXPORTED; \
             auto const & QUEUE = control->queue_name; (void)QUEUE; \
             auto const & CWD = control->cwd; (void)CWD;\
             auto const PARENT_SHELL_PID = ENV.count("SHELL_PID") ? static_cast<PseudoNix::System::pid_type>(std::stoul(ENV["SHELL_PID"])) : PseudoNix::invalid_pid; (void)PARENT_SHELL_PID;\

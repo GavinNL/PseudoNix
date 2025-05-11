@@ -508,7 +508,6 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
     }
 }
 
-
 inline System::task_type shell3_coro(System::e_type ctrl)
 {
     PSEUDONIX_PROC_START(ctrl);
@@ -532,6 +531,43 @@ inline System::task_type shell3_coro(System::e_type ctrl)
     // we might not need to use this
     auto & EXIT_SHELL = ENV["EXIT_SHELL"];
     EXIT_SHELL = {};
+
+    std::string profile_script;
+    bool load_etc_profile = true;
+    {
+        auto _args = ARGS;
+        auto no_profile = std::find(_args.begin(), _args.end(), "--noprofile");
+        if(_args.end() != no_profile)
+        {
+            // Copy the rc_text into the
+            // the input stream so that
+            // it will be executed first
+            //script += shellEnv.rc_text;
+            _args.erase(no_profile);
+            load_etc_profile = false;
+        }
+        if(load_etc_profile && SYSTEM.exists("/etc/profile"))
+        {
+            profile_script += SYSTEM.file_to_string("/etc/profile");
+        }
+        if(_args.size() > 1)
+        {
+            if(SYSTEM.exists(_args[1]))
+            {
+                profile_script = SYSTEM.file_to_string(_args[1]);
+                // add the exit command just in case
+                // so that the shell command will return the last
+                // exit code
+                profile_script += "\nexit ${?};";
+            }
+            else
+            {
+                COUT << std::format("{}: {}: no such file or directory\n", ARGS[0], _args[1]);
+            }
+        }
+        CIN << profile_script;
+    }
+
 
     std::vector< std::vector<std::string> > script;
     int if_count=0;
@@ -661,28 +697,45 @@ fi
 #endif
 
 
-std::pair<std::string, System::exit_code_type> testS1(std::string script)
+std::pair<std::string, System::exit_code_type> testS1(std::string script, bool from_file = false)
 {
     System M;
 
     M.taskQueueCreate("PRE_MAIN");
     M.setFunction("sh", shell3_coro);
 
-    auto E = System::parseArguments({"sh"});
-    // Here we're going to put our shell script code into the input
-    // stream of the process function, similar to how linux works
-    E.in  = System::make_stream(script);
-    E.out = System::make_stream();
-    E.in->set_eof();
+    M.touch("/script.sh");
+    M.fs("/script.sh") << script;
 
-    auto pid = M.runRawCommand(E);
+    auto E1 = [&]()
+    {
+        if(from_file)
+        {
+            auto E = System::parseArguments({"sh", "/script.sh"});
+            E.in   = System::make_stream();
+            E.out  = System::make_stream();
+            //E.in->set_eof();
+            return E;
+        }
+        else
+        {
+            auto E = System::parseArguments({"sh"});
+            // Here we're going to put our shell script code into the input
+            // stream of the process function, similar to how linux works
+            E.in  = System::make_stream(script);
+            E.out = System::make_stream();
+            E.in->set_eof();
+            return E;
+        }
+    }();
+
+    auto pid = M.runRawCommand(E1);
     REQUIRE(pid == 1);
     auto exit_code = M.getProcessExitCode(pid);
 
-
     while(M.taskQueueExecute("PRE_MAIN") + M.taskQueueExecute("MAIN"));
 
-    auto str = E.out->str();
+    auto str = E1.out->str();
     while(str.size() && str.back() == '\n')
         str.pop_back();
     return {str, *exit_code};
@@ -928,5 +981,25 @@ echo after
     REQUIRE(code == 0);
 }
 
+SCENARIO("Test While-loop")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+A=""
+while test ${A} != AA; do
+    A=${A}A
+    B=""
+    echo Outer
+    while test ${B} != BB; do
+        B=${B}B
+        echo Inner
+    done
+done
+echo after
+)foo", true);
+
+    REQUIRE(out == "before\nOuter\nInner\nInner\nOuter\nInner\nInner\nafter");
+    REQUIRE(code == 0);
+}
 
 #endif
