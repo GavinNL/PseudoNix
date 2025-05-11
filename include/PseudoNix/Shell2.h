@@ -121,9 +121,6 @@ struct Tokenizer4
     }
 };
 
-
-
-
 Generator< std::optional<std::string> > bashTokenGenerator(std::shared_ptr<System::stream_type> in)
 {
     std::string _token;
@@ -132,6 +129,7 @@ Generator< std::optional<std::string> > bashTokenGenerator(std::shared_ptr<Syste
     bool quoted = false;
 
     int bracket_count = 0;
+    bool comment_found = false;
     while(true)
     {
         auto res = in->get(&c);
@@ -165,45 +163,54 @@ Generator< std::optional<std::string> > bashTokenGenerator(std::shared_ptr<Syste
         }
         else
         {
-            if(c == '"' && !quoted)
-            {
-                quoted = !quoted;
-            }
-            else if(c == ';')
+            if(c == ';' || c == '\n')
             {
                 if(!_token.empty())
                     co_yield _token;
                 co_yield std::string("\n");
                 _token.clear();
-            }
-            else if(c == '\n')
-            {
-                if(!_token.empty())
-                    co_yield _token;
-                co_yield std::string("\n");
-                _token.clear();
-            }
-            else if( c == '(' )
-            {
-                _token.push_back(c);
-                bracket_count++;
-            }
-            else if( c== ')')
-            {
-                _token.push_back(c);
-                bracket_count--;
-            }
-            else if( c == ' ' && bracket_count == 0 )
-            {
-                if(!_token.empty())
-                {
-                    co_yield _token;
-                    _token.clear();
-                }
+                comment_found=false;
             }
             else
             {
-                _token.push_back(c);
+                if(comment_found)
+                {
+                    // dont add anything
+                }
+                else
+                {
+                    if(c == '"' && !quoted)
+                    {
+                        quoted = !quoted;
+                    }
+                    else if(c=='#')
+                    {
+                        comment_found = true;
+                    }
+                    else if( c == '(' )
+                    {
+                        _token.push_back(c);
+                        bracket_count++;
+                    }
+                    else if( c== ')')
+                    {
+                        _token.push_back(c);
+                        bracket_count--;
+                    }
+                    else if( c == ' ' && bracket_count == 0 )
+                    {
+                        if(!_token.empty())
+                        {
+                            co_yield _token;
+                            _token.clear();
+                        }
+                    }
+                    else
+                    {
+                        if(!comment_found)
+                            _token.push_back(c);
+                    }
+                }
             }
         }
     }
@@ -233,10 +240,10 @@ Generator<std::vector<std::string>> bashLineGenerator(std::shared_ptr<System::st
         {
             line_args.pop_back();
             // Erase all the arguments after the first argument that starts with #
-            line_args.erase(std::find_if(line_args.begin(), line_args.end(), [](auto const & s)
-                                         {
-                                             return s.size() && s.front() == '#' ;
-                                         }), line_args.end());
+            //line_args.erase(std::find_if(line_args.begin(), line_args.end(), [](auto const & s)
+            //                             {
+            //                                 return s.size() && s.front() == '#' ;
+            //                             }), line_args.end());
 
             if(!line_args.empty())
                 co_yield line_args;
