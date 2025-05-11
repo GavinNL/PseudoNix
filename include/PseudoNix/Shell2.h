@@ -807,7 +807,7 @@ inline System::task_type shell3_coro(System::e_type ctrl)
         auto a = *a_it;
         if(!a.has_value())
         {
-            HANDLE_AWAIT_INT_TERM( co_await ctrl->await_has_data(ctrl->in), ctrl);
+            HANDLE_AWAIT_TERM( co_await ctrl->await_has_data(ctrl->in), ctrl);
             ++a_it;
             continue;
         }
@@ -838,7 +838,7 @@ inline System::task_type shell3_coro(System::e_type ctrl)
                 }
                 else if( std::holds_alternative<std::string>(doWhat))
                 {
-                    HANDLE_AWAIT_INT_TERM( co_await ctrl->await_yield(std::get<std::string>(doWhat)), ctrl);
+                    HANDLE_AWAIT_TERM( co_await ctrl->await_yield(std::get<std::string>(doWhat)), ctrl);
                 }
                 else if( std::holds_alternative<std::vector<System::pid_type>>(doWhat))
                 {
@@ -846,7 +846,7 @@ inline System::task_type shell3_coro(System::e_type ctrl)
                     auto exit_code_p = SYSTEM.getProcessExitCode(pids_to_wait_on.back());
                     if(exit_code_p)
                     {
-                        HANDLE_AWAIT_INT_TERM( co_await ctrl->await_finished(pids_to_wait_on), ctrl);
+                        HANDLE_AWAIT_TERM( co_await ctrl->await_finished(pids_to_wait_on), ctrl);
                         ctrl->out->_eof = false;
                         ctrl->env["?"] = std::to_string(*exit_code_p);
                     }

@@ -1299,6 +1299,7 @@ public:
             auto const & QUEUE = control->queue_name; (void)QUEUE; \
             auto const & CWD = control->cwd; (void)CWD;\
             auto const PARENT_SHELL_PID = ENV.count("SHELL_PID") ? static_cast<PseudoNix::System::pid_type>(std::stoul(ENV["SHELL_PID"])) : PseudoNix::invalid_pid; (void)PARENT_SHELL_PID;\
+            auto const & LAST_SIGNAL = SYSTEM.m_procs2.at(PID)->lastSignal; \
             auto SHELL_PROC = PARENT_SHELL_PID != PseudoNix::invalid_pid ? SYSTEM.getProcessControl(PARENT_SHELL_PID) : nullptr; (void)SHELL_PROC
 
 
