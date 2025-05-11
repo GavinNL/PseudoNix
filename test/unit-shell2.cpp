@@ -612,6 +612,10 @@ inline System::task_type shell3_coro(System::e_type ctrl)
                         // do nothing
                     }
                 }
+                else if( std::holds_alternative<std::string>(doWhat))
+                {
+                    HANDLE_AWAIT_INT_TERM( co_await ctrl->await_yield(std::get<std::string>(doWhat)), ctrl);
+                }
                 else if( std::holds_alternative<std::vector<System::pid_type>>(doWhat))
                 {
                     auto & pids_to_wait_on = std::get<std::vector<System::pid_type>>(doWhat);
