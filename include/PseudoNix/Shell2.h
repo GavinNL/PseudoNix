@@ -253,14 +253,10 @@ Generator<std::vector<std::string>> bashLineGenerator(std::shared_ptr<System::st
 }
 
 
-
-
 using WhatToDo3 = std::variant< std::string,                  // queue to hop onto
                                std::vector<System::pid_type>,  // PIDS-to wait on
                                int                             // 0 - do nothing
                                >;
-
-
 
 inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> tokens,
                                                    System::ProcessControl * proc,
@@ -785,9 +781,12 @@ inline System::task_type shell_coro(System::e_type ctrl)
         }
         if(_args.size() > 1)
         {
-            if(SYSTEM.exists(_args[1]))
+            auto script_to_load_path = System::path_type(_args[1]);
+            if(script_to_load_path.is_relative())
+                script_to_load_path = CWD / script_to_load_path;
+            if(SYSTEM.exists(script_to_load_path))
             {
-                profile_script = SYSTEM.file_to_string(_args[1]);
+                profile_script = SYSTEM.file_to_string(script_to_load_path);
                 // add the exit command just in case
                 // so that the shell command will return the last
                 // exit code
