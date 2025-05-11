@@ -124,17 +124,201 @@ using WhatToDo3 = std::variant< std::string,                  // queue to hop on
                                >;
 
 
-Generator<WhatToDo3> process_command(std::vector<std::string> args, System::ProcessControl * proc)
+
+inline
+Generator<WhatToDo3> process_command(std::vector<std::string> args,
+                                   System::ProcessControl * proc)
 {
-    auto E = proc->system->parseArguments(args);
-    E.in = proc->in;
-    E.out = proc->out;
-    auto pid = proc->system->runRawCommand(E, proc->get_pid());
-    auto ex = proc->system->getProcessExitCode(pid);
-    std::vector<System::pid_type> pp;
-    pp.push_back(pid);
-    co_yield pp;
+    // Erase all the arguments after the first argument that starts with #
+    args.erase(std::find_if(args.begin(), args.end(), [](auto const & s)
+                            {
+                                return s.size() && s.front() == '#' ;
+                            }), args.end());
+
+    if(!args.empty())
+    {
+        for(auto & v : args)
+        {
+            v = var_sub1(v, proc->env);
+        }
+
+        {
+            // Check the PATH variable for
+            // scripts that may exist there
+            //
+
+            auto & PATH = proc->env["PATH"];
+            auto & SYSTEM = *proc->system;
+            auto parts = PATH
+                         | std::views::split(':')
+                         | std::views::transform([](auto &&subrange) {
+                               return std::string_view(&*subrange.begin(), static_cast<size_t>(std::ranges::distance(subrange)));
+                           });
+            for(auto subPath : parts)
+            {
+                auto bin_loc = System::path_type(subPath) / args[0];
+                if(SYSTEM.exists(bin_loc))
+                {
+                    std::vector<std::string> newargs;
+
+                    // Set all the argument variables $0, $1, $2...
+                    // first
+                    for(size_t i=0;i<args.size();i++)
+                    {
+                        newargs.push_back(std::format("{}={}", i, args[i]));
+                    }
+                    // add the sh shell
+
+                    newargs.push_back(proc->args[0]);
+
+                    // and the location of the script
+                    newargs.push_back(bin_loc.generic_string());
+
+                    args = newargs;
+                    break;
+                }
+            }
+        }
+
+        bool run_in_background = false;
+        if(args.back() == "&")
+        {
+            // NOTE: we should probably do a find for the &
+            // and cut everything in front of it to be run
+            // in the background
+            run_in_background = true;
+            args.pop_back();
+        }
+
+        //===============================================================
+        // Process special shell functions
+        //===============================================================
+        if(args[0] == "yield")
+        {
+            // Yield to another Task queue
+            if(args.size() == 1)
+            {
+                co_yield std::string(System::DEFAULT_QUEUE);
+                proc->env["?"] = "0";
+            }
+            else if(args.size() >= 2 && proc->system->taskQueueExists(args[1]))
+            {
+                co_yield args[1];
+                proc->env["?"] = "0";
+            }
+            else
+            {
+                *proc->out << std::format("Task queue, {}, does not exist. Staying on queue {}", args[1], proc->queue_name);
+                proc->env["?"] = "1";
+            }
+            co_return;
+        }
+        //===============================================================
+
+        if( run_in_background )
+        {
+#if 0
+            auto STDIN = System::make_stream();
+            STDIN->set_eof();
+            auto pids = execute_pipes( args, ctrl.get(), STDIN, ctrl->out);
+#else
+            auto STDIN = System::make_stream();
+
+            for(auto & a : args)
+            {
+                // pipe the data into stdin, and make sure each argument
+                // is in quotes. We may need to tinker with this
+                // to have properly escaped characters
+                *STDIN << std::format("\"{}\" ", a);
+            }
+            *STDIN << std::format(";");
+            STDIN->set_eof();
+            auto pids = execute_pipes( {"sh", "--noprofile"}, proc, STDIN, proc->out);
+#endif
+            *proc->out << std::format("{}\n", pids[0]);
+            proc->env["!"] = std::format("{}", pids[0]);
+            co_return;
+        }
+
+        auto op_args = parse_operands(args);
+        std::reverse(op_args.begin(), op_args.end());
+
+        int ret_value = 0;
+        while(op_args.size())
+        {
+            auto & cmd = op_args.back();
+            auto _operator = cmd.front();
+
+            if(_operator == "&&" && ret_value != 0)
+            {
+                op_args.pop_back();
+                continue;
+            }
+            if(_operator == "||" && ret_value == 0)
+            {
+                op_args.pop_back();
+                continue;
+            }
+            //======================================================================
+            // Loop through all the arguments in the
+            // cmd and see if any of them look like: $(cmdname arg1 arg2)
+            //
+            // If so, execute a new shell and pipe the "cmdname arg1 arg2" into
+            // the input stream so that it can be executed
+            for(auto it=cmd.begin(); it != cmd.end();)
+            {
+                if(it->size() >= 3 && it->substr(0,2) == "$(" && it->back() == ')')
+                {
+                    // we have a $(cmd arg1 arg2 arg3) situtation going on here
+                    // so execute this as a new shell
+                    auto STDIN = System::make_stream();
+                    auto STDOUT = System::make_stream();
+                    auto subProcess = execute_pipes( {"sh", "--noprofile"}, proc, STDIN, STDOUT);
+                    *STDIN << it->substr(2, it->size()-3);
+                    *STDIN << ';';
+                    STDIN->set_eof(); // make sure to set the eof of the output stream otherwise
+                        // sh will block waiting for bytes
+
+                    co_yield subProcess;
+
+                    std::string _out2;
+                    *STDOUT >> _out2;
+                    auto new_args = Tokenizer3::to_vector(_out2);
+                    it = cmd.erase(it);
+                    it = cmd.insert(it, new_args.begin(), new_args.end());
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+
+            //======================================================================
+
+            auto subProcess = execute_pipes( std::vector(cmd.begin()+1, cmd.end()), proc, proc->in, proc->out);
+
+            auto f_exit_code = proc->system->getProcessExitCode(subProcess.back());
+            if(cmd.back() != "&")
+            {
+                co_yield subProcess;
+                if(!f_exit_code)
+                {
+                    *proc->out << std::format("Command not found: [{}]\n", cmd[1] );
+                    ret_value = 127;
+                }
+                else
+                {
+                    ret_value = *f_exit_code;
+                }
+            }
+            proc->env["?"] = std::to_string(ret_value);
+
+            op_args.pop_back();
+        }
+    }
+    co_return;
 }
+
 Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > script, System::ProcessControl * proc);
 
 Generator<WhatToDo3> process_if(std::vector< std::vector<std::string> > script, System::ProcessControl * proc)
@@ -444,12 +628,14 @@ fi
 SCENARIO("Test While Loop")
 {
     std::string script = R"foo(
-echo1 asdfasd
-echo before
-while true; do
+
+sleep 2 && echo hello &
+echo hello
+while false; do
 echo loop
 done
 echo after
+sleep 3
 )foo";
 
     System M;
