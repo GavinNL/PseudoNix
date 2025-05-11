@@ -214,9 +214,7 @@ Generator<WhatToDo3> process_if(std::vector< std::vector<std::string> > script, 
                     co_yield cc;
                 }
             }
-
         }
-
 
         assert(first_it != script.end());
         if(first_it->front() == "fi")
@@ -322,10 +320,7 @@ inline System::task_type shell3_coro(System::e_type ctrl)
     auto _in  = ctrl->in;
     auto _out = ctrl->out;
 
-
-
     auto gn = bash_line_generator(ctrl->in);
-
 
     std::vector< std::vector<std::string> > script;
     int if_count=0;
@@ -372,9 +367,16 @@ inline System::task_type shell3_coro(System::e_type ctrl)
                 {
                     auto & pids_to_wait_on = std::get<std::vector<System::pid_type>>(doWhat);
                     auto exit_code_p = SYSTEM.getProcessExitCode(pids_to_wait_on.back());
-                    HANDLE_AWAIT_INT_TERM( co_await ctrl->await_finished(pids_to_wait_on), ctrl);
-                    ctrl->out->_eof = false;
-                    ctrl->env["?"] = std::to_string(*exit_code_p);
+                    if(exit_code_p)
+                    {
+                        HANDLE_AWAIT_INT_TERM( co_await ctrl->await_finished(pids_to_wait_on), ctrl);
+                        ctrl->out->_eof = false;
+                        ctrl->env["?"] = std::to_string(*exit_code_p);
+                    }
+                    else
+                    {
+                        ctrl->env["?"] = "127";
+                    }
                 }
             }
             script.clear();
@@ -442,6 +444,7 @@ fi
 SCENARIO("Test While Loop")
 {
     std::string script = R"foo(
+echo1 asdfasd
 echo before
 while true; do
 echo loop
