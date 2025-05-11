@@ -2,8 +2,6 @@
 #include "App.h"
 
 //#define PSEUDONIX_LOG_LEVEL_INFO
-#include <PseudoNix/System.h>
-#include <PseudoNix/Shell.h>
 #include <PseudoNix/ImGuiTerminal.h>
 #include "common_setup.h"
 

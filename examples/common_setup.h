@@ -1,5 +1,5 @@
 #include <PseudoNix/System.h>
-#include <PseudoNix/Shell.h>
+#include <PseudoNix/Shell2.h>
 
 inline void setup_functions(PseudoNix::System & sys)
 {
@@ -12,7 +12,7 @@ inline void setup_functions(PseudoNix::System & sys)
     // cmd1 || cmd2
     // echo "Hello ${USER}"
     //
-    sys.setFunction("sh", "Default Shell", PseudoNix::shell_coro);
+    sys.setFunction("sh", "Default Shell", PseudoNix::shell3_coro);
 
     // Here's a very simple guessing game process
     sys.setFunction("guess", "A simple guessing game", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type

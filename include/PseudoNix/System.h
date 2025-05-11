@@ -926,7 +926,7 @@ struct System : public PseudoNix::FileSystem
                 a.second->control->queue_name = queue_name;
                 a.second->control->env["QUEUE"] = queue_name;
                 a.second->control->env["THREAD_ID"] = std::format("{}", std::this_thread::get_id());
-                DEBUG_SYSTEM("  Resuming PID: {} : {}", a.second->control->pid, join(a.second->control->args));
+                DEBUG_SYSTEM("  Resuming on QUEUE: {} PID: {} : {}", queue_name, a.second->control->pid, join(a.second->control->args));
                 a.first->resume();
             }
             else
