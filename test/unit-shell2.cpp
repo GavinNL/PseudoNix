@@ -13,7 +13,7 @@ std::pair<std::string, System::exit_code_type> testS1(std::string script, bool f
     System M;
 
     M.taskQueueCreate("PRE_MAIN");
-    M.setFunction("sh", shell3_coro);
+    M.setFunction("sh", shell_coro);
 
     M.touch("/script.sh");
     M.fs("/script.sh") << script;

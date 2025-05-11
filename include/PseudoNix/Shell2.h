@@ -697,7 +697,7 @@ inline
                 ++j;
             }
 
-            auto if_statement = std::vector( script.begin()+ssize_t(i), script.begin()+ssize_t(j)+1);
+            auto if_statement = std::vector( script.begin()+ int64_t(i), script.begin()+ int64_t(j)+1);
             for(auto &&c : process_if(if_statement, proc))
             {
                 co_yield c;
@@ -717,7 +717,7 @@ inline
                 ++j;
             }
 
-            auto while_statement = std::vector( script.begin()+ssize_t(i), script.begin()+ssize_t(j)+1);
+            auto while_statement = std::vector( script.begin()+int64_t(i), script.begin()+ int64_t(j)+1);
             for(auto &&c : process_while(while_statement, proc))
             {
                 co_yield c;
