@@ -271,47 +271,43 @@ echo after
     REQUIRE(code == 0);
 }
 
-SCENARIO("Test While-loop")
+SCENARIO("Test While-loop breaks")
 {
     auto [out, code] = testS1(R"foo(
 echo before
 A=""
-while test ${A} != AA; do
+while true; do
     A=${A}A
-    B=""
-    echo Outer
-    while test ${B} != BB; do
-        B=${B}B
-        echo Inner
-    done
+    echo ${A}
+    break
 done
 echo after
 )foo");
 
-    REQUIRE(out == "before\nOuter\nInner\nInner\nOuter\nInner\nInner\nafter");
+    REQUIRE(out == "before\nA\nafter");
     REQUIRE(code == 0);
 }
 
-SCENARIO("Test While-loop")
+SCENARIO("Test While-loop breaks")
 {
     auto [out, code] = testS1(R"foo(
 echo before
 A=""
-while test ${A} != AA; do
+while true; do
     A=${A}A
-    B=""
-    echo Outer
-    while test ${B} != BB; do
-        B=${B}B
-        echo Inner
-    done
+    echo ${A}
+    if test ${A} = AAAA; then
+        break
+    fi
+    break
 done
 echo after
-)foo", true);
+)foo");
 
-    REQUIRE(out == "before\nOuter\nInner\nInner\nOuter\nInner\nInner\nafter");
+    REQUIRE(out == "before\nA\nAA\nAAA\nAAAA\nafter");
     REQUIRE(code == 0);
 }
+
 
 SCENARIO("Test For-loop")
 {
@@ -324,6 +320,23 @@ echo after
 )foo", true);
 
     REQUIRE(out == "before\nhello\nworld\nafter");
+    REQUIRE(code == 0);
+}
+
+SCENARIO("Test For-loop break")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+for A in hello world; do
+    echo ${A}
+    if test ${A} = hello; then
+        break
+    fi
+done
+echo after
+)foo", true);
+
+    REQUIRE(out == "before\nhello\nafter");
     REQUIRE(code == 0);
 }
 

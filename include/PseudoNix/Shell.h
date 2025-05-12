@@ -123,6 +123,7 @@ struct Tokenizer4
 
 using Tokenizer = Tokenizer4;
 
+inline
 Generator< std::optional<std::string> > bashTokenGenerator(std::shared_ptr<System::stream_type> in)
 {
     std::string _token;
@@ -221,7 +222,7 @@ Generator< std::optional<std::string> > bashTokenGenerator(std::shared_ptr<Syste
 }
 
 
-
+inline
 Generator<std::vector<std::string>> bashLineGenerator(std::shared_ptr<System::stream_type> s_in)
 {
     auto gn = bashTokenGenerator(s_in);
@@ -257,7 +258,7 @@ Generator<std::vector<std::string>> bashLineGenerator(std::shared_ptr<System::st
 
 using WhatToDo3 = std::variant< std::string,                  // queue to hop onto
                                std::vector<System::pid_type>,  // PIDS-to wait on
-                               int                             // 0 - do nothing
+                               int                             // 0 - do nothing, 1 - break loop, 2 - continue loop
                                >;
 
 inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> tokens,
@@ -375,7 +376,7 @@ inline std::string var_sub1(std::string_view str, std::map<std::string,std::stri
 
 inline
 Generator<WhatToDo3> process_command(std::vector<std::string> args,
-                    System::ProcessControl * proc)
+                                     System::ProcessControl * proc)
 {
     if(!args.empty())
     {
@@ -668,7 +669,8 @@ Generator<WhatToDo3> process_while(std::vector< std::vector<std::string> > scrip
 
     System::exit_code_type exit_code = 1;
 
-    while(true)
+    bool _break = false;
+    while(!_break)
     {
         auto condition = std::vector(script[0].begin()+1, script[0].end());
         auto preRet = proc->env["?"];
@@ -685,7 +687,15 @@ Generator<WhatToDo3> process_while(std::vector< std::vector<std::string> > scrip
             auto block = std::vector(script.begin()+2, script.end()-1);
             for(auto &&cc : process_block(block, proc))
             {
-                co_yield cc;
+                if(std::holds_alternative<int>(cc) )
+                {
+                    if(std::get<int>(cc) == 1)
+                        _break = true; // break main loop
+                }
+                else
+                {
+                    co_yield cc;
+                }
             }
         }
         else
@@ -709,13 +719,27 @@ Generator<WhatToDo3> process_for(std::vector< std::vector<std::string> > script,
     auto VARNAME = script.front()[1];
 
     auto preRet = proc->env[VARNAME];
+    bool _break = false;
     for(auto && item : script.front() | std::views::drop(3))
     {
+        if(_break)
+            break;
         proc->env[VARNAME] = item;
         auto block = std::vector(script.begin()+2, script.end()-1);
         for(auto &&cc : process_block(block, proc))
         {
-            co_yield cc;
+            if(std::holds_alternative<int>(cc) )
+            {
+                if(std::get<int>(cc) == 1)
+                {
+                    co_yield cc;
+                    _break = true; // break main loop
+                }
+            }
+            else
+            {
+                co_yield cc;
+            }
         }
     }
 }
@@ -785,6 +809,11 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
             }
             i = j+1;
         }
+        else if(script[i].front() == "break")
+        {
+            co_yield 1;
+            co_return;
+        }
         else
         {
             for(auto &&c : process_command(script[i], proc))
@@ -795,7 +824,8 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
     }
 }
 
-inline System::task_type shell_coro(System::e_type ctrl)
+inline
+System::task_type shell_coro(System::e_type ctrl)
 {
     PSEUDONIX_PROC_START(ctrl);
 

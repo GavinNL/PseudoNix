@@ -31,7 +31,7 @@ bool to_number(std::string_view v, number_t & value)
  * Given a stringview that looks like "VAR=VALUE", split this into two string views:
  * VAR and VALUE
  */
-static std::pair<std::string_view, std::string_view> splitVar(std::string_view var_def)
+inline std::pair<std::string_view, std::string_view> splitVar(std::string_view var_def)
 {
     auto i = var_def.find_first_of('=');
     if(i!=std::string::npos)
