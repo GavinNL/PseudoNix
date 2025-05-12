@@ -319,8 +319,8 @@ struct FileSystem
      */
     bool exists(path_type path) const
     {
-        _clean(path);
         path = path.lexically_normal();
+        _clean(path);
         assert(path.has_root_directory());
 
         path_type root;
@@ -648,6 +648,14 @@ struct FileSystem
         {
             auto [it, sub] = find_parent_mount_split_it(src);
             return std::get<NodeMount>(it->second).remove(sub);
+        }
+        else if(src_type == Type::MEM_DIR)
+        {
+            if(is_empty(src) == FSResult::True)
+            {
+                m_nodes.erase(src);
+                return true;
+            }
         }
         return false;
     }

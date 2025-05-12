@@ -2108,6 +2108,7 @@ public:
             if(ARGS.size() == 1)
                 co_return 0;
 
+            auto _args = ARGS;
             // test [flag] [file_path]
             bool negate=false;
             auto _cmp = [&negate](bool f)
@@ -2115,15 +2116,16 @@ public:
                 return negate ? f : (!f);
             };
 
-            if( ARGS.size() > 2 && ARGS[1] == "!" )
+            while(_args[1] == "!")
             {
                 negate = !negate;
+                _args.erase(_args.begin()+1);
             }
 
-            if(ARGS.size() == 3)
+            if(_args.size() == 3)
             {
-                auto const & flag = ARGS[1];
-                path_type path = ARGS[2];
+                auto const & flag = _args[1];
+                path_type path = _args[2];
                 if(!path.has_root_directory())
                     path = CWD / path;
 
@@ -2131,18 +2133,22 @@ public:
                 {
                     // note: 0 == true and 1 == false in
                     // a shell
-                    co_return SYSTEM.is_file(path) != true;
+                    co_return _cmp(SYSTEM.is_file(path));
                 }
                 else if(flag == "-d")
                 {
-                    co_return SYSTEM.is_dir(path) != true;
+                    co_return _cmp(SYSTEM.is_dir(path));
+                }
+                else if (flag == "-e")
+                {
+                    co_return _cmp(SYSTEM.exists(path));
                 }
             }
-            else if (ARGS.size() == 4)
+            else if (_args.size() == 4)
             {
-                auto const & left = ARGS[1];
-                auto const & op = ARGS[2];
-                auto const & right = ARGS[3];
+                auto const & left = _args[1];
+                auto const & op = _args[2];
+                auto const & right = _args[3];
                 if(op == "=")
                 {
                     co_return _cmp(left==right);

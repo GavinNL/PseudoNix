@@ -3,7 +3,7 @@
 
 //#define PSEUDONIX_LOG_LEVEL_SYSTEM
 #include <PseudoNix/System.h>
-#include <PseudoNix/Shell2.h>
+#include <PseudoNix/Shell.h>
 
 using namespace PseudoNix;
 
@@ -340,6 +340,45 @@ echo ${QUEUE}
 )foo", false);
 
     REQUIRE(out == "MAIN\nPRE_MAIN\nMAIN");
+    REQUIRE(code == 0);
+}
+
+
+SCENARIO("Test File-system")
+{
+    auto [out, code] = testS1(R"foo(
+
+mkdir /test_dir
+if test -d /test_dir; then
+    echo dir
+fi
+
+touch /test_file
+if test -f /test_file; then
+    echo file
+fi
+
+if test -e /test_dir; then
+    echo direxists
+fi
+
+if test -e /test_file; then
+    echo fileexists
+fi
+
+rm /test_dir
+rm /test_file
+
+if test ! -e /test_dir; then
+    echo rmdir
+fi
+
+if test ! -e /test_file; then
+    echo rmfile
+fi
+)foo", false);
+
+    REQUIRE(out == "dir\nfile\ndirexists\nfileexists\nrmdir\nrmfile");
     REQUIRE(code == 0);
 }
 
