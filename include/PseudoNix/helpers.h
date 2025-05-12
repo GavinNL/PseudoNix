@@ -4,6 +4,7 @@
 #include <charconv>
 #include <string_view>
 #include <sstream>
+#include <istream>
 #include <string>
 
 namespace PseudoNix
@@ -12,7 +13,17 @@ namespace PseudoNix
 template<typename number_t>
 bool to_number(std::string_view v, number_t & value)
 {
-    return std::errc() == std::from_chars(v.begin(), v.end(), value).ec;
+    if constexpr (requires { std::from_chars(v.begin(), v.end(), value); }) {
+        return std::errc() == std::from_chars(v.begin(), v.end(), value).ec;
+    }
+    else
+    {
+        std::istringstream iss(std::string(v.begin(),v.end()));
+        //std::istringstream iss(std::string(v));
+        iss >> value;
+        // Check for any leftover characters or failure
+        return !iss.fail() && iss.eof();
+    }
 }
 
 /**
