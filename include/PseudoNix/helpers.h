@@ -4,7 +4,6 @@
 #include <charconv>
 #include <string_view>
 #include <sstream>
-#include <istream>
 #include <string>
 
 namespace PseudoNix
@@ -19,9 +18,7 @@ bool to_number(std::string_view v, number_t & value)
     else
     {
         std::istringstream iss(std::string(v.begin(),v.end()));
-        //std::istringstream iss(std::string(v));
         iss >> value;
-        // Check for any leftover characters or failure
         return !iss.fail() && iss.eof();
     }
 }
