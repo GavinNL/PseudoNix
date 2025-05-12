@@ -67,50 +67,6 @@ constexpr const int sig_terminate = 15;
 
 
 /**
- * @brief splitVar
- * @param var_def
- * @return
- *
- * Given a stringview that looks like "VAR=VALUE", split this into two string views:
- * VAR and VALUE
- */
-static std::pair<std::string_view, std::string_view> splitVar(std::string_view var_def)
-{
-    auto i = var_def.find_first_of('=');
-    if(i!=std::string::npos)
-    {
-        return std::pair(
-            std::string_view(var_def.begin(), var_def.begin() + i),
-            std::string_view(var_def.begin() + i + 1, var_def.end())
-        );
-    }
-    return {};
-};
-
-/**
- * @brief join
- * @param c
- * @param delimiter
- * @return
- *
- * Used to join a container for printing
- * std::format("{}", join(vector, ","));
- */
-template <typename Container>
-std::string join(const Container& c, const std::string& delimiter = ", ") {
-    std::ostringstream oss;
-    auto it = c.begin();
-    if (it != c.end()) {
-        oss << *it;
-        ++it;
-    }
-    for (; it != c.end(); ++it) {
-        oss << delimiter << *it;
-    }
-    return oss.str();
-}
-
-/**
  * @brief The AwaiterResult enum
  *
  * This enum is returned when you coawait on the awaiter class.
@@ -1405,8 +1361,7 @@ public:
             if(ARGS.size() < 2)
                 co_return 1;
             float t = 0.0f;
-            std::istringstream in(ARGS[1]);
-            in >> t;
+            to_number(ARGS[1], t);
             t = std::max(0.0f, t);
             // NOTE: do not acutally use this_thread::sleep
             // this is a coroutine, so you should suspend
@@ -1484,6 +1439,20 @@ public:
             co_return 0;
         };
 
+        DEF_FUNC_HELP("args", "Prints out information about the arguments")
+        {
+            PSEUDONIX_PROC_START(ctrl);
+
+            uint32_t i=0;
+            for(auto & arg : ARGS)
+            {
+                COUT << std::format("[{:2}] {}\n",i, arg);
+                ++i;
+            }
+
+            co_return 0;
+        };
+
         DEF_FUNC_HELP("ps", "Shows the current process list")
         {
             PSEUDONIX_PROC_START(ctrl);
@@ -1494,7 +1463,6 @@ public:
                 COUT<< std::format("{:<8} {:<10} {}\n", pid, P->control->queue_name, join(P->control->args));
             }
 
-            //std::cout << std::to_string(i);
             co_return 0;
         };
 
@@ -1529,20 +1497,20 @@ public:
 
             pid_type pid = 0;
             int sig=2;
+
+            if(!to_number(ARGS[1], pid))
             {
-                if(!to_number(ARGS[1], pid))
-                {
-                    COUT << std::format("Arg 1 must be a Process ID. Recieved {}\n", ARGS[1]);
-                    co_return 1;
-                }
+                COUT << std::format("Arg 1 must be a Process ID. Recieved {}\n", ARGS[1]);
+                co_return 1;
             }
+
+
+            if(!to_number(ARGS[2], sig))
             {
-                if(!to_number(ARGS[2], sig))
-                {
-                    COUT << std::format("Arg 2 must be a integer signal code. Recieved {}\n", ARGS[1]);
-                    co_return 1;
-                }
+                COUT << std::format("Arg 2 must be a integer signal code. Recieved {}\n", ARGS[1]);
+                co_return 1;
             }
+
 
             if(!SYSTEM.signal(pid, sig))
             {

@@ -554,10 +554,10 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
 }
 
 inline
-    Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > script, System::ProcessControl * proc);
+Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > script, System::ProcessControl * proc);
 
 inline
-    Generator<WhatToDo3> process_if(std::vector< std::vector<std::string> > script, System::ProcessControl * proc)
+Generator<WhatToDo3> process_if(std::vector< std::vector<std::string> > script, System::ProcessControl * proc)
 {
     // script must start with "if command"
     //
