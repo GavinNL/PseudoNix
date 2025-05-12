@@ -78,7 +78,10 @@ static std::pair<std::string_view, std::string_view> splitVar(std::string_view v
     auto i = var_def.find_first_of('=');
     if(i!=std::string::npos)
     {
-        return {{&var_def[0],i}, {&var_def[i+1], var_def.size()-i-1}};
+        return std::pair(
+            std::string_view(var_def.begin(), var_def.begin() + i),
+            std::string_view(var_def.begin() + i + 1, var_def.end())
+        );
     }
     return {};
 };
