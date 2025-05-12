@@ -15,6 +15,7 @@
 #include <thread>
 #include <semaphore>
 #include "FileSystem.h"
+#include "helpers.h"
 
 #define PSEUDONIX_VERSION_MAJOR 0
 #define PSEUDONIX_VERSION_MINOR 1
@@ -1505,7 +1506,7 @@ public:
                 co_return 1;
 
             pid_type pid = 0;
-            if(std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pid).ec != std::errc())
+            if(!to_number(ARGS[1], pid))
             {
                 COUT << std::format("Must be a Process ID. Recieved {}\n", ARGS[1]);
                 co_return 1;
@@ -1529,14 +1530,14 @@ public:
             pid_type pid = 0;
             int sig=2;
             {
-                if(std::errc() != std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pid).ec)
+                if(!to_number(ARGS[1], pid))
                 {
                     COUT << std::format("Arg 1 must be a Process ID. Recieved {}\n", ARGS[1]);
                     co_return 1;
                 }
             }
             {
-                if(std::errc() != std::from_chars(ARGS[2].data(), ARGS[2].data() + ARGS[2].size(), sig).ec)
+                if(!to_number(ARGS[2], sig))
                 {
                     COUT << std::format("Arg 2 must be a integer signal code. Recieved {}\n", ARGS[1]);
                     co_return 1;
@@ -1601,7 +1602,7 @@ public:
             int32_t ret_value = 0;
             if( ARGS.size() > 1)
             {
-                std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), ret_value);
+                to_number(ARGS[1], ret_value);
             }
             co_return std::move(ret_value);
         };
@@ -1715,7 +1716,8 @@ public:
                 co_return 1;
             }
             size_t count = 0;
-            if(std::errc() != std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), count).ec)
+
+            if( !to_number(ARGS[1], count))
             {
                 COUT << std::format("Error: Arg 1 must be a postive number");
             }
@@ -2185,12 +2187,12 @@ public:
                 {
                     int32_t left_int=0;
                     int32_t right_int=0;
-                    if(std::from_chars(left.data(), left.data() + left.size(), left_int).ec != std::errc())
+                    if(!to_number(left, left_int))
                     {
                         COUT << std::format("test: {}: integer expression expected\n", left);
                         co_return 2;
                     }
-                    if(std::from_chars(right.data(), right.data() + right.size(), right_int).ec != std::errc())
+                    if(!to_number(right, right_int))
                     {
                         COUT << std::format("test: {}: integer expression expected\n", right);
                         co_return 2;
@@ -2268,8 +2270,9 @@ public:
             if(ARGS.size() < 2)
                 co_return 1;
             float t = 0.0f;
-            std::istringstream in(ARGS[1]);
-            in >> t;
+
+            to_number(ARGS[1], t);
+
             t = std::max(0.0f, t);
             // NOTE: do not acutally use this_thread::sleep
             // this is a coroutine, so you should suspend
