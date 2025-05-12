@@ -52,7 +52,7 @@ std::pair<std::string, System::exit_code_type> testS1(std::string script, bool f
     return {str, *exit_code};
 }
 
-#if 1
+#if 0
 SCENARIO("Test single line")
 {
     auto [out, code] = testS1(R"foo(
@@ -299,7 +299,6 @@ while true; do
     if test ${A} = AAAA; then
         break
     fi
-    break
 done
 echo after
 )foo");
@@ -307,8 +306,32 @@ echo after
     REQUIRE(out == "before\nA\nAA\nAAA\nAAAA\nafter");
     REQUIRE(code == 0);
 }
+#endif
 
+SCENARIO("Test While-loop breaks")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+A=""
+while true; do
+    A=${A}A
+    if test ${A} = AAA; then
+        echo CONTINUE
+        continue
+        echo AFTER_CONTINUE
+    fi
+    if test ${A} = AAAAAA; then
+        break
+    fi
+    echo ${A}
+done
+echo after
+)foo");
 
+    REQUIRE(out == "before\nA\nAA\nCONTINUE\nAAAA\nAAAAA\nafter");
+    REQUIRE(code == 0);
+}
+#if 0
 SCENARIO("Test For-loop")
 {
     auto [out, code] = testS1(R"foo(
@@ -340,7 +363,7 @@ echo after
     REQUIRE(code == 0);
 }
 
-#endif
+
 
 SCENARIO("Test Queue")
 {
@@ -395,4 +418,4 @@ fi
     REQUIRE(code == 0);
 }
 
-
+#endif

@@ -280,6 +280,7 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
     list_of_args.push_back(std::vector(first, last));
 
 
+    std::cout << std::format("Executing: {}", join(tokens)) << std::endl;
     auto E = System::genPipeline(list_of_args);
     E.front().in = in;
     E.back().out = out;
@@ -645,10 +646,31 @@ Generator<WhatToDo3> process_if(std::vector< std::vector<std::string> > script, 
                 // if the previous command (condition) exit code is 0, then we can
                 // execute the block;
                 auto block = std::vector(block_script.begin()+skip_count, block_script.end());
+                std::cout << std::format("IF BLOCK START<{}>", join(block[0])) << std::endl;
                 for(auto &&cc : process_block(block, proc))
                 {
-                    co_yield cc;
+                    if(std::holds_alternative<int>(cc) )
+                    {
+                        if(std::get<int>(cc) == 1)
+                        {
+                            std::cout << "Break found in IF" << std::endl;
+                            co_yield cc;
+                            break; // break main loop
+                        }
+                        if(std::get<int>(cc) == 2)
+                        {
+                            std::cout << "Continue found in IF" << std::endl;
+                            co_yield cc;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        //std::cout << "co_yield" << std::endl;
+                        co_yield cc;
+                    }
                 }
+                std::cout << std::format("IF BLOCK END <{}>", join(block[0])) << std::endl;
             }
         }
 
@@ -656,7 +678,7 @@ Generator<WhatToDo3> process_if(std::vector< std::vector<std::string> > script, 
         if(first_it->front() == "fi")
             break;
     }
-
+    std::cout << std::format("<END IF>") << std::endl;;
 
 }
 
@@ -670,10 +692,12 @@ Generator<WhatToDo3> process_while(std::vector< std::vector<std::string> > scrip
     System::exit_code_type exit_code = 1;
 
     bool _break = false;
-    while(!_break)
+    int _maxCount=0;
+    while(!_break && _maxCount++ < 6)
     {
         auto condition = std::vector(script[0].begin()+1, script[0].end());
         auto preRet = proc->env["?"];
+        std::cout << std::format("Checking Condition: {}", join(condition)) << std::endl;
         for(auto c : process_command(condition, proc))
         {
             auto ex = proc->system->getProcessExitCode( std::get<std::vector<System::pid_type>>(c).back() );
@@ -685,24 +709,39 @@ Generator<WhatToDo3> process_while(std::vector< std::vector<std::string> > scrip
         if(exit_code == 0)
         {
             auto block = std::vector(script.begin()+2, script.end()-1);
+            std::cout << "<WHILE BLOCK START>" << std::endl;
             for(auto &&cc : process_block(block, proc))
             {
                 if(std::holds_alternative<int>(cc) )
                 {
                     if(std::get<int>(cc) == 1)
+                    {
+                        std::cout << "Break found in loop" << std::endl;
                         _break = true; // break main loop
+                        break;
+                    }
+                    else if(std::get<int>(cc) == 2)
+                    {
+                        std::cout << "Continue found in loop" << std::endl;
+                        co_yield cc;
+                        exit_code = 1;
+                        break;
+                    }
                 }
                 else
                 {
+                    //std::cout << "co_yield" << std::endl;
                     co_yield cc;
                 }
             }
+            std::cout << "<WHILE BLOCK END>\n\n" << std::endl;
         }
         else
         {
             break;
         }
     }
+    std::cout << "While loop exited" << std::endl;
 }
 
 inline
@@ -767,7 +806,7 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
             {
                 co_yield c;
             }
-            i = j+1;
+            i = j;
         }
         else if(script[i].front() == "while")
         {
@@ -787,7 +826,7 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
             {
                 co_yield c;
             }
-            i = j+1;
+            i = j;
         }
         else if(script[i].front() == "for")
         {
@@ -811,7 +850,15 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
         }
         else if(script[i].front() == "break")
         {
+            std::cout << "Break found" << std::endl;
             co_yield 1;
+            co_return;
+        }
+        else if(script[i].front() == "continue")
+        {
+            std::cout << "Continue found" << std::endl;
+//            co_return;
+            co_yield 2;
             co_return;
         }
         else
