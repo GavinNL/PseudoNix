@@ -84,8 +84,11 @@ features, I decided to turn it into its own library.
 ### Future Development
 
  - [x] Virtual Filesystem
- - [ ] Root vs Regular user
  - [ ] Better bash-features (if statements, loops)
+   - [x] If-statements
+   - [x] While-Loops
+   - [x] For-Loops
+   - [ ] breaks/continue
  - [ ] More GNU core-utils like functions
    - [ ] head/tail
    - [ ] grep
@@ -786,5 +789,5 @@ Some common filesystem utilities are also provided for the shell:
  * cp - single file only. No directories, no globbing
  * mv - single file only. No directories, no globbing
 
-See the [Filesystem Unit Test](/test/unit-FileSystem.cpp) for more detail.
+See the [Filesystem Unit Test](/test/unit-FileSystem.cpp) for more usage.
 

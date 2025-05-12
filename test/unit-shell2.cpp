@@ -313,6 +313,20 @@ echo after
     REQUIRE(code == 0);
 }
 
+SCENARIO("Test For-loop")
+{
+    auto [out, code] = testS1(R"foo(
+echo before
+for A in hello world; do
+    echo ${A}
+done
+echo after
+)foo", true);
+
+    REQUIRE(out == "before\nhello\nworld\nafter");
+    REQUIRE(code == 0);
+}
+
 #endif
 
 SCENARIO("Test Queue")

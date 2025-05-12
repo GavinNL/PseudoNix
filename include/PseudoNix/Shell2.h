@@ -605,6 +605,10 @@ inline
         auto block_script = std::vector(first_it, second_it);
         first_it = second_it;
 
+        // loop through all the blocks: ie the if, elif and else blocks
+        // and execute them only if the last exit code was zero.
+        // it is initially set as zero so the first if-statement
+        // will always be run
         if( exit_code != 0)
         {
             auto condition = std::vector(block_script[0].begin()+1, block_script[0].end());
@@ -616,11 +620,16 @@ inline
             }
             else if(block_script[0][0] == "if" || block_script[0][0] == "elif")
             {
+                // if we find an if or elif statement
+                // then we have to process
                 auto preRet = proc->env["?"];
                 for(auto c : process_command(condition, proc))
                 {
                     auto ex = proc->system->getProcessExitCode( std::get<std::vector<System::pid_type>>(c).back() );
                     co_yield c;
+                    // set the exit code of the condition statement
+                    // if it is non-zero, the rest of the blocks will be
+                    // ignored
                     exit_code = *ex;
                     break;
                 }
@@ -630,6 +639,8 @@ inline
 
             if(exit_code == 0)
             {
+                // if the previous command (condition) exit code is 0, then we can
+                // execute the block;
                 auto block = std::vector(block_script.begin()+skip_count, block_script.end());
                 for(auto &&cc : process_block(block, proc))
                 {
@@ -647,7 +658,7 @@ inline
 }
 
 inline
-    Generator<WhatToDo3> process_while(std::vector< std::vector<std::string> > script, System::ProcessControl * proc)
+Generator<WhatToDo3> process_while(std::vector< std::vector<std::string> > script, System::ProcessControl * proc)
 {
     assert(script.front().front() == "while");
     assert(script[1].front() == "do");
@@ -683,7 +694,32 @@ inline
 }
 
 inline
-    Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > script, System::ProcessControl * proc)
+Generator<WhatToDo3> process_for(std::vector< std::vector<std::string> > script, System::ProcessControl * proc)
+{
+    assert(script.front().front() == "for");
+    assert(script[1].front() == "do");
+    assert(script.back().front() == "done");
+
+    assert(script.front()[2] == "in");
+    assert(script.size() >= 4);
+
+    // for VARNAME in LIST OF ITEMS
+    auto VARNAME = script.front()[1];
+
+    auto preRet = proc->env[VARNAME];
+    for(auto && item : script.front() | std::views::drop(3))
+    {
+        proc->env[VARNAME] = item;
+        auto block = std::vector(script.begin()+2, script.end()-1);
+        for(auto &&cc : process_block(block, proc))
+        {
+            co_yield cc;
+        }
+    }
+}
+
+inline
+Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > script, System::ProcessControl * proc)
 {
     for(size_t i=0; i < script.size(); i++)
     {
@@ -722,6 +758,26 @@ inline
 
             auto while_statement = std::vector( script.begin()+int64_t(i), script.begin()+ int64_t(j)+1);
             for(auto &&c : process_while(while_statement, proc))
+            {
+                co_yield c;
+            }
+            i = j+1;
+        }
+        else if(script[i].front() == "for")
+        {
+            int if_count=1;
+            auto j=i+1;
+            while(true)
+            {
+                if(script[j].front() == "for") if_count++;
+                if(script[j].front() == "done") if_count--;
+                if(if_count == 0)
+                    break;
+                ++j;
+            }
+
+            auto for_statement = std::vector( script.begin()+int64_t(i), script.begin()+ int64_t(j)+1);
+            for(auto &&c : process_for(for_statement, proc))
             {
                 co_yield c;
             }
@@ -821,6 +877,7 @@ inline System::task_type shell_coro(System::e_type ctrl)
 
         if(line.front() == "if") ++if_count;
         if(line.front() == "fi") --if_count;
+        if(line.front() == "for") ++while_count;
         if(line.front() == "while") ++while_count;
         if(line.front() == "done")  --while_count;
 
@@ -857,7 +914,6 @@ inline System::task_type shell_coro(System::e_type ctrl)
         }
         if(!EXIT_SHELL.empty())
         {
-            //std::cout << "Shell exiting" << std::endl;
             break;
         }
         ++a_it;
