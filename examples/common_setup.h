@@ -75,11 +75,13 @@ inline void setup_functions(PseudoNix::System & sys)
     {
         E.env["USER"] = "bob";
         E.env["PSEUDONIX_VERSION"] = std::format("{}.{}", PSEUDONIX_VERSION_MAJOR, PSEUDONIX_VERSION_MINOR);
+#if !defined __EMSCRIPTEN__
 #if defined CMAKE_SOURCE_DIR
         E.env["CMAKE_SOURCE_DIR"] = CMAKE_SOURCE_DIR;
         E.env["CMAKE_BINARY_DIR"] = CMAKE_BINARY_DIR;
-        E.env["COMPILE_DATE"]     = std::format("{} {}", __DATE__, __TIME__);
 #endif
+#endif
+        E.env["COMPILE_DATE"]     = std::format("{} {}", __DATE__, __TIME__);
     };
 
     sys.mkdir("/bin");
