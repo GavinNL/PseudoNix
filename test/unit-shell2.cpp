@@ -435,4 +435,20 @@ fi
 }
 
 
+SCENARIO("Test if statements using [[  ]] ")
+{
+    auto [out, code] = testS1(R"foo(
+sleep 2 && mkdir /test_dir &
+while [[ ! -d /test_dir ]]; do
+    echo exists
+    sleep 1
+done
+
+)foo", false);
+
+    REQUIRE(out == "2\nexists\nexists");
+    REQUIRE(code == 0);
+}
+
+
 #endif
