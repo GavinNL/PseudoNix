@@ -5,7 +5,7 @@
 PseudoNix is an embeddable header-only, Linux-like environment you can integrate
 directly into your project to provide concurrent process like behaviour.
 
-[Live Demo Using ImGui](https://filedn.eu/l0rnKqYfU3SSI61WTa9844f/mini)
+[Live Demo Using ImGui](https://filedn.eu/l0rnKqYfU3SSI61WTa9844f/mini/index.html)
 
 ## Dependendices
 
@@ -84,11 +84,11 @@ features, I decided to turn it into its own library.
 ### Future Development
 
  - [x] Virtual Filesystem
- - [ ] Better bash-features (if statements, loops)
+ - [x] Better bash-features (if statements, loops)
    - [x] If-statements
    - [x] While-Loops
    - [x] For-Loops
-   - [ ] breaks/continue
+   - [x] breaks/continue
  - [ ] More GNU core-utils like functions
    - [ ] head/tail
    - [ ] grep
