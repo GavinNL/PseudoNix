@@ -2,8 +2,8 @@
 
 ![Main GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/GavinNL/PseudoNix/.github%2Fworkflows%2Fcmake-multi-platform.yml?branch=main&style=for-the-badge&logo=github&label=main) ![Dev GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/GavinNL/PseudoNix/.github%2Fworkflows%2Fcmake-multi-platform.yml?branch=dev&style=for-the-badge&logo=github&label=dev) 
 
-PseudoNix is an embeddable header-only, Linux-like environment you can integrate directly into your project to provide
-concurrent process like behaviour.
+PseudoNix is an embeddable header-only, Linux-like environment you can integrate
+directly into your project to provide concurrent process like behaviour.
 
 [Live Demo Using ImGui](https://filedn.eu/l0rnKqYfU3SSI61WTa9844f/mini)
 
@@ -50,29 +50,30 @@ target_link_libraires(myapp PseudoNix::PseudoNix readerwriterqueue::readerwriter
 
 ## How It Works
 
-The PseudoNix::System acts like a fully contained Linux system and scheduler which 
-can execute processes concurrently.
-A process is a coroutine which can be added to the system to be executed.
-The coroutines that are added to the system are not automatically executed.
-When `system.executeAll()` is called, each coroutine is resumed one at a time
-until all of them have been resumed.
+The PseudoNix::System acts like a fully contained Linux system and scheduler
+which can execute processes concurrently. A process is a coroutine which can be
+added to the system to be executed. The coroutines that are added to the system
+are not automatically executed. When `system.executeAll()` is called, each
+coroutine is resumed one at a time until all of them have been resumed.
 
 Coroutines run on a single thread by design in the order of their PID number.
 
 The coroutines provide a `input/output` stream which can be written to. This is
-simlar to the standard input/output streams, but instead of writing to the console,
-it writes to memory. This way the output of one process can be sent to the input
-of another, just like on Linux.
+simlar to the standard input/output streams, but instead of writing to the
+console, it writes to memory. This way the output of one process can be sent to
+the input of another, just like on Linux.
 
 ## Use Cases
 
-This library was built because I needed a way to interface with a custom CAD application I was
-building. I needed a shell interface where I could execute commands and probe information about
-the system. After add more and more features, I decided to turn it into its own library.
+This library was built because I needed a way to interface with a custom CAD
+application I was building. I needed a shell interface where I could execute
+commands and probe information about the system. After add more and more
+features, I decided to turn it into its own library.
 
 ### Features
 
  - Bash-like shell interface
+ - Simple shell scripts
  - Define your own process coroutines similar to a linux process
  - Run your processes within the system's scheduler
  - Chain processes together `proc1 | proc2` just like in Linux
@@ -83,8 +84,11 @@ the system. After add more and more features, I decided to turn it into its own 
 ### Future Development
 
  - [x] Virtual Filesystem
- - [ ] Root vs Regular user
  - [ ] Better bash-features (if statements, loops)
+   - [x] If-statements
+   - [x] While-Loops
+   - [x] For-Loops
+   - [ ] breaks/continue
  - [ ] More GNU core-utils like functions
    - [ ] head/tail
    - [ ] grep
@@ -146,12 +150,12 @@ int main()
 
 ### Example 2: Using the Input/Output Streams
 
-This is a slightly stripped down version of the `main.cpp` example.
-Unlike in Example 1, where we wrote directly to std::cout, we are instead 
-going to write to the output stream of the process.
+This is a slightly stripped down version of the `main.cpp` example. Unlike in
+Example 1, where we wrote directly to std::cout, we are instead going to write
+to the output stream of the process.
 
-The output stream will be piped into another process which will write the 
-data to std::cout.
+The output stream will be piped into another process which will write the data
+to std::cout.
 
 ```c++
 #include <PseudoNix/System.h>
@@ -198,14 +202,16 @@ int main()
 ```
 
 
-## Example 3: Using the Shell Process
+### Example 3: Using the Shell Process
 
-A `shell` process, similar to bash, is provided for you. This shell process can be used to
-give you an actual command prompt entry into the PseudoNix system and let you launch commands.
+A `shell` process, similar to bash, is provided for you. This shell process can
+be used to give you an actual command prompt entry into the PseudoNix system and
+let you launch commands.
 
-Additionally, if you are building a command line application, you will need the `launcher` process.
-The `launcher` reads data from std::cin, and pipes that data into a new process. It then takes the output 
-and writes that to std::cout. Without this, the shell will not be able to write anything to your terminal
+Additionally, if you are building a command line application, you will need the
+`launcher` process. The `launcher` reads data from std::cin, and pipes that data
+into a new process. It then takes the output and writes that to std::cout.
+Without this, the shell will not be able to write anything to your terminal
 output.
 
 
@@ -233,16 +239,19 @@ int main()
 }
 ```
 
-### Special Shell Features
+#### Special Shell Features
 
-Psuedonix provides a default **shell** process that can be used as a starting point to create interactivity. 
-This shell behaves behaves similar to bash, allowing many features such as:
+Psuedonix provides a default **shell** process that can be used as a starting
+point to create interactivity. This shell behaves behaves similar to bash,
+allowing many features such as:
 
-It supports custom command registration and mimics familiar shell behavior including environment variables, 
-command substitution, logical operators `&&, ||`, and output redirection `cmd1 | cmd2`. 
-Perfect for building scriptable, extensible CLI experiences right into your application.
+It supports custom command registration and mimics familiar shell behavior
+including environment variables, command substitution, logical operators `&&,
+||`, and output redirection `cmd1 | cmd2`. Perfect for building scriptable,
+extensible CLI experiences right into your application.
 
-PseudoNix allows you to register your own coroutine functions so that they can be called within the system.
+PseudoNix allows you to register your own coroutine functions so that they can
+be called within the system.
 
  * Logical commands: `true && echo true || echo false`
  * Setting environment variables: `VAR=VALUE`
@@ -252,16 +261,17 @@ PseudoNix allows you to register your own coroutine functions so that they can b
  * Command substitution: `echo Running for: $(uptime) ms`
  * Call your own coroutine functions
 
-**NOTE**: The `shell` process is not a full bash interpreter. It does not provide many
-of the features. It was inteded to be a simple interface into the PseudoNix system. 
-The following bash features are not provided, but may be included in the future
+**NOTE**: The `shell` process is not a full bash interpreter. It does not
+provide many of the features. It was inteded to be a simple interface into the
+PseudoNix system. The following bash features are not provided, but may be
+included in the future
 
   * if statements
   * loops
   * functions
 
 
-### Default Functions
+#### Default Functions
 
 Here is a list of commands that are provided by default, mostly for testing purposes.
 See the examples below to define your own.
@@ -303,7 +313,7 @@ See the examples below to define your own.
 | wc             | Counts the number of characters                                  |
 | yes            | Keeps printing y to stdout until interrupted                     |
 
-## Integrating with GUI
+### Example 4: Integrating with GUI
 
 PsuedoNix was originally built to be integrated into a game engine I was building, so
 was designed to be easily integrated into a GUI (eg: ImGui)
@@ -340,73 +350,13 @@ int main()
 }
 ```
 
+### Example 5: Guessing Game
 
-
-## Signal Handlers, Exiting Gracefully and Traps
-
-In Linux, you can signal a process to interrupt, usually with Ctrl+C. This will
-tell the process that it should stop what its doing and react to the event, or
-exit the program. To be able to handle this behaviour in your coroutines, when
-you co_await, you can use a handy macro `HANDLE_AWAIT_BREAK_ON_SIGNAL` to
-read the output of the co_await and break out of the loop if it receives a
-signal. 
-
-If you call `signal <PID> 2`, or `signal <PID> 15` from the shell process (the 
-2 and the 15 are linux SIG_INT and SIG_TERM), it will tell your coroutine to
-exit its while loop. Since we reacted to an interrupt signal, it exited the loop and
-exited gracefully, printing out `This is a graceful exit`.
-
-But if we call `kill <PID>`, it will not send a signal, instead if will flag the
-coroutine to be removed from the scheduler. You can use the `PSEUDONIX_TRAP`
-to create a deferred block that will be executed with the coroutine is destroyed.
-This is useful if your coroutine allocated any memory or needs to do some additional
-cleanup.
-
-Try running example4.cpp, in the shell process try executing `mycustomfunction` 
-in the background. Then use `ps` to find its PID, and either call `signal <PID> 2`
-or `kill <PID>`
-
-
-
-```c++
-PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
-{
-    PSEUDONIX_PROC_START(ctrl);
-    auto sleep_time = std::chrono::milliseconds(250);
-
-    PSEUDONIX_TRAP {
-        // This will be called even if you call "kill"
-        // on the pid
-        OUT << std::format("This is executed on cleanup.");
-    };
-
-    int i=0;
-    while(true)
-    {
-        OUT << std::format("Counter: {}\n", i++);
-
-        // await for the awaiter to signal
-        // if it does, break the while loop if
-        // it returned any of the known signals:
-        //  sig_terminate, sig_interrupt
-        HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await ctrl->await_yield_for(sleep_time), ctrl);
-    }
-
-    // this will only be called if the while loop exits
-    // properly by reacting to a signal, either:
-    // signal PID 2
-    // signal PID 15
-    OUT << std::format("This a graceful exit\n");
-    co_return 0;
-}
-```
-
-## Example: Guessing Game
-
-Here's an example of creating a simple guessing game within the PsuedoNix system. 
-Remember that **all process functions happen concurrently, but on a single thread**. 
-So to be able to run concurrently, processes that would normally block at a location,
-should use specific co-routine awaiter provided by the ProcessControl object.
+Here's an example of creating a simple guessing game within the PsuedoNix
+system. Remember that **all process functions happen concurrently, but on a
+single thread**. So to be able to run concurrently, processes that would
+normally block at a location, should use specific co-routine awaiter provided by
+the ProcessControl object.
  
 ```c++
 
@@ -465,26 +415,30 @@ int main()
 }
 ```
 
-## Example Multi-Task Queue
+### Example 6: Multi-Task Queue
 
-Processes in the PseudoNix System are executed on a Task Queue. There is a `"MAIN"` queue which is executed
-when you call  `system.taskQueueExecute()` or `system.executeAllFor(...)`. By default all tasks 
-will be executed on that queue.
+Processes in the PseudoNix System are executed on a Task Queue. There is a
+`"MAIN"` queue which is executed when you call  `system.taskQueueExecute()` or
+`system.executeAllFor(...)`. By default all tasks will be executed on that
+queue.
 
-You can create different task queues, which can be executed at different times in your application. 
-For example, you can have a task queue that executes during your Physics portion of your game engine, and
-one that runs during the Render Pass of your graphics pipeline.
+You can create different task queues, which can be executed at different times
+in your application. For example, you can have a task queue that executes during
+your Physics portion of your game engine, and one that runs during the Render
+Pass of your graphics pipeline.
 
-Your processes can switch to different task queues by calling `await_yield` and passing in the name 
-of the queue you want to continue to execute.
+Your processes can switch to different task queues by calling `await_yield` and
+passing in the name of the queue you want to continue to execute.
 
 ```c++
     co_await ctrl->await_yield("RENDERPASS_QUEUE");
 ```
 
-Additional Task Queues can be created using the `system.taskQueueCreate(name_str)` function.
+Additional Task Queues can be created using the
+`system.taskQueueCreate(name_str)` function.
 
-The `queueHopper` function is created by default as an example, but the code is shown below.
+The `queueHopper` function is created by default as an example, but the code is
+shown below.
 
 ```c++
 int main()
@@ -559,6 +513,65 @@ int main()
 ```
 
 
+## Signal Handlers, Exiting Gracefully and Traps
+
+In Linux, you can signal a process to interrupt, usually with Ctrl+C. This will
+tell the process that it should stop what its doing and react to the event, or
+exit the program. To be able to handle this behaviour in your coroutines, when
+you co_await, you can use a handy macro `HANDLE_AWAIT_BREAK_ON_SIGNAL` to
+read the output of the co_await and break out of the loop if it receives a
+signal. 
+
+If you call `signal <PID> 2`, or `signal <PID> 15` from the shell process (the 
+2 and the 15 are linux SIG_INT and SIG_TERM), it will tell your coroutine to
+exit its while loop. Since we reacted to an interrupt signal, it exited the loop and
+exited gracefully, printing out `This is a graceful exit`.
+
+But if we call `kill <PID>`, it will not send a signal, instead if will flag the
+coroutine to be removed from the scheduler. You can use the `PSEUDONIX_TRAP`
+to create a deferred block that will be executed with the coroutine is destroyed.
+This is useful if your coroutine allocated any memory or needs to do some additional
+cleanup.
+
+Try running example4.cpp, in the shell process try executing `mycustomfunction` 
+in the background. Then use `ps` to find its PID, and either call `signal <PID> 2`
+or `kill <PID>`
+
+
+
+```c++
+PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
+{
+    PSEUDONIX_PROC_START(ctrl);
+    auto sleep_time = std::chrono::milliseconds(250);
+
+    PSEUDONIX_TRAP {
+        // This will be called even if you call "kill"
+        // on the pid
+        OUT << std::format("This is executed on cleanup.");
+    };
+
+    int i=0;
+    while(true)
+    {
+        OUT << std::format("Counter: {}\n", i++);
+
+        // await for the awaiter to signal
+        // if it does, break the while loop if
+        // it returned any of the known signals:
+        //  sig_terminate, sig_interrupt
+        HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await ctrl->await_yield_for(sleep_time), ctrl);
+    }
+
+    // this will only be called if the while loop exits
+    // properly by reacting to a signal, either:
+    // signal PID 2
+    // signal PID 15
+    OUT << std::format("This a graceful exit\n");
+    co_return 0;
+}
+```
+
 ## Process Control 
 
 The ProcessControl object is passed into your function as the input argument. 
@@ -579,24 +592,25 @@ M.setFunction("guess", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::
 
 ## Coroutine Awaiters
 
-The Coroutine Awaiters are used to pause your process and yield the time to another process
-in the scheduler until some event has occured.
+The Coroutine Awaiters are used to pause your process and yield the time to
+another process in the scheduler until some event has occured.
 
-The following is the simplest awaiter, which just pauses and waits until the scheduler
-resumes this process at a later time.
+The following is the simplest awaiter, which just pauses and waits until the
+scheduler resumes this process at a later time.
 
 ```c++
 auto await_result = co_await ctrl->await_yield();
 ```
 
-The awaiters return an `AwaitResult` enum which tells you what you should do.
-If it returns `AwaitResult::SUCCESS`, then the awaiter returned properly.
+The awaiters return an `AwaitResult` enum which tells you what you should do. If
+it returns `AwaitResult::SUCCESS`, then the awaiter returned properly.
 
-Other options are `AwaitResult::SIGNAL_INTERRUPT` and `AwaitResult::SIGNAL_TERMINATE`, which mean 
-the process was asked to interrupt itself (Ctrl+C in bash), or terminate itself (kill PID).
+Other options are `AwaitResult::SIGNAL_INTERRUPT` and
+`AwaitResult::SIGNAL_TERMINATE`, which mean the process was asked to interrupt
+itself (Ctrl+C in bash), or terminate itself (kill PID).
 
-In most cases, you would want to exit your process, unless you have some custom behaviour. 
-The `shell` and `launcher` have custom behaviour
+In most cases, you would want to exit your process, unless you have some custom
+behaviour. The `shell` and `launcher` have custom behaviour
 
 ```c++
 switch(co_await ctrl->await_yield())
@@ -607,8 +621,9 @@ default: break;
 }
 ```
 
-A macro has been created so that you can do this automatically. The following is a very simple 
-process that just prints out "hello world" continuously until you interrupt or kill the process
+A macro has been created so that you can do this automatically. The following is
+a very simple process that just prints out "hello world" continuously until you
+interrupt or kill the process
 
 ```c++
 M.setFunction("hello", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
@@ -637,13 +652,13 @@ The following is a list of awaiters that can be used
 
 ## Thread Pools
 
-Processes started in the PseudoNix system are always run on a single thread and only when
-the `executeTaskQueue` is called. This is so that the processes execute at known times within
-your application.
+Processes started in the PseudoNix system are always run on a single thread and
+only when the `executeTaskQueue` is called. This is so that the processes
+execute at known times within your application.
 
-You my have a process that takes an exceptionally long time to load and may not have a convenient
-way of yielding, for example, loading a large asset into memory. You may want to load this asset
-in a background thread. 
+You my have a process that takes an exceptionally long time to load and may not
+have a convenient way of yielding, for example, loading a large asset into
+memory. You may want to load this asset in a background thread. 
 
 One way of achieving this is to handle the background loading yourself. 
 
@@ -671,11 +686,12 @@ M.setFunction("loadAsset", [](e_type ctrl) -> task_type
 });
 ```
 
-A much more convient way is to be able to run a portion of your coroutine on the `MAIN`
-queue, and some of it on a different queue which is executed on a background thread.
+A much more convient way is to be able to run a portion of your coroutine on the
+`MAIN` queue, and some of it on a different queue which is executed on a
+background thread.
 
-The following offloads the loading of the asset to the THREADPOOL queue, and then 
-returns to the MAIN queue when it is done.
+The following offloads the loading of the asset to the THREADPOOL queue, and
+then returns to the MAIN queue when it is done.
 
 ```c++
 M.setFunction("loadAsset", [](e_type ctrl) -> task_type
@@ -697,8 +713,9 @@ M.setFunction("loadAsset", [](e_type ctrl) -> task_type
 });
 ```
 
-This, by itself, doesn't do anything and will block forever. You need to actually process the THREADPOOL queue.
-To do this, a special process, `bgrunner` has been created for you to spawn a background thread that processes a queue.
+This, by itself, doesn't do anything and will block forever. You need to
+actually process the THREADPOOL queue. To do this, a special process, `bgrunner`
+has been created for you to spawn a background thread that processes a queue.
 
 ```c++
 PseudoNix::System M;
@@ -720,7 +737,8 @@ M.spawnProcess({"queueHopper", "THREADPOOL"});
 M.spawnProcess({"queueHopper", "THREADPOOL"});
 ```
 
-You can even spawn this from the `shell` command by calling `bgrunner THREADPOOL`.
+You can even spawn this from the `shell` command by calling `bgrunner
+THREADPOOL`.
 
 Try it out using the terminal.
 
@@ -732,3 +750,44 @@ spawn 3 bgrunner THREADPOOL
 spawn 5 queueHopper THREADPOOL
 
 ```
+
+## FileSystem
+
+PseudoNix provides a virtual filesystem implementation. Files/Folders can exist
+completely in memory, or be mounted from the host.
+
+```c++
+
+PseudoNix::System M;
+
+// create a folder in the virtual file system
+M.mkdir("/bin");
+
+// create an empty file
+M.touch("/bin/hello.sh");
+
+// Mount a host directory inside the virtual
+// filesystem
+M.mkdir("/mnt");
+M.mount(path_on_host, "/mnt");
+
+// List all files/folders
+for(auto u : M.list_dir(/mnt))
+{
+    COUT << std::format("{}\n", u.generic_string());
+}
+```
+
+Some common filesystem utilities are also provided for the shell:
+
+ * ls
+ * cd
+ * mount/umount
+ * pwd
+ * mkdir
+ * touch
+ * cp - single file only. No directories, no globbing
+ * mv - single file only. No directories, no globbing
+
+See the [Filesystem Unit Test](/test/unit-FileSystem.cpp) for more usage.
+

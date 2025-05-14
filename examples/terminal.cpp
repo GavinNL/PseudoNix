@@ -1,10 +1,9 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "App.h"
 
-//#define PSUEDONIX_ENABLE_DEBUG
-#include <PseudoNix/System.h>
-#include <PseudoNix/Shell.h>
+//#define PSEUDONIX_LOG_LEVEL_INFO
 #include <PseudoNix/ImGuiTerminal.h>
+#include "common_setup.h"
 
 #include <SDL_main.h>
 
@@ -13,18 +12,10 @@ struct MyApplication : public ImGuiApplication
 public:
     PseudoNix::System       m_mini;
 
-    void setupFunctions()
+    MyApplication()
     {
-        // The sh function is provided for you.
-        // It's relatively rudametry but allowed you do
-        // do simple linux pipling and shell substitution
-        //
-        // cmd1 | cmd2
-        // cmd1 && cmd2
-        // cmd1 || cmd2
-        // echo "Hello ${USER}"
-        //
-        m_mini.setFunction("sh", "Default Shell", PseudoNix::shell_coro);
+        // set up the system
+        setup_functions(m_mini);
 
         // an ImGui Terminal function has been created if you want to
         // add a terminal to your projects. It is fairly simple
@@ -95,84 +86,9 @@ public:
             // returns exit code 0 if confirmed and 1 if cancelled
             co_return static_cast<int>(ret);
         });
-    }
 
-
-    MyApplication()
-    {
-        // This is the pre-exec function that gets called
-        // right before the coroutine is first executed
-        //
-        // It is used to modify the arguments
-        //
-        // You can use it to modify the args or add new
-        // data such as environment variables
-        m_mini.m_preExec = [](PseudoNix::System::Exec & E)
-        {
-            E.env["USER"] = "bob";
-            E.env["PSEUDONIX_VERSION"] = std::format("{}.{}", PSEUDONIX_VERSION_MAJOR, PSEUDONIX_VERSION_MINOR);
-#if defined CMAKE_SOURCE_DIR
-            E.env["CMAKE_SOURCE_DIR"] = CMAKE_SOURCE_DIR;
-            E.env["CMAKE_BINARY_DIR"] = CMAKE_BINARY_DIR;
-            E.env["COMPILE_DATE"] = std::format("{} {}", __DATE__, __TIME__);
-#endif
-        };
-
-        // Set up additional commands we want
-        // in our System
-        setupFunctions();
-
-        m_mini.mkdir("/bin");
-        m_mini.touch("/bin/hello.sh");
-        m_mini.fs("/bin/hello.sh") <<
-R"foo(
-echo Hello World!
-echo "this is a script defined inside the virtual file system"
-echo "I'm going to sleep now for a few seconds"
-sleep 3
-echo "Hey! I'm awake!"
-)foo";
-
-
-        // Create the /etc/profile file so that
-        // every instance of the sh command will execute
-        // those commands first
-        m_mini.mkdir("/etc");
-        m_mini.touch("/etc/profile");
-        m_mini.fs("/etc/profile") << R"foo(
-echo "###################################"
-echo "Welcome to the shell!"
-echo ""
-echo "The shell process automatically sources the"
-echo "/etc/profile" in the Virtual File System"
-echo ""
-echo "You are user: ${USER}
-echo "This is SHELL_PID: ${SHELL_PID}
-echo "Compiled Date: ${COMPILE_DATE}
-echo ""
-echo "type 'help' for a list of commands"
-echo "###################################"
-)foo";
-
-        #if !defined __EMSCRIPTEN__
-        m_mini.mkdir("/src");
-        m_mini.mkdir("/build");
-        m_mini.mount(CMAKE_SOURCE_DIR, "/src");
-        m_mini.mount(CMAKE_BINARY_DIR, "/build");
-        #endif
-
-        // Create a new task queue called "THREAD"
-        // This can be executed at a different
-        // time as the MAIN task queue.
-        m_mini.taskQueueCreate("PRE_MAIN");
-        m_mini.taskQueueCreate("POST_MAIN");
-        m_mini.taskQueueCreate("THREADPOOL");
-
-        // finally, execute the term command
-        // and execute the system call
         m_mini.spawnProcess({"term", "sh"});
         m_mini.spawnProcess({"bgrunner", "THREADPOOL"});
-
     }
 
     void imguiPreFrame()

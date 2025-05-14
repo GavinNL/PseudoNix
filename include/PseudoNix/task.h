@@ -73,7 +73,13 @@ struct Task_t
         // will be called
         void unhandled_exception()
         {
-            std::cout <<  "Unhandled Exception" << std::endl;
+            auto exception = std::current_exception();
+            try {
+                std::rethrow_exception(exception);
+            } catch (const std::exception& e) {
+                std::cout << "Handled in caller: " << e.what() << "\n";
+            }
+            //std::cout <<  "Unhandled Exception: " << exception << std::endl;
             exit(1);
         }
     };

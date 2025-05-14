@@ -2,9 +2,8 @@
 #include <thread>
 
 //#define PSUEDONIX_ENABLE_DEBUG
-#include <PseudoNix/System.h>
-#include <PseudoNix/Shell.h>
 #include <PseudoNix/Launcher.h>
+#include "common_setup.h"
 
 #include <csignal>
 
@@ -28,88 +27,14 @@ int main(int argc, char** argv)
     //
     System M;
 
+    setup_functions(M);
     //=============================================================================
     // Add the shell function to System
     // This isn't added by default because it's quite a large
     // function and you might want to add your own
-    M.setFunction("sh"      , "The default shell", PseudoNix::shell_coro);
     M.setFunction("launcher", "Launches another process and redirects stdin/out to the process.", PseudoNix::launcher_coro);
-
     //=============================================================================
 
-    // Here's a very simple guessing game process
-    M.setFunction("guess", "A simple guessing game", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
-    {
-        // Macro to define a few variables such as
-        // IN, OUT, ENV, SYSTEM, ARGS, PID
-        PSEUDONIX_PROC_START(ctrl);
-
-        std::string input;
-        uint32_t random_number = std::rand() % 100 + 1;
-        COUT << std::format("I have chosen a number between 1-100. Can you guess what it is?\n");
-
-        while(true)
-        {
-            std::string line;
-
-            // HANDLE_AWAIT_INT_TERM is a macro that looks at the return type of the
-            // Awaiter (a signal code), and co_returns the appropriate
-            // exit code. It will exit if the code is SIG_TERM or SIG_INT
-            //
-            // This is where Ctrl-C and Sig-kills are handled
-            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in, line), ctrl)
-
-            uint32_t guess = 0;
-
-            if(std::errc() != std::from_chars(line.data(), line.data() + line.size(), guess).ec)
-            {
-                COUT << std::format("invalid entry: {}\n", line);
-                COUT << std::format("Guess Again: \n");
-                continue;
-            }
-
-            if(guess > random_number)
-            {
-                COUT << std::format("Too High!\n");
-            }
-            else if(guess < random_number)
-            {
-                COUT  << std::format("Too Low!\n");
-            }
-            else
-            {
-                COUT << std::format("Awesome! You guessed the correct number: {}!\n", random_number);
-                COUT << std::format("Exiting\n");
-                co_return 0;
-            }
-        }
-
-        co_return 0;
-    });
-
-
-    //=============================================================================
-    // The shell process reads teh virtual file system for the /etc/profile
-    // file and reads that in if it exists. lets create one so that
-    // all shells have some initial information set
-    M.mkdir("/etc");
-    M.touch("/etc/profile"); // create a file in the VFS
-    M.fs("/etc/profile") << std::string(R"foo(
-USER=bob
-HOME="/"
-export USER
-echo "###################################"
-echo "Welcome to the shell!"
-echo ""
-echo "The shell process automatically sources the"
-echo "/etc/profile" in the Virtual File System"
-echo ""
-echo "You are user: ${USER}
-echo "This is SHELL_PID: ${SHELL_PID}
-echo ""
-echo "type 'help' for a list of commands"
-echo "###################################"
-)foo");
 
     // If we start our main process, "sh", then it will create its own
     // input and output streams, but we have no way write to the input stream
@@ -133,16 +58,6 @@ echo "###################################"
     // process
     std::signal(SIGINT, handle_sigint);
     _M = &M;
-
-    // Create another task queue
-    // This is for the taskHopper example
-    //
-    // In the future, taskQueues will be able to be executed on
-    // different threads, so you can structure your processes
-    // with background computation as well
-    M.taskQueueCreate("PRE_MAIN");
-    M.taskQueueCreate("POST_MAIN");
-    M.taskQueueCreate("THREADPOOL");
 
     // Spawn 2 background runners to process the
     // THREADPOOL queue.
