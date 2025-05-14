@@ -616,6 +616,11 @@ Generator<WhatToDo3> process_if(std::vector< std::vector<std::string> > script, 
         if( exit_code != 0)
         {
             auto condition = std::vector(block_script[0].begin()+1, block_script[0].end());
+            if(condition[0] == "[[" && condition.back() == "]]")
+            {
+                condition[0] = "test";
+                condition.pop_back();
+            }
             // regular command
             int skip_count = 1;
             if(block_script[0][0] == "else")

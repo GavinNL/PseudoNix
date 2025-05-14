@@ -331,7 +331,7 @@ echo after
     REQUIRE(out == "before\nA\nAA\nCONTINUE\nAAAA\nAAAAA\nafter");
     REQUIRE(code == 0);
 }
-#if 0
+#if 1
 SCENARIO("Test For-loop")
 {
     auto [out, code] = testS1(R"foo(
@@ -412,10 +412,27 @@ fi
 if test ! -e /test_file; then
     echo rmfile
 fi
+
 )foo", false);
 
     REQUIRE(out == "dir\nfile\ndirexists\nfileexists\nrmdir\nrmfile");
     REQUIRE(code == 0);
 }
+
+SCENARIO("Test if statements using [[  ]] ")
+{
+    auto [out, code] = testS1(R"foo(
+
+mkdir /test_dir
+
+if [[ -d /test_dir ]]; then
+    echo exists
+fi
+)foo", false);
+
+    REQUIRE(out == "exists");
+    REQUIRE(code == 0);
+}
+
 
 #endif
