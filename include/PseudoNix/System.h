@@ -127,8 +127,27 @@ struct System : public PseudoNix::FileSystem
         }
     };
 
+    /**
+     * @brief The Awaiter class
+     *
+     * A global awaiter class. Specific behaviours are defined by the
+     * function object, f, that is passed into the object.
+     *
+     * f is called whenever await_ready is called to check whether
+     * the awaiter should continue to suspend. If f returns true
+     * then the coroutine will not-suspend.
+     */
     class Awaiter {
     public:
+        /**
+         * @brief Awaiter
+         * @param p the pid of the coroutine process. Must be valid
+         * @param S - a pointer to the system
+         * @param f - the function object used to determine whether to resume or not
+         * @param queuName - the queue that the coroutine should resume on
+         *
+         *
+         */
         explicit Awaiter(pid_type p,
                          System* S,
                          std::function<bool(Awaiter*)> f,
@@ -618,6 +637,9 @@ struct System : public PseudoNix::FileSystem
         proc_control->queue_name= args.queue;
 
 
+        // If there is a valid parent, then copy all
+        // the exported variables from the parent into the
+        // new process's environment
         if(parent != invalid_pid)
         {
             auto & exported = PROC_AT(parent)->control->exported;
@@ -633,7 +655,7 @@ struct System : public PseudoNix::FileSystem
         }
 
         // run the function, it is a coroutine:
-        // it will return a task}
+        // it will return a task
         auto T = it->second(proc_control);
 
         auto pid = registerProcess(std::move(T), std::move(proc_control), parent);
@@ -666,6 +688,17 @@ struct System : public PseudoNix::FileSystem
     // and placing it in the scheduler to be run
     // This is an internal function and shouldn't be used
     //
+
+    /**
+     * @brief registerProcess
+     * @param t
+     * @param arg
+     * @param parent
+     * @return
+     *
+     * Register the coroutine as a valid process within the system. A PID will be
+     * generated for it
+     */
     pid_type registerProcess(task_type && t, e_type arg, pid_type parent = invalid_pid)
     {
         auto _pid = _pid_count++;
@@ -808,96 +841,6 @@ struct System : public PseudoNix::FileSystem
         return {};
     }
 
-    // End the process and clean up anything
-    // regardless of whether it was complete
-    // Does not remove the pid from the process list
-    void _finalizePID(pid_type p)
-    {
-        auto & coro = *PROC_AT(p);
-        coro.control->queue_name = DEFAULT_QUEUE;
-        if( coro.task.valid() )
-        {
-            coro.task.destroy();
-        }
-        // the output stream should have its
-        // EOF set so that any processes
-        // reading from it will know to close
-        coro.control->out->set_eof();
-
-        coro.is_complete = true;
-
-        _detachFromParent(p);
-
-        DEBUG_TRACE("Finalized: {}", join(coro.control->args));
-        DEBUG_TRACE("       IN: {}", coro.control->in.use_count());
-        DEBUG_TRACE("      OUT: {}", coro.control->out.use_count());
-
-        coro.control->out = {};
-        coro.control->in  = {};
-
-        // set the flag so that
-        // it will be removed
-        coro.should_remove = true;
-    }
-
-    void _detachFromParent(pid_type p)
-    {
-        auto & coro = *PROC_AT(p);
-        if(coro.parent != invalid_pid && m_procs2.count(coro.parent))
-        {
-            auto & cp = PROC_AT(coro.parent)->child_processes;
-            cp.erase(std::remove_if(cp.begin(), cp.end(), [p](auto && ch)
-                                    {
-                                        return ch==p;
-                                    }), cp.end());
-            coro.parent = invalid_pid;
-        }
-    }
-
-
-    /**
-     * @brief _processQueue
-     * @param POP_Q
-     * @param PUSH_Q
-     * @param queue_name
-     * @return
-     *
-     * Process a single item on the queue and returns true if it was able to
-     * other wise, return false if no items are on the queue
-     *
-     */
-    bool _processQueue(auto & POP_Q, auto & PUSH_Q, std::string queue_name)
-    {
-        std::pair<Awaiter*, std::shared_ptr<Process> > a;
-        auto found = POP_Q.try_dequeue(a);
-        if(found)
-        {
-            if(!a.first->handle_)
-                return false;
-            // its possible that the process had been forcefully killed
-            // and the handle to the coroutine no longer valid. So make sure
-            // that we do not resume any of those coroutines
-            if(a.second->force_terminate || a.second->is_complete || a.second->should_remove)
-                return found;
-
-            assert(!a.second->should_remove);
-            if(a.first->await_ready())
-            {
-                a.second->control->queue_name = queue_name;
-                a.second->control->env["QUEUE"] = queue_name;
-                a.second->control->env["THREAD_ID"] = std::format("{}", std::this_thread::get_id());
-                //DEBUG_SYSTEM("  Resuming on QUEUE: {} PID: {} : {}", queue_name, a.second->control->pid, join(a.second->control->args));
-                a.first->resume();
-            }
-            else
-            {
-                PUSH_Q.enqueue(std::move(a));
-            }
-        }
-        return found;
-    }
-
-
     /**
      * @brief taskQueueExecute
      * @param queue_name
@@ -980,25 +923,6 @@ struct System : public PseudoNix::FileSystem
         }
 
         return m_procs2.size();
-    }
-
-    void handleAwaiter(Awaiter *a)
-    {
-        auto pid = a->get_pid();
-        auto proc = PROC_AT(pid);
-
-        // the queue must have been created prior to
-        // adding tasks
-        auto it = m_awaiters.find(a->m_queueName);
-        if(it != m_awaiters.end())
-        {
-            it->second.enqueue({a,proc});
-        }
-        else
-        {
-            DEBUG_ERROR("{} not found. Adding to MAIN", a->m_queueName);
-            m_awaiters.at(DEFAULT_QUEUE).enqueue({a,proc});
-        }
     }
 
     void taskQueueCreate(std::string name)
@@ -1178,7 +1102,7 @@ struct System : public PseudoNix::FileSystem
     };
 
 
-public:
+protected:
     std::map<std::string, std::function< task_type(e_type) >> m_funcs;
     std::map<pid_type, std::shared_ptr<Process> >             m_procs2;
 
@@ -1259,7 +1183,7 @@ public:
             auto const & QUEUE = control->queue_name; (void)QUEUE; \
             auto const & CWD = control->cwd; (void)CWD;\
             auto const PARENT_SHELL_PID = ENV.count("SHELL_PID") ? static_cast<PseudoNix::System::pid_type>(std::stoul(ENV["SHELL_PID"])) : PseudoNix::invalid_pid; (void)PARENT_SHELL_PID;\
-            auto const & LAST_SIGNAL = SYSTEM.m_procs2.at(PID)->lastSignal; (void)LAST_SIGNAL;\
+            auto const & LAST_SIGNAL = SYSTEM.PROC_AT(PID)->lastSignal; (void)LAST_SIGNAL;\
             auto SHELL_PROC = PARENT_SHELL_PID != PseudoNix::invalid_pid ? SYSTEM.getProcessControl(PARENT_SHELL_PID) : nullptr; (void)SHELL_PROC
 
 
@@ -1310,7 +1234,7 @@ public:
             }
             co_return 0;
         };
-        DEF_FUNC_HELP("env", "Prints out all environment variables")
+        DEF_FUNC_HELP("env", "Prints out all environment variables, or sets environment variables for other processes")
         {
             PSEUDONIX_PROC_START(ctrl);
 
@@ -2257,6 +2181,116 @@ public:
         };
         #undef DEF_FUNC
     }
+
+    void handleAwaiter(Awaiter *a)
+    {
+        auto pid = a->get_pid();
+        auto proc = PROC_AT(pid);
+
+        // the queue must have been created prior to
+        // adding tasks
+        auto it = m_awaiters.find(a->m_queueName);
+        if(it != m_awaiters.end())
+        {
+            it->second.enqueue({a,proc});
+        }
+        else
+        {
+            DEBUG_ERROR("{} not found. Adding to MAIN", a->m_queueName);
+            m_awaiters.at(DEFAULT_QUEUE).enqueue({a,proc});
+        }
+    }
+
+    // End the process and clean up anything
+    // regardless of whether it was complete
+    // Does not remove the pid from the process list
+    void _finalizePID(pid_type p)
+    {
+        auto & coro = *PROC_AT(p);
+        coro.control->queue_name = DEFAULT_QUEUE;
+        if( coro.task.valid() )
+        {
+            coro.task.destroy();
+        }
+        // the output stream should have its
+        // EOF set so that any processes
+        // reading from it will know to close
+        coro.control->out->set_eof();
+
+        coro.is_complete = true;
+
+        _detachFromParent(p);
+
+        DEBUG_TRACE("Finalized: {}", join(coro.control->args));
+        DEBUG_TRACE("       IN: {}", coro.control->in.use_count());
+        DEBUG_TRACE("      OUT: {}", coro.control->out.use_count());
+
+        coro.control->out = {};
+        coro.control->in  = {};
+
+        // set the flag so that
+        // it will be removed
+        coro.should_remove = true;
+    }
+
+    void _detachFromParent(pid_type p)
+    {
+        auto & coro = *PROC_AT(p);
+        if(coro.parent != invalid_pid && m_procs2.count(coro.parent))
+        {
+            auto & cp = PROC_AT(coro.parent)->child_processes;
+            cp.erase(std::remove_if(cp.begin(), cp.end(), [p](auto && ch)
+                                    {
+                                        return ch==p;
+                                    }), cp.end());
+            coro.parent = invalid_pid;
+        }
+    }
+
+
+    /**
+     * @brief _processQueue
+     * @param POP_Q
+     * @param PUSH_Q
+     * @param queue_name
+     * @return
+     *
+     * Process a single item on the queue and returns true if it was able to
+     * other wise, return false if no items are on the queue
+     *
+     */
+    bool _processQueue(auto & POP_Q, auto & PUSH_Q, std::string queue_name)
+    {
+        std::pair<Awaiter*, std::shared_ptr<Process> > a;
+        auto found = POP_Q.try_dequeue(a);
+        if(found)
+        {
+            if(!a.first->handle_)
+                return false;
+            // its possible that the process had been forcefully killed
+            // and the handle to the coroutine no longer valid. So make sure
+            // that we do not resume any of those coroutines
+            if(a.second->force_terminate || a.second->is_complete || a.second->should_remove)
+                return found;
+
+            assert(!a.second->should_remove);
+            if(a.first->await_ready())
+            {
+                a.second->control->queue_name = queue_name;
+                a.second->control->env["QUEUE"] = queue_name;
+                a.second->control->env["THREAD_ID"] = std::format("{}", std::this_thread::get_id());
+                //DEBUG_SYSTEM("  Resuming on QUEUE: {} PID: {} : {}", queue_name, a.second->control->pid, join(a.second->control->args));
+                a.first->resume();
+            }
+            else
+            {
+                PUSH_Q.enqueue(std::move(a));
+            }
+        }
+        return found;
+    }
+
+
 };
 
 
