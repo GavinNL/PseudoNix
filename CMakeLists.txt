@@ -76,8 +76,9 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
 
     find_package(readerwriterqueue)
     find_package(concurrentqueue)
+    find_package(LibArchive)
 
-    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue )
+    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue LibArchive::LibArchive )
 
     add_executable(terminal examples/terminal.cpp)
     target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET}  ${third_party_libs})
