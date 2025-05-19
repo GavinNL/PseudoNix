@@ -1,5 +1,7 @@
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
+#include <PseudoNix/SampleMemoryArchive.h>
+#include <PseudoNix/ArchiveMount.h>
 
 inline void setup_functions(PseudoNix::System & sys)
 {
@@ -130,6 +132,9 @@ echo "###################################"
     sys.mount(CMAKE_SOURCE_DIR, "/src");
     sys.mount(CMAKE_BINARY_DIR, "/build");
     sys.mount(CMAKE_SOURCE_DIR "/scripts", "/usr/bin");
+
+    sys.mkdir("/tar");
+    assert(PseudoNix::FSResult::Success == sys.mount2_t<PseudoNix::ArchiveNodeMount>("/tar", PseudoNix::archive_tar, PseudoNix::archive_tar_len));
 #endif
 
     // Create a new task queue called "THREAD"

@@ -733,6 +733,29 @@ struct FileSystem
         return FSResult::NotValidMount;
     }
 
+    template<typename _Tp, typename... _Args>
+    FSResult mount2_t(path_type vfs_path, _Args&&... __args)
+    {
+        _clean(vfs_path);
+
+        auto [it, sub] = find_parent_mount_split_it(vfs_path);
+
+        // that path already exists inside
+        // a mount point
+        if(!sub.empty())
+            return FSResult::NotValidMount;
+
+        if(is_empty(vfs_path) != FSResult::True)
+            return FSResult::NotEmpty;
+
+        if( std::holds_alternative<NodeDir>(it->second))
+        {
+            it->second = NodeMount{{}, false, std::make_unique<_Tp>(std::forward<_Args>(__args)...)};
+            return FSResult::Success;
+        }
+        return FSResult::NotValidMount;
+    }
+
     template<typename T>
     FSResult mount_t( path_type host_path, path_type path)
     {
@@ -1082,7 +1105,6 @@ struct FileSystem
         {
             auto bff = std::make_unique<vector_backed_streambuf>(std::get<NodeFile>(it->second).filedata);
             return FileStream(std::move(bff));
-            return FileStream(std::get<NodeFile>(it->second).filedata );
         }
 
         return {};
@@ -1132,7 +1154,7 @@ struct FileSystem
             return {};
 
         return std::string((std::istreambuf_iterator<char>(in)),
-                           std::istreambuf_iterator<char>());
+                            std::istreambuf_iterator<char>());
     }
 
 protected:

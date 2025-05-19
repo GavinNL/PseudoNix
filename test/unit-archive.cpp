@@ -7,6 +7,7 @@
 
 
 #include <PseudoNix/ArchiveMount.h>
+#include <PseudoNix/SampleMemoryArchive.h>
 
 #if 0
 int list_tar_contents(const char *filename) {
@@ -120,10 +121,32 @@ SCENARIO("Mount")
         {
             REQUIRE(F.mount_t<ArchiveNodeMount>(CMAKE_SOURCE_DIR "/archive.tar", "/tar") == FSResult::Success);
 
-            for(auto f : F.list_dir("/tar"))
-            {
-                std::cout << f << F.is_dir(std::filesystem::path("/tar") / f) << std::endl;
-            }
+            REQUIRE(F.touch("/tar/file") == FSResult::ReadOnlyFileSystem);
+            REQUIRE(F.mkdir("/tar/file") == FSResult::ReadOnlyFileSystem);
+
+            REQUIRE(F.is_dir("/tar/folder"));
+            REQUIRE(!F.is_file("/tar/folder"));
+
+            REQUIRE(!F.is_dir("/tar/file.txt"));
+            REQUIRE( F.is_file("/tar/file.txt"));
+
+            REQUIRE(!F.is_dir("/tar/folder/another_file.txt"));
+            REQUIRE( F.is_file("/tar/folder/another_file.txt"));
+
+            REQUIRE(F.file_to_string("/tar/file.txt") == "Hello world\n");
+            REQUIRE(F.file_to_string("/tar/folder/another_file.txt") == "goodbye world\n");
+
+            //for(auto f : F.list_dir("/tar/folder"))
+            //{
+            //    std::cout << f << std::endl;
+            //}
+        }
+
+        WHEN("We mount a host directory")
+        {
+            REQUIRE(F.mount2_t<ArchiveNodeMount>("/tar", archive_tar, archive_tar_len) == FSResult::Success);
+            REQUIRE(F.exists("/tar"));
+            REQUIRE(F.is_dir("/tar"));
 
             REQUIRE(F.touch("/tar/file") == FSResult::ReadOnlyFileSystem);
             REQUIRE(F.mkdir("/tar/file") == FSResult::ReadOnlyFileSystem);
@@ -138,6 +161,13 @@ SCENARIO("Mount")
             REQUIRE( F.is_file("/tar/folder/another_file.txt"));
 
             REQUIRE(F.file_to_string("/tar/file.txt") == "Hello world\n");
+            REQUIRE(F.file_to_string("/tar/folder/another_file.txt") == "goodbye world\n");
+
+            for(auto f : F.list_dir("/tar"))
+            {
+                std::cout << f << std::endl;
+            }
         }
+
     }
 }
