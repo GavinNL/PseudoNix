@@ -282,6 +282,8 @@ struct MountHelper
     virtual bool is_empty(std::filesystem::path const & path) const = 0;
 
     virtual generator<std::filesystem::path> list_dir(std::filesystem::path path) const = 0;
+
+    virtual std::unique_ptr<std::streambuf> open(const std::string& path, std::ios::openmode mode) = 0;
 };
 
 struct FSNodeMount : public MountHelper
@@ -349,6 +351,13 @@ struct FSNodeMount : public MountHelper
         for (const auto& entry : fs::directory_iterator(abs_path)) {
             co_yield entry.path().lexically_proximate(abs_path);
         }
+    }
+    std::unique_ptr<std::streambuf> open(const std::string& path, std::ios::openmode mode) override
+    {
+        (void)mode;
+        auto p = std::make_unique<DelegatingFileStreamBuf>();
+        p->open(host_path / path, mode);
+        return p;
     }
 };
 
@@ -1073,8 +1082,10 @@ struct FileSystem
         if(!sub.empty())
         {
             // host file
-            auto bff = std::make_unique<DelegatingFileStreamBuf>();
-            assert(bff->open(std::get<NodeMount>(it->second).host_path / sub, openmode));
+            //auto bff = std::make_unique<DelegatingFileStreamBuf>();
+            //assert(bff->open(std::get<NodeMount>(it->second).host_path / sub, openmode));
+            auto bff = std::get<NodeMount>(it->second).helper->open(sub, openmode);
+
             return FileStream(std::move(bff));
             return FileStream( std::get<NodeMount>(it->second).host_path / sub, openmode);
         }

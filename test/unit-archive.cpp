@@ -10,6 +10,57 @@
 
 namespace PseudoNix
 {
+
+class ArchiveEntryStreamBuf : public std::streambuf {
+    static constexpr std::size_t BUFFER_SIZE = 8192;
+    struct archive* archive_;
+    std::vector<char> buffer_;
+
+public:
+    ArchiveEntryStreamBuf() : buffer_(BUFFER_SIZE) {}
+
+    bool open(std::filesystem::path host_path, std::filesystem::path sub)
+    {
+        // Create archive reader
+            struct archive_entry *entry;
+        archive_ = archive_read_new();
+        archive_read_support_format_tar(archive_); // Add TAR support
+        archive_read_support_format_zip(archive_);
+
+        // Open the archive file
+        int r = archive_read_open_filename(archive_, host_path.c_str(), 10240); // 10KB block size
+        if (r != ARCHIVE_OK) {
+            fprintf(stderr, "Could not open archive: %s\n", archive_error_string(archive_));
+            return false;
+        }
+
+        // Loop through each entry
+        while (archive_read_next_header(archive_, &entry) == ARCHIVE_OK) {
+            const char *pathname = archive_entry_pathname(entry);
+
+            if(pathname == sub)
+            {
+                break;
+            }
+            //printf("%s\n", pathname);  // Print file or directory path
+            archive_read_data_skip(archive_); // Skip file content (we only want the names)
+        }
+
+        setg(buffer_.data(), buffer_.data(), buffer_.data());
+        return true;
+    }
+
+protected:
+    int underflow() override {
+        ssize_t n = archive_read_data(archive_, buffer_.data(), buffer_.size());
+        if (n <= 0) {
+            return traits_type::eof();  // EOF or error
+        }
+        setg(buffer_.data(), buffer_.data(), buffer_.data() + n);
+        return traits_type::to_int_type(*gptr());
+    }
+};
+
 struct ArchiveNodeMount : public PseudoNix::MountHelper
 {
     std::filesystem::path host_path;
@@ -43,6 +94,7 @@ struct ArchiveNodeMount : public PseudoNix::MountHelper
         // Loop through each entry
         while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
             const char *pathname = archive_entry_pathname(entry);
+
             //printf("%s\n", pathname);  // Print file or directory path
             archive_read_data_skip(a); // Skip file content (we only want the names)
 
@@ -114,6 +166,14 @@ struct ArchiveNodeMount : public PseudoNix::MountHelper
             co_yield pth;
         }
     }
+
+    std::unique_ptr<std::streambuf> open(const std::string& path, std::ios::openmode mode) override
+    {
+        (void)mode;
+        auto p = std::make_unique<ArchiveEntryStreamBuf>();
+        p->open(host_path, path);
+        return p;
+    }
 };
 
 }
@@ -148,13 +208,16 @@ int list_tar_contents(const char *filename) {
     return 0;
 }
 
-class ArchiveEntryStreamBuf : public std::streambuf {
+
+#if 1
+
+class ArchiveEntryStreamBuf1 : public std::streambuf {
     static constexpr std::size_t BUFFER_SIZE = 8192;
     struct archive* archive_;
     std::vector<char> buffer_;
 
 public:
-    ArchiveEntryStreamBuf(struct archive* archive)
+    ArchiveEntryStreamBuf1(struct archive* archive)
         : archive_(archive), buffer_(BUFFER_SIZE) {
         setg(buffer_.data(), buffer_.data(), buffer_.data());
     }
@@ -171,7 +234,7 @@ protected:
 };
 
 class ArchiveEntryStream : public std::istream {
-    ArchiveEntryStreamBuf buf_;
+    ArchiveEntryStreamBuf1 buf_;
 
 public:
     ArchiveEntryStream(struct archive* archive)
@@ -210,7 +273,7 @@ SCENARIO("Test archive loading")
     archive_read_close(a);
     archive_read_free(a);
 }
-
+#endif
 using namespace PseudoNix;
 
 SCENARIO("Mount")
@@ -243,7 +306,7 @@ SCENARIO("Mount")
             REQUIRE(!F.is_dir("/tar/folder/another_file.txt"));
             REQUIRE( F.is_file("/tar/folder/another_file.txt"));
 
-            REQUIRE(F.file_to_string("/tar/file.txt") == "");
+            REQUIRE(F.file_to_string("/tar/file.txt") == "Hello world\n");
         }
     }
 }
