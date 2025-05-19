@@ -294,8 +294,6 @@ struct FSNodeMount : public MountHelper
     {
     }
 
-    bool read_only = false;
-
     bool exists(std::filesystem::path const & path) const override
     {
         assert(!path.has_root_directory());
@@ -320,8 +318,7 @@ struct FSNodeMount : public MountHelper
     FSResult mkdir(std::filesystem::path const & path)  override
     {
         assert(!path.has_root_directory());
-        if(read_only)
-            return FSResult::ReadOnlyFileSystem;
+
         if(std::filesystem::create_directories(host_path / path))
         {
             return FSResult::Success;
@@ -331,9 +328,6 @@ struct FSNodeMount : public MountHelper
     FSResult touch(std::filesystem::path const & path)  override
     {
         assert(!path.has_root_directory());
-
-        if(read_only)
-            return FSResult::ReadOnlyFileSystem;;
         std::ofstream out(host_path/path);
         out.close();
         return FSResult::Success;
@@ -437,7 +431,6 @@ struct NodeMount
     FSResult touch(std::filesystem::path const & path)
     {
         assert(!path.has_root_directory());
-
         if(read_only)
             return FSResult::ReadOnlyFileSystem;;
         return helper->touch(path);
@@ -715,6 +708,7 @@ struct FileSystem
      */
     FSResult mount( path_type host_path, path_type path)
     {
+        return mount_t<FSNodeMount>(host_path, path);
         if( !std::filesystem::is_directory(host_path))
         {
             return FSResult::HostDoesNotExist;
@@ -1081,13 +1075,8 @@ struct FileSystem
         }
         if(!sub.empty())
         {
-            // host file
-            //auto bff = std::make_unique<DelegatingFileStreamBuf>();
-            //assert(bff->open(std::get<NodeMount>(it->second).host_path / sub, openmode));
             auto bff = std::get<NodeMount>(it->second).helper->open(sub, openmode);
-
             return FileStream(std::move(bff));
-            return FileStream( std::get<NodeMount>(it->second).host_path / sub, openmode);
         }
         if( std::holds_alternative<NodeFile>(it->second) )
         {
