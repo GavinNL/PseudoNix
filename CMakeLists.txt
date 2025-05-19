@@ -54,6 +54,21 @@ target_link_libraries( ${PROJECT_NAME}  INTERFACE  ${PublicLinkedTargets})
 
 ################################################################################
 
+add_custom_target(archive
+    COMMAND rm -rf ${CMAKE_BINARY_DIR}/archive
+    COMMAND mkdir -p ${CMAKE_BINARY_DIR}/archive
+    COMMAND rm -rf archive.tar archive.c archive_zip.c
+    COMMAND tar -cf archive.tar *
+    COMMAND xxd -i archive.tar > ${CMAKE_BINARY_DIR}/archive/archive.c
+    COMMAND mv archive.tar ${CMAKE_BINARY_DIR}
+
+    COMMAND tar -czf archive.tar.gz *
+    COMMAND xxd -i archive.tar.gz > ${CMAKE_BINARY_DIR}/archive/archive_zip.c
+    COMMAND mv archive.tar.gz ${CMAKE_BINARY_DIR}
+
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/archive
+)
+
 
 if( ${PROJECT_NAME}_BUILD_EXAMPLES)
 
@@ -90,6 +105,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
                                         ${CMAKE_BINARY_DIR}/imgui_src/res/bindings
                                         ${CMAKE_BINARY_DIR}/imgui_src/res
                                         ${CMAKE_BINARY_DIR}/imgui_src/res/misc/cpp
+                                        ${CMAKE_BINARY_DIR}/archive
                               )
 
     if(EMSCRIPTEN)
@@ -99,6 +115,9 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
     else()
         add_executable(main examples/main.cpp)
         target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
+        target_include_directories(main PUBLIC
+                                            ${CMAKE_BINARY_DIR}/archive
+                                  )
 
         add_executable(example1 examples/example1.cpp)
         target_link_libraries(example1 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
@@ -111,8 +130,11 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
 
         add_executable(example4 examples/example4.cpp)
         target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
+
+        add_dependencies(main archive)
     endif()
 
+    add_dependencies(terminal archive)
 
 endif()
 

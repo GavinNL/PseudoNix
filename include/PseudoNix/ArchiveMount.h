@@ -44,7 +44,7 @@ public:
         // Create archive reader
         archive_ = archive_read_new();
         archive_read_support_format_tar(archive_); // Add TAR support
-        archive_read_support_format_zip(archive_);
+        archive_read_support_filter_gzip(archive_);
 
         int r = archive_read_open_memory2(archive_, data, length, 10240); // 10KB block size
         if (r != ARCHIVE_OK) {
@@ -59,7 +59,7 @@ public:
         // Create archive reader
         archive_ = archive_read_new();
         archive_read_support_format_tar(archive_); // Add TAR support
-        archive_read_support_format_zip(archive_);
+        archive_read_support_filter_gzip(archive_);
 
         int r = archive_read_open_filename(archive_, host_path.c_str(), 10240); // 10KB block size
         if (r != ARCHIVE_OK) {
@@ -186,7 +186,7 @@ struct ArchiveNodeMount : public PseudoNix::MountHelper
     }
     bool is_dir(std::filesystem::path const & path) const  override
     {
-        if(path == ".")
+        if(path == "." || path.empty())
             return true;
         auto it = _files.find(path);
         if(it == _files.end())
@@ -221,6 +221,8 @@ struct ArchiveNodeMount : public PseudoNix::MountHelper
     PseudoNix::generator<std::filesystem::path> list_dir(std::filesystem::path path) const  override
     {
         (void)path;
+        if(path == ".")
+            path.clear();
         for(auto & [pth, info] : _files)
         {
             if(path.lexically_relative(pth) == "..")
