@@ -1251,7 +1251,10 @@ protected:
                 // found
                 if(std::holds_alternative<NodeMount>(it->second))
                 {
-                    return {it, path.lexically_relative(root)};
+                    auto lex = path.lexically_relative(root);
+                    if(lex == ".")
+                        lex.clear();
+                    return {it, lex};
                 }
             }
             else

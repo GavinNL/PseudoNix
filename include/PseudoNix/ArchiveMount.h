@@ -221,8 +221,6 @@ struct ArchiveNodeMount : public PseudoNix::MountHelper
     PseudoNix::generator<std::filesystem::path> list_dir(std::filesystem::path path) const  override
     {
         (void)path;
-        if(path == ".")
-            path.clear();
         for(auto & [pth, info] : _files)
         {
             if(path.lexically_relative(pth) == "..")
