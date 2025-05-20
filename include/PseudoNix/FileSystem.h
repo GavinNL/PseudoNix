@@ -275,6 +275,8 @@ struct MountHelper
 
     virtual bool is_empty(std::filesystem::path const & path) const = 0;
 
+    virtual bool is_read_only(std::filesystem::path const & path) const = 0;
+
     virtual std::filesystem::path host_path() const = 0;
 
     virtual generator<std::filesystem::path> list_dir(std::filesystem::path path) const = 0;
@@ -338,6 +340,11 @@ struct FSNodeMount : public MountHelper
         namespace fs = std::filesystem;
         auto abs_path = _host_path / path;
         return fs::is_empty(abs_path);
+    }
+    bool is_read_only(std::filesystem::path const & path) const  override
+    {
+        (void)path;
+        return false;
     }
     generator<std::filesystem::path> list_dir(std::filesystem::path path) const  override
     {
@@ -407,6 +414,11 @@ struct NodeMount
         return helper->host_path();
     }
 
+    bool is_read_only(std::filesystem::path const & path) const
+    {
+        assert(!path.has_root_directory());
+        return helper->is_read_only(path);
+    }
     bool remove(std::filesystem::path const & path) const
     {
         assert(!path.has_root_directory());
@@ -766,6 +778,22 @@ struct FileSystem
         return FSResult::NotValidMount;
     }
 
+    FSResult isReadOnly(path_type path) const
+    {
+        _clean(path);
+        assert(path.has_root_directory());
+
+        auto [it, sub] = find_parent_mount_split_it(path);
+
+        if(!sub.empty())
+        {
+            auto & MNT = std::get<NodeMount>(it->second);
+            if(MNT.read_only)
+                return FSResult::True;
+            return MNT.is_read_only(sub) ? FSResult::True : FSResult::False;
+        }
+        return FSResult::UnknownError;
+    }
     /**
      * @brief cp
      * @param src
@@ -785,7 +813,9 @@ struct FileSystem
 
         if(dst_type == Type::MEM_DIR || dst_type == Type::HOST_DIR)
         {
-            touch(dst / src.filename());
+            auto res = touch(dst / src.filename());
+            if( res != FSResult::Success)
+                return res;
             return copy(src, dst / src.filename());
         }
         else if(dst_type == Type::HOST_FILE || dst_type == Type::MEM_FILE)
@@ -796,7 +826,9 @@ struct FileSystem
         {
             if(exists(dst.parent_path()))
             {
-                touch(dst);
+                auto res = touch(dst);
+                if( res != FSResult::Success)
+                    return res;
                 return copy(src, dst);
             }
             return FSResult::NotValidPath;
@@ -893,6 +925,9 @@ struct FileSystem
 
             auto Fout = this->open(dst, std::ios::out);
             auto Fin  = this->open(src, std::ios::in);
+
+            Fout.good() && Fin.good();
+
             std::vector<char> _buff(1024 * 1024);
 
             while(!Fin.eof())

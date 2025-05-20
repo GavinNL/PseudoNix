@@ -232,7 +232,7 @@ struct ArchiveNodeMount : public PseudoNix::MountHelper
         }
     }
 
-    std::unique_ptr<std::streambuf> open(const std::string& path, std::ios::openmode mode) override
+    std::unique_ptr<std::streambuf> open(const std::filesystem::path& path, std::ios::openmode mode) override
     {
         (void)mode;
         auto p = std::make_unique<ArchiveEntryStreamBuf>();
