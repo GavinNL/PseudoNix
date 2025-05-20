@@ -96,7 +96,7 @@ public:
         }
     }
 
-    bool open(const std::string& path, std::ios::openmode mode) {
+    bool open(const std::filesystem::path& path, std::ios::openmode mode) {
         std::string cmode;
 
         bool read = (mode & std::ios::in);
@@ -121,7 +121,8 @@ public:
         // Always open in binary mode
         cmode += "b";
 
-        file = std::fopen(path.c_str(), cmode.c_str());
+        auto pstr = path.generic_string();
+        file = std::fopen(pstr.c_str(), cmode.c_str());
         return file != nullptr;
     }
 
@@ -283,7 +284,7 @@ struct MountHelper
 
     virtual generator<std::filesystem::path> list_dir(std::filesystem::path path) const = 0;
 
-    virtual std::unique_ptr<std::streambuf> open(const std::string& path, std::ios::openmode mode) = 0;
+    virtual std::unique_ptr<std::streambuf> open(const std::filesystem::path& path, std::ios::openmode mode) = 0;
 };
 
 struct FSNodeMount : public MountHelper
@@ -346,7 +347,7 @@ struct FSNodeMount : public MountHelper
             co_yield entry.path().lexically_proximate(abs_path);
         }
     }
-    std::unique_ptr<std::streambuf> open(const std::string& path, std::ios::openmode mode) override
+    std::unique_ptr<std::streambuf> open(const std::filesystem::path& path, std::ios::openmode mode) override
     {
         (void)mode;
         auto p = std::make_unique<DelegatingFileStreamBuf>();
