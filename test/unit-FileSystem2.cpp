@@ -225,6 +225,29 @@ SCENARIO("mount with file manipulation")
     }
 }
 
+SCENARIO("write to files")
+{
+    GIVEN("A filesystem with some directories and files")
+    {
+        FileSystem2 F;
+        REQUIRE(F.exists("/") == FSResult2::True);
+        REQUIRE(F.mkdir("/folder") == FSResult2::True);
+        REQUIRE(F.mkfile("/folder/file.txt") == FSResult2::True);
+
+        {
+            auto out = F.open("/folder/file.txt", std::ios::out);
+            out << "Hello";
+        }
+
+        {
+            std::string str;
+            auto in = F.open("/folder/file.txt", std::ios::in);
+            in >> str;
+            REQUIRE(str == "Hello");
+        }
+    }
+}
+
 #if 0
 SCENARIO("mount")
 {

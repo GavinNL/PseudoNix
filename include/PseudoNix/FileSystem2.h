@@ -455,7 +455,7 @@ struct FileSystem2
             else
             {
                 // its a file
-                return {r, rem};
+                return {it->second, rem};
             }
         }
     }
@@ -467,8 +467,29 @@ struct FileSystem2
         auto rel_path_to_root = abs_path.relative_path();
 
         auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
-        auto bff = mnt->open(rem, openmode);
-        return FileStream(std::move(bff));
+
+        if(rem.empty())
+        {
+            if(auto f = std::dynamic_pointer_cast<FSNodeFile>(mnt))
+            {
+                auto bff = std::make_unique<vector_backed_streambuf>(f->data);
+                return FileStream(std::move(bff));
+            }
+            // an empty folder cannot open
+            return FileStream();
+        }
+        else
+        {
+            if(auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt))
+            {
+                if(d->mount)
+                {
+                    auto bff = d->mount->open(rem, openmode);
+                    return FileStream(std::move(bff));
+                }
+            }
+        }
+        return {};
     }
 
     std::shared_ptr<FSNodeDir> m_rootNode = std::make_shared<FSNodeDir>("/");
