@@ -121,8 +121,18 @@ public:
         // Always open in binary mode
         cmode += "b";
 
+        file = nullptr;
         auto pstr = path.generic_string();
+#ifdef _WIN32
+        errno_t err = fopen_s(&file, pstr.c_str(), cmode.c_str());
+        bool success = (err == 0 && file != nullptr);
+#else
         file = std::fopen(pstr.c_str(), cmode.c_str());
+        bool success = (file != nullptr);
+#endif
+        return success;
+        //auto pstr = path.generic_string();
+        //file = std::fopen(pstr.c_str(), cmode.c_str());
         return file != nullptr;
     }
 
