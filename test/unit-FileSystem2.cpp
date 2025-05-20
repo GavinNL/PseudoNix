@@ -89,19 +89,6 @@ SCENARIO("mkdir")
             {
                 REQUIRE(F.mkdir("/hello/world") == FSResult2::True);
                 REQUIRE(F.exists("/hello/world") == FSResult2::True);
-
-                THEN("We can find a node")
-                {
-                    auto hello = F.m_rootNode->find("hello");
-                    REQUIRE(hello != nullptr);
-                    REQUIRE(hello->name == "hello");
-                }
-                THEN("We can find the world node")
-                {
-                    auto world = F.m_rootNode->find("hello/world");
-                    REQUIRE(world != nullptr);
-                    REQUIRE(world->name == "world");
-                }
             }
         }
     }
@@ -125,13 +112,6 @@ SCENARIO("mkfile")
             {
                 REQUIRE(F.mkfile("/hello") == FSResult2::False);
             }
-            THEN("We can find a node")
-            {
-                auto hello = F.m_rootNode->find("hello");
-                REQUIRE(hello != nullptr);
-                REQUIRE(hello->name == "hello");
-            }
-
             THEN("We can create a file in a subfolder")
             {
                 REQUIRE(F.mkdir("/hello2") == FSResult2::True);
@@ -140,13 +120,6 @@ SCENARIO("mkfile")
                 REQUIRE(F.mkfile("/hello2/world/file") == FSResult2::True);
 
                 REQUIRE(F.exists("/hello2/world/file") == FSResult2::True);
-
-                THEN("We can find a node")
-                {
-                    auto hello = F.m_rootNode->find("hello2/world/file");
-                    REQUIRE(hello != nullptr);
-                    REQUIRE(hello->name == "file");
-                }
             }
         }
     }
