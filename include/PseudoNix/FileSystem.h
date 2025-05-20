@@ -176,29 +176,12 @@ public:
     {
     }
 
-    // String-based constructor (backed by stringstream)
-    explicit FileStream(std::vector<char> &initialContent)
-        : std::iostream(nullptr)
-    {
-        backing = std::make_unique<string_backed_iostream>(initialContent);
-        this->rdbuf(std::get<0>(backing)->rdbuf());
-    }
-
-    // File-based constructor (backed by fstream)
-    explicit FileStream(const std::filesystem::path& filePath, std::ios::openmode mode)
-        : std::iostream(nullptr), backing(std::fstream(filePath, mode)) {
-
-
-        this->rdbuf(std::get<std::fstream>(backing).rdbuf());
-    }
-
     explicit FileStream(std::unique_ptr<std::streambuf> && stream_buff) : std::iostream(nullptr)
     {
         this->rdbuf(stream_buff.get());
         _streamBuf = std::move(stream_buff);
     }
 private:
-    std::variant<std::unique_ptr<string_backed_iostream>, std::fstream> backing;
     std::unique_ptr<std::streambuf> _streamBuf;
 };
 
@@ -282,6 +265,8 @@ struct MountHelper
 
     virtual bool is_empty(std::filesystem::path const & path) const = 0;
 
+    virtual std::filesystem::path host_path() const = 0;
+
     virtual generator<std::filesystem::path> list_dir(std::filesystem::path path) const = 0;
 
     virtual std::unique_ptr<std::streambuf> open(const std::filesystem::path& path, std::ios::openmode mode) = 0;
@@ -289,38 +274,43 @@ struct MountHelper
 
 struct FSNodeMount : public MountHelper
 {
-    std::filesystem::path host_path;
+    std::filesystem::path _host_path;
 
-    FSNodeMount(std::filesystem::path const & hostPath) : host_path(hostPath)
+    FSNodeMount(std::filesystem::path const & hostPath) : _host_path(hostPath)
     {
+    }
+
+    virtual std::filesystem::path host_path() const override
+    {
+        return _host_path;
     }
 
     bool exists(std::filesystem::path const & path) const override
     {
         assert(!path.has_root_directory());
-        return std::filesystem::exists(host_path / path);
+        return std::filesystem::exists(_host_path / path);
     }
 
     bool remove(std::filesystem::path const & path) const  override
     {
         assert(!path.has_root_directory());
-        return std::filesystem::remove(host_path / path);
+        return std::filesystem::remove(_host_path / path);
     }
     bool is_dir(std::filesystem::path const & path) const  override
     {
         assert(!path.has_root_directory());
-        return std::filesystem::is_directory(host_path / path);
+        return std::filesystem::is_directory(_host_path / path);
     }
     bool is_file(std::filesystem::path const & path) const  override
     {
         assert(!path.has_root_directory());
-        return std::filesystem::is_regular_file(host_path / path);
+        return std::filesystem::is_regular_file(_host_path / path);
     }
     FSResult mkdir(std::filesystem::path const & path)  override
     {
         assert(!path.has_root_directory());
 
-        if(std::filesystem::create_directories(host_path / path))
+        if(std::filesystem::create_directories(_host_path / path))
         {
             return FSResult::Success;
         }
@@ -329,20 +319,20 @@ struct FSNodeMount : public MountHelper
     FSResult touch(std::filesystem::path const & path)  override
     {
         assert(!path.has_root_directory());
-        std::ofstream out(host_path/path);
+        std::ofstream out(_host_path/path);
         out.close();
         return FSResult::Success;
     }
     bool is_empty(std::filesystem::path const & path) const  override
     {
         namespace fs = std::filesystem;
-        auto abs_path = host_path / path;
+        auto abs_path = _host_path / path;
         return fs::is_empty(abs_path);
     }
     generator<std::filesystem::path> list_dir(std::filesystem::path path) const  override
     {
         namespace fs = std::filesystem;
-        auto abs_path = host_path / path;
+        auto abs_path = _host_path / path;
         for (const auto& entry : fs::directory_iterator(abs_path)) {
             co_yield entry.path().lexically_proximate(abs_path);
         }
@@ -351,14 +341,13 @@ struct FSNodeMount : public MountHelper
     {
         (void)mode;
         auto p = std::make_unique<DelegatingFileStreamBuf>();
-        p->open(host_path / path, mode);
+        p->open(_host_path / path, mode);
         return p;
     }
 };
 
 struct NodeMount
 {
-    std::filesystem::path host_path;
     bool read_only = false;
     std::unique_ptr<MountHelper> helper;
 
@@ -400,6 +389,14 @@ struct NodeMount
             return FSResult::CannotCreate;
         }
     }
+
+    // location on the host where this file
+    // is located
+    std::filesystem::path host_path() const
+    {
+        return helper->host_path();
+    }
+
     bool remove(std::filesystem::path const & path) const
     {
         assert(!path.has_root_directory());
@@ -409,13 +406,11 @@ struct NodeMount
     {
         assert(!path.has_root_directory());
         return helper->is_dir(path);
-        return std::filesystem::is_directory(host_path / path);
     }
     bool is_file(std::filesystem::path const & path) const
     {
         assert(!path.has_root_directory());
         return helper->is_file(path);
-        return std::filesystem::is_regular_file(host_path / path);
     }
     FSResult mkdir(std::filesystem::path const & path)
     {
@@ -423,11 +418,6 @@ struct NodeMount
         if(read_only)
             return FSResult::ReadOnlyFileSystem;
         return helper->mkdir(path);
-        if(std::filesystem::create_directories(host_path / path))
-        {
-            return FSResult::Success;
-        }
-        return FSResult::CannotCreate;
     }
     FSResult touch(std::filesystem::path const & path)
     {
@@ -435,16 +425,10 @@ struct NodeMount
         if(read_only)
             return FSResult::ReadOnlyFileSystem;;
         return helper->touch(path);
-        std::ofstream out(host_path/path);
-        out.close();
-        return FSResult::Success;
     }
     bool is_empty(std::filesystem::path const & path) const
     {
         return helper->is_empty(path);
-        namespace fs = std::filesystem;
-        auto abs_path = host_path / path;
-        return fs::is_empty(abs_path);
     }
 
     generator<std::filesystem::path> list_dir(std::filesystem::path path) const
@@ -719,20 +703,34 @@ struct FileSystem
 
         auto [it, sub] = find_parent_mount_split_it(vfs_path);
 
-        // that path already exists inside
-        // a mount point
-        if(!sub.empty())
-            return FSResult::NotValidMount;
-
-        if(is_empty(vfs_path) != FSResult::True)
-            return FSResult::NotEmpty;
-
-        if( std::holds_alternative<NodeDir>(it->second))
+        if(sub.empty())
         {
-            it->second = NodeMount{{}, false, std::make_unique<_Tp>(std::forward<_Args>(__args)...)};
-            return FSResult::Success;
+            // vfs_path (it->second) is either a NodeDir or a
+            // root directory of a mount
+            if( std::holds_alternative<NodeDir>(it->second))
+            {
+                // if this NodeDir is empty, then we can
+                // convert it into a mount
+                if(is_empty(it->first) != FSResult::True)
+                {
+                    return FSResult::NotEmpty;
+                }
+                else
+                {
+                    it->second = NodeMount{false, std::make_unique<_Tp>(std::forward<_Args>(__args)...)};
+                    return FSResult::Success;
+                }
+            }
+            else if( std::holds_alternative<NodeMount>(it->second))
+            {
+                return FSResult::NotValidMount;
+            }
         }
-        return FSResult::NotValidMount;
+        else
+        {
+            return FSResult::NotValidMount;
+        }
+        return FSResult::UnknownError;
     }
 
     /**
@@ -1030,10 +1028,11 @@ struct FileSystem
     path_type host_path(path_type path) const
     {
         auto [it, sub] = find_parent_mount_split_it(path);
+
         if(sub.empty())
             return {};
 
-        return std::get<NodeMount>(it->second).host_path / path.lexically_relative(it->first);
+        return std::get<NodeMount>(it->second).host_path() / path.lexically_relative(it->first);
     }
 
     /**
@@ -1080,13 +1079,17 @@ struct FileSystem
         assert(path.has_root_directory());
 
         auto [it, sub] = find_parent_mount_split_it(path);
-        //auto it = find_node(path);
+
         if(!sub.empty())
         {
             auto & MNT = std::get<NodeMount>(it->second);
             if( MNT.is_dir(sub) ) return Type::HOST_DIR;
             if( MNT.is_file(sub) ) return Type::HOST_FILE;
             return Type::UNKNOWN;
+        }
+        else if(std::holds_alternative<NodeMount>(it->second))
+        {
+            return Type::MOUNT;
         }
 
         if(it!=m_nodes.end())

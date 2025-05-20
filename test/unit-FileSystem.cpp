@@ -167,11 +167,23 @@ SCENARIO("Mount")
 
         WHEN("We mount a host directory")
         {
+            REQUIRE(F.get_type("/src") == Type::MEM_DIR);
+
             REQUIRE(F.mount(CMAKE_SOURCE_DIR, "/src"  ) == FSResult::Success);
             REQUIRE(F.mount(CMAKE_BINARY_DIR, "/build") == FSResult::Success);
 
+            REQUIRE(F.get_type("/src") == Type::HOST_DIR);
+
             // cannot mount on the same spot
             REQUIRE(F.mount(CMAKE_SOURCE_DIR, "/src") == FSResult::NotValidMount);
+
+            THEN("We can loop through all the folders")
+            {
+                for(auto  i : F.list_dir("/src"))
+                {
+                    std::cout << i << std::endl;
+                }
+            }
 
             THEN("We can query the files as if they were in the VFS")
             {
@@ -181,14 +193,7 @@ SCENARIO("Mount")
 
                 REQUIRE(F.host_path("/src/conanfile.py") == CMAKE_SOURCE_DIR "/conanfile.py");
             }
-            THEN("We can loop through all the folders")
-            {
-                for(auto  i : F.list_dir("/build"))
-                {
-                    (void)i;
-                    //std::cout << i << std::endl;
-                }
-            }
+
 
             THEN("We can create files on the host through the vfs")
             {
