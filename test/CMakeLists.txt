@@ -33,7 +33,11 @@ foreach(file ${files})
     set(UNIT_TEST_NAME ${TESTCASE_PREFIX}-${exe_name} )
 
     add_executable( ${UNIT_EXE_NAME} ${file} )
-    target_compile_definitions( ${UNIT_EXE_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    target_compile_definitions( ${UNIT_EXE_NAME}
+                                    PRIVATE
+                                        CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+                                        CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
+                                    )
     target_compile_features( ${UNIT_EXE_NAME}
                                 PUBLIC
                                     cxx_std_20)
@@ -54,3 +58,5 @@ foreach(file ${files})
 
     message("  ${UNIT_EXE_NAME} ")
 endforeach()
+
+add_dependencies(${PROJECT_NAME}-unit-archive archive)

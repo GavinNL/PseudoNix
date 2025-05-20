@@ -2,7 +2,7 @@
 #include <PseudoNix/Shell.h>
 #include <PseudoNix/ArchiveMount.h>
 
-#include <archive_zip.c>
+#include <PseudoNix/sample_archive.h>
 
 inline void setup_functions(PseudoNix::System & sys)
 {
@@ -126,17 +126,12 @@ echo "type 'help' for a list of commands"
 echo "###################################"
 )foo";
 
-#if !defined __EMSCRIPTEN__
-    sys.mkdir("/src");
-    sys.mkdir("/build");
-    sys.mkdir("/usr/bin");
-    sys.mount(CMAKE_SOURCE_DIR, "/src");
-    sys.mount(CMAKE_BINARY_DIR, "/build");
-    sys.mount(CMAKE_SOURCE_DIR "/scripts", "/usr/bin");
-#endif
+    sys.mkdir("/mnt");
 
-    sys.mkdir("/tar");
-    assert(PseudoNix::FSResult::Success == sys.mount2_t<PseudoNix::ArchiveNodeMount>("/tar", archive_tar_gz, archive_tar_gz_len));
+    if(PseudoNix::FSResult::Success != sys.mount2_t<PseudoNix::ArchiveNodeMount>("/mnt", archive_tar_gz, archive_tar_gz_len))
+    {
+        std::cerr << "Failed to load the tar.gz from memory" << std::endl;
+    }
 
     // Create a new task queue called "THREAD"
     // This can be executed at a different

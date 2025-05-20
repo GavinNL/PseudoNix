@@ -45,6 +45,10 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
     bool exit_if_subprocess_exits = !(ENV.count("NO_AUTO_CLOSE") == 1);
     //bool exit_if_subprocess_exits = true;
 
+    if(SYSTEM.taskQueueExists("IMGUI"))
+    {
+        co_await ctrl->await_yield("IMGUI");
+    }
 
     int frameCount[2] = {ImGui::GetFrameCount()-1, ImGui::GetFrameCount()-1};
     while(open)
@@ -102,7 +106,7 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
 
         if(exit_if_subprocess_exits && !SYSTEM.isRunning(sh_pid)) break;
 
-        auto returned_signal = co_await ctrl->await_yield();
+        auto returned_signal = co_await ctrl->await_yield(QUEUE);
 
         switch(returned_signal)
         {

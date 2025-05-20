@@ -45,8 +45,8 @@ target_compile_features( ${PROJECT_NAME}
 
 target_compile_definitions( ${PROJECT_NAME}
                               INTERFACE
-                                CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-                                CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
+#                                CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+#                                CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
                                 )
 
 target_include_directories(${PROJECT_NAME} INTERFACE include)
@@ -54,20 +54,30 @@ target_link_libraries( ${PROJECT_NAME}  INTERFACE  ${PublicLinkedTargets})
 
 ################################################################################
 
-add_custom_target(archive
-    COMMAND rm -rf ${CMAKE_BINARY_DIR}/archive
-    COMMAND mkdir -p ${CMAKE_BINARY_DIR}/archive
-    COMMAND rm -rf archive.tar archive.c archive_zip.c
-    COMMAND tar -cf archive.tar *
-    COMMAND xxd -i archive.tar > ${CMAKE_BINARY_DIR}/archive/archive.c
-    COMMAND mv archive.tar ${CMAKE_BINARY_DIR}
 
-    COMMAND tar -czf archive.tar.gz *
-    COMMAND xxd -i archive.tar.gz > ${CMAKE_BINARY_DIR}/archive/archive_zip.c
-    COMMAND mv archive.tar.gz ${CMAKE_BINARY_DIR}
+## Create an tar archive from the src/archive folder
+# and store it in the build directory. Additionally
+# convert the tar file into a raw c source code
+if(NOT WIN32)
+    add_custom_target(archive
+        COMMAND rm -rf ${CMAKE_BINARY_DIR}/archive
+        COMMAND mkdir -p ${CMAKE_BINARY_DIR}/archive
+        COMMAND rm -rf archive.tar archive.c archive_zip.c
+        COMMAND tar -cf archive.tar *
+        COMMAND xxd -i archive.tar > ${CMAKE_BINARY_DIR}/archive/archive.c
+        COMMAND mv archive.tar ${CMAKE_BINARY_DIR}
 
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/archive
-)
+        COMMAND tar -czf archive.tar.gz *
+        COMMAND xxd -i archive.tar.gz > ${CMAKE_BINARY_DIR}/archive/archive_zip.c
+        COMMAND mv archive.tar.gz ${CMAKE_BINARY_DIR}
+
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/archive
+    )
+else()
+    add_custom_target(archive)
+endif()
+
+
 
 
 if( ${PROJECT_NAME}_BUILD_EXAMPLES)

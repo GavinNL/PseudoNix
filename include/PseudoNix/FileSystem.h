@@ -708,29 +708,7 @@ struct FileSystem
      */
     FSResult mount( path_type host_path, path_type path)
     {
-        return mount_t<FSNodeMount>(host_path, path);
-        if( !std::filesystem::is_directory(host_path))
-        {
-            return FSResult::HostDoesNotExist;
-        }
-        _clean(path);
-
-        auto [it, sub] = find_parent_mount_split_it(path);
-
-        // that path already exists inside
-        // a mount point
-        if(!sub.empty())
-            return FSResult::NotValidMount;
-
-        if(is_empty(path) != FSResult::True)
-            return FSResult::NotEmpty;
-
-        if( std::holds_alternative<NodeDir>(it->second))
-        {
-            it->second = NodeMount{host_path, false, std::make_unique<FSNodeMount>(host_path)};
-            return FSResult::Success;
-        }
-        return FSResult::NotValidMount;
+        return mount2_t<FSNodeMount>(path, host_path);
     }
 
     template<typename _Tp, typename... _Args>
@@ -756,28 +734,6 @@ struct FileSystem
         return FSResult::NotValidMount;
     }
 
-    template<typename T>
-    FSResult mount_t( path_type host_path, path_type path)
-    {
-        _clean(path);
-
-        auto [it, sub] = find_parent_mount_split_it(path);
-
-        // that path already exists inside
-        // a mount point
-        if(!sub.empty())
-            return FSResult::NotValidMount;
-
-        if(is_empty(path) != FSResult::True)
-            return FSResult::NotEmpty;
-
-        if( std::holds_alternative<NodeDir>(it->second))
-        {
-            it->second = NodeMount{host_path, false, std::make_unique<T>(host_path)};
-            return FSResult::Success;
-        }
-        return FSResult::NotValidMount;
-    }
     /**
      * @brief umount
      * @param path

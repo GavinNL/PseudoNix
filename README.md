@@ -84,11 +84,14 @@ features, I decided to turn it into its own library.
 ### Future Development
 
  - [x] Virtual Filesystem
+   - [x] Mounting Archives
+   - [x] Mounting Archives from Memory
  - [x] Better bash-features (if statements, loops)
    - [x] If-statements
    - [x] While-Loops
    - [x] For-Loops
    - [x] breaks/continue
+ - [ ] Pausing processes
  - [ ] More GNU core-utils like functions
    - [ ] head/tail
    - [ ] grep
