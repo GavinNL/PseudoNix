@@ -4,7 +4,9 @@
 #include <archive.h>
 #include <archive_entry.h>
 #include <map>
+#include <vector>
 #include "FileSystemMount.h"
+#include "FileSystemHelpers.h"
 
 namespace PseudoNix
 {
@@ -113,7 +115,7 @@ protected:
 
 struct ArchiveNodeMount2 : public FSMountBase
 {
-    std::filesystem::path host_path;
+    path_type host_path;
     void const * _data = nullptr;
     size_t _length = 0;
     struct EntryInfo
@@ -123,7 +125,7 @@ struct ArchiveNodeMount2 : public FSMountBase
 
     std::map<path_type, EntryInfo> _files;
 
-    ArchiveNodeMount2(std::filesystem::path const & hostPath) : host_path(hostPath)
+    ArchiveNodeMount2(path_type const & hostPath) : host_path(hostPath)
     {
         ArchiveEntryStreamBuf buf;
         buf.open_archive(hostPath);

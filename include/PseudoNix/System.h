@@ -2143,7 +2143,7 @@ protected:
                         std::string line;
                         while(true)
                         {
-                            while(!file.eof() && (std::chrono::system_clock::now()-T0 < std::chrono::microseconds(250)) )
+                            while(!file.eof() && (std::chrono::system_clock::now()-T0 < std::chrono::microseconds(1000)) )
                             {
                                 std::getline(file, line);
                                 COUT << line;

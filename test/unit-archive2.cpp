@@ -5,7 +5,7 @@
 //#include <PseudoNix/Shell.h>
 #include <array>
 
-
+#include <PseudoNix/FileSystem2.h>
 #include <PseudoNix/ArchiveMount2.h>
 
 using namespace PseudoNix;

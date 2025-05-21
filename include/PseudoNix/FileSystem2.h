@@ -7,24 +7,10 @@
 #include <filesystem>
 #include <vector>
 #include "FileSystemMount.h"
+#include "FileSystemHelpers.h"
 
 namespace PseudoNix
 {
-
-inline std::pair<std::filesystem::path, std::filesystem::path> split_first(const std::filesystem::path& input) {
-    auto it = input.begin();
-    if (it == input.end()) {
-        return {{}, {}};  // Empty input
-    }
-
-    std::filesystem::path first = *it++;
-    std::filesystem::path rest;
-    while (it != input.end()) {
-        rest /= *it++;
-    }
-
-    return {first, rest};
-}
 
 class VectorBackedStreamBuf : public std::streambuf {
 public:
@@ -70,7 +56,6 @@ private:
     std::vector<char>& buffer_;
 };
 
-
 class FileStream : public std::iostream {
 public:
     FileStream() : std::iostream(nullptr)
@@ -85,7 +70,6 @@ public:
 private:
     std::unique_ptr<std::streambuf> _streamBuf;
 };
-
 
 struct FSNode
 {
@@ -132,34 +116,10 @@ struct NodeRef
 {
     FSNode::path_type absPath;
     FileSystem2 *fs;
+
+    operator std::string() const;
 };
 
-inline void _clean(std::filesystem::path & P1)
-{
-    auto& p = P1;
-
-    auto str = P1.generic_string();
-    for (auto& s : str)
-    {
-        if (s == '\\') s = '/';
-    }
-    P1 = std::filesystem::path(str);
-
-    if(p.has_root_directory())
-    {
-        P1 = std::filesystem::path("/") / p.lexically_normal().relative_path();
-    }
-    else
-    {
-        P1 = p.lexically_normal().relative_path();
-    }
-
-
-    if (P1.filename().empty())
-    {
-        P1 = p.parent_path();
-    }
-}
 
 struct FileSystem2
 {
@@ -622,10 +582,25 @@ struct FileSystem2
     std::shared_ptr<FSNodeDir> m_rootNode = std::make_shared<FSNodeDir>("/");
 };
 
+PseudoNix::NodeRef::operator std::string() const
+{
+    auto out = fs->open(absPath, std::ios::in);
+    if(!out.good())
+        return {};
+
+    std::stringstream buffer;
+    buffer << out.rdbuf();
+    return buffer.str();
+}
+
 }
 
 void operator << (PseudoNix::NodeRef left, std::string_view right)
 {
+    //
+    // F.fs("/path/to/my/file.txt") << "hello world";
+    //
+
     (void)left;
     (void)right;
     auto out = left.fs->open(left.absPath, std::ios::out);
@@ -633,5 +608,7 @@ void operator << (PseudoNix::NodeRef left, std::string_view right)
         return;
     out << right;
 }
+
+
 
 #endif
