@@ -93,7 +93,7 @@ struct FSNodeFile : public FSNode
 {
     std::vector<char> data;
 
-    FSNodeFile(std::string const & _name) : FSNode(_name)
+    FSNodeFile(std::string _name) : FSNode(_name)
     {
     }
 };
@@ -105,7 +105,7 @@ struct FSNodeDir : public FSNode
     // a mount node
     std::shared_ptr<FSMountBase> mount;
 
-    FSNodeDir(std::string const & _name) : FSNode(_name)
+    FSNodeDir(std::string _name) : FSNode(_name)
     {
     }
 };
@@ -185,7 +185,7 @@ struct FileSystem2
                     // parent directory doesn't exist
                     return result_type::False;
                 }
-                d->nodes[rem] = std::make_shared<FSNodeDir>(rem);
+                d->nodes[rem.generic_string()] = std::make_shared<FSNodeDir>(rem.generic_string());
                 return result_type::True;
             }
         }
@@ -225,7 +225,7 @@ struct FileSystem2
                     return result_type::False;
                 }
 
-                d->nodes[rem] = std::make_shared<FSNodeFile>(rem);
+                d->nodes[rem.generic_string()] = std::make_shared<FSNodeFile>(rem.generic_string());
                 return result_type::True;
             }
         }
@@ -250,7 +250,7 @@ struct FileSystem2
             }
             else
             {
-                auto it = d->nodes.find(abs_path.filename());
+                auto it = d->nodes.find(abs_path.filename().generic_string());
                 if(it != d->nodes.end())
                 {
                     if(auto cp = std::dynamic_pointer_cast<FSNodeDir>(it->second) )
@@ -355,7 +355,7 @@ struct FileSystem2
         {
             auto [first, rem] = split_first(rel_path_to_root);
 
-            auto it = r->nodes.find(first);
+            auto it = r->nodes.find(first.generic_string());
             if(it == r->nodes.end())
             {
                 if(rem.empty())
@@ -412,7 +412,7 @@ struct FileSystem2
             auto srcFile_p = std::dynamic_pointer_cast<FSNodeFile>(srcMnt);
             auto dstDir_p  = std::dynamic_pointer_cast<FSNodeDir>(dstMnt);
 
-            dstDir_p->nodes[dstAbsPath.filename()] = srcFile_p;
+            dstDir_p->nodes[dstAbsPath.filename().generic_string()] = srcFile_p;
 
             rm(srcAbsPath);
 
@@ -426,14 +426,14 @@ struct FileSystem2
             auto srcDir_p = std::dynamic_pointer_cast<FSNodeDir>(srcMnt);
             auto dstDir_p  = std::dynamic_pointer_cast<FSNodeDir>(dstMnt);
 
-            dstDir_p->nodes[dstAbsPath.filename()] = srcDir_p;
+            dstDir_p->nodes[dstAbsPath.filename().generic_string()] = srcDir_p;
 
             {
                 auto [srcParent, srcParentRem ] = find_last_valid_virtual_node(srcAbsPath.parent_path());
                 assert(srcParentRem.empty());
                 auto srcParent_p = std::dynamic_pointer_cast<FSNodeDir>(srcParent);
                 assert(srcParent_p);
-                srcParent_p->nodes.erase(srcAbsPath.filename());
+                srcParent_p->nodes.erase(srcAbsPath.filename().generic_string());
             }
 
             return result_type::True;

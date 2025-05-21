@@ -64,7 +64,7 @@ public:
         archive_read_support_format_tar(archive_); // Add TAR support
         archive_read_support_filter_gzip(archive_);
 
-        int r = archive_read_open_filename(archive_, host_path.c_str(), 10240); // 10KB block size
+        int r = archive_read_open_filename(archive_, host_path.generic_string().c_str(), 10240); // 10KB block size
         if (r != ARCHIVE_OK) {
             fprintf(stderr, "Could not open archive: %s\n", archive_error_string(archive_));
             return false;
@@ -103,7 +103,7 @@ public:
     }
 protected:
     int underflow() override {
-        ssize_t n = archive_read_data(archive_, buffer_.data(), buffer_.size());
+        auto n = archive_read_data(archive_, buffer_.data(), buffer_.size());
         if (n <= 0) {
             return traits_type::eof();  // EOF or error
         }

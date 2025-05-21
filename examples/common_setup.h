@@ -130,7 +130,7 @@ echo "###################################"
 
     sys.mkdir("/mnt");
 
-    if(PseudoNix::FSResult2::True != sys.mount<PseudoNix::ArchiveMount>("/mnt", archive_tar_gz, archive_tar_gz_len))
+    if(PseudoNix::FSResult2::True != sys.mount<PseudoNix::ArchiveMount>("/mnt", static_cast<void*>(archive_tar_gz), static_cast<size_t>(archive_tar_gz_len)))
     {
         std::cerr << "Failed to load the tar.gz from memory" << std::endl;
     }

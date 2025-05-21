@@ -6,6 +6,7 @@
 #include "System.h"
 #include "defer.h"
 #include <ranges>
+#include <variant>
 
 namespace PseudoNix
 {
