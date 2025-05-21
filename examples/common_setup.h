@@ -1,6 +1,8 @@
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
-#include <PseudoNix/ArchiveMount2.h>
+#include <PseudoNix/FileSystem.h>
+#include <PseudoNix/FileSystemHostMount.h>
+#include <PseudoNix/ArchiveMount.h>
 
 #include <PseudoNix/sample_archive.h>
 
@@ -128,7 +130,7 @@ echo "###################################"
 
     sys.mkdir("/mnt");
 
-    if(PseudoNix::FSResult2::True != sys.mount<PseudoNix::ArchiveNodeMount2>("/mnt", archive_tar_gz, archive_tar_gz_len))
+    if(PseudoNix::FSResult2::True != sys.mount<PseudoNix::ArchiveMount>("/mnt", archive_tar_gz, archive_tar_gz_len))
     {
         std::cerr << "Failed to load the tar.gz from memory" << std::endl;
     }

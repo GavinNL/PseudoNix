@@ -1,10 +1,10 @@
-#ifndef PSEUDONIX_ARCHIVE_MOUNT2_H
-#define PSEUDONIX_ARCHIVE_MOUNT2_H
+#ifndef PSEUDONIX_ARCHIVE_MOUNT_H
+#define PSEUDONIX_ARCHIVE_MOUNT_H
+
+#include "FileSystem.h"
 
 #include <archive.h>
 #include <archive_entry.h>
-#include <map>
-#include "FileSystemMount.h"
 
 namespace PseudoNix
 {
@@ -39,7 +39,6 @@ public:
 
         return seek_entry(sub);
     }
-
     bool open_archive(void const * data, size_t length)
     {
         // Create archive reader
@@ -111,7 +110,7 @@ protected:
 
 };
 
-struct ArchiveNodeMount2 : public FSMountBase
+struct ArchiveNodeMount : public PseudoNix::MountHelper
 {
     std::filesystem::path host_path;
     void const * _data = nullptr;
@@ -121,9 +120,9 @@ struct ArchiveNodeMount2 : public FSMountBase
         bool is_dir = false;
     };
 
-    std::map<path_type, EntryInfo> _files;
+    std::map<std::filesystem::path, EntryInfo> _files;
 
-    ArchiveNodeMount2(std::filesystem::path const & hostPath) : host_path(hostPath)
+    ArchiveNodeMount(std::filesystem::path const & hostPath) : host_path(hostPath)
     {
         ArchiveEntryStreamBuf buf;
         buf.open_archive(hostPath);
@@ -145,7 +144,7 @@ struct ArchiveNodeMount2 : public FSMountBase
 
     }
 
-    ArchiveNodeMount2(void const* data, size_t length)
+    ArchiveNodeMount(void const* data, size_t length)
     {
         _data = data;
         _length = length;
@@ -170,47 +169,56 @@ struct ArchiveNodeMount2 : public FSMountBase
 
     }
 
-    result_type exists(path_type path) const override
+    bool exists(std::filesystem::path const & path) const override
     {
         if(path == ".")
-            return result_type::True;
+            return true;
         assert(!path.has_root_directory());
         auto it = _files.find(path);
-        return it != _files.end() ? result_type::True : result_type::False;
+        return it != _files.end();
     }
 
-    virtual result_type mkdir(path_type relPath) override
+    bool remove(std::filesystem::path const & path) const  override
     {
-        return result_type::False;
-        (void)relPath;
+        return false;
+        assert(!path.has_root_directory());
+        return std::filesystem::remove(host_path / path);
     }
-    virtual result_type mkfile(path_type relPath) override
+    bool is_dir(std::filesystem::path const & path) const  override
     {
-        return result_type::False;
-        (void)relPath;
-    }
-
-    virtual NodeType2 getType(path_type relPath) const override
-    {
-        if(relPath == "." || relPath.empty())
-            return NodeType2::MountDir;
-
-        auto it = _files.find(relPath);
+        if(path == "." || path.empty())
+            return true;
+        auto it = _files.find(path);
         if(it == _files.end())
-            return NodeType2::NoExist;
+            return false;
 
-        return it->second.is_dir ? NodeType2::MountDir : NodeType2::MountFile;
+        return it->second.is_dir;
     }
-
-    virtual result_type rm(path_type relPath) override
+    bool is_file(std::filesystem::path const & path) const  override
     {
-        return result_type::False;
-        (void)relPath;
+        auto it = _files.find(path);
+        if(it == _files.end())
+            return false;
+
+        return !it->second.is_dir;
     }
-
-
-
-    PseudoNix::Generator<std::filesystem::path> list_dir(path_type path) override
+    FSResult mkdir(std::filesystem::path const & path)  override
+    {
+        (void)path;
+        return FSResult::ReadOnlyFileSystem;
+    }
+    FSResult touch(std::filesystem::path const & path)  override
+    {
+        (void)path;
+        return FSResult::ReadOnlyFileSystem;
+    }
+    bool is_empty(std::filesystem::path const & path) const  override
+    {
+        namespace fs = std::filesystem;
+        auto abs_path = host_path / path;
+        return fs::is_empty(abs_path);
+    }
+    PseudoNix::generator<std::filesystem::path> list_dir(std::filesystem::path path) const  override
     {
         (void)path;
         if(path == ".")
@@ -219,19 +227,19 @@ struct ArchiveNodeMount2 : public FSMountBase
         {
             if(path.lexically_relative(pth) == "..")
             {
-                co_yield pth.lexically_relative(path);
+                co_yield pth;
             }
         }
     }
 
-    std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) override
+    std::unique_ptr<std::streambuf> open(const std::filesystem::path& path, std::ios::openmode mode) override
     {
         (void)mode;
         auto p = std::make_unique<ArchiveEntryStreamBuf>();
         if(!host_path.empty())
-            p->open(host_path, relPath);
+            p->open(host_path, path);
         else
-            p->open(_data, _length, relPath);
+            p->open(_data, _length, path);
         return p;
     }
 };

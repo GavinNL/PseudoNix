@@ -1,15 +1,12 @@
 #ifndef PSEUDONIX_FILESYSTEM2_H
 #define PSEUDONIX_FILESYSTEM2_H
 
-#include <format>
 #include <map>
 #include <string>
 #include <cassert>
 #include <filesystem>
-#include <fstream>
 #include <vector>
 #include "FileSystemMount.h"
-#include "FileSystemHostMount.h"
 
 namespace PseudoNix
 {
