@@ -210,7 +210,7 @@ struct ArchiveNodeMount2 : public FSMountBase
 
 
 
-    PseudoNix::generator<std::filesystem::path> list_dir(path_type path) override
+    PseudoNix::Generator<std::filesystem::path> list_dir(path_type path) override
     {
         (void)path;
         if(path == ".")

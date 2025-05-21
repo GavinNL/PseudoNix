@@ -12,7 +12,7 @@
 #include <any>
 #include <vector>
 #include "generator.h"
-#include "FileSystem.h"
+//#include "FileSystem.h"
 #include <algorithm>
 
 namespace PseudoNix
@@ -32,6 +32,170 @@ inline std::pair<std::filesystem::path, std::filesystem::path> split_first(const
 
     return {first, rest};
 }
+
+class vector_backed_streambuf : public std::streambuf {
+public:
+    explicit vector_backed_streambuf(std::vector<char>& buffer)
+        : buffer_(buffer)
+    {
+        setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
+        setp(buffer_.data(), buffer_.data() + buffer_.size());
+    }
+
+    // Ensure output expansion if writing past current capacity
+    int_type overflow(int_type ch) override {
+        if (ch == traits_type::eof()) {
+            return traits_type::not_eof(ch);
+        }
+
+        std::ptrdiff_t write_pos = pptr() - pbase();
+        buffer_.push_back(static_cast<char>(ch));
+        buffer_.resize(buffer_.size()); // Ensure capacity is correct
+
+        char* base = buffer_.data();
+        setp(base, base + buffer_.size());
+        pbump(static_cast<int>(write_pos + 1));
+
+        return ch;
+    }
+
+    // Called when input buffer is exhausted
+    int_type underflow() override {
+        if (gptr() >= egptr()) return traits_type::eof();
+        return traits_type::to_int_type(*gptr());
+    }
+
+    // Sync not needed in memory buffer, but we can update get area
+    int sync() override {
+        std::ptrdiff_t size = pptr() - pbase();
+        buffer_.resize(static_cast<size_t>(size));
+        setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
+        return 0;
+    }
+
+private:
+    std::vector<char>& buffer_;
+};
+
+
+class DelegatingFileStreamBuf : public std::streambuf {
+    static constexpr std::size_t buffer_size = 4096;
+
+    FILE* file = nullptr;
+    char input_buffer[buffer_size];
+    char output_buffer[buffer_size];
+
+public:
+    DelegatingFileStreamBuf() {
+        setg(input_buffer, input_buffer, input_buffer);
+        setp(output_buffer, output_buffer + buffer_size);
+    }
+
+    ~DelegatingFileStreamBuf() {
+        sync();
+        if (file) {
+            fclose(file);
+        }
+    }
+
+    bool open(const std::filesystem::path& path, std::ios::openmode mode) {
+        std::string cmode;
+
+        bool read = (mode & std::ios::in);
+        bool write = (mode & std::ios::out);
+        bool append = (mode & std::ios::app);
+        bool truncate = (mode & std::ios::trunc);
+
+        if (read && write) {
+            if (append)        cmode = "a+";
+            else if (truncate) cmode = "w+";
+            else               cmode = "r+";
+        } else if (read) {
+            cmode = "r";
+        } else if (write) {
+            if (append)        cmode = "a";
+            //else if (truncate) cmode = "w";
+            else               cmode = "w";  // Default to truncating if only writing
+        } else {
+            return false; // Invalid mode
+        }
+
+        // Always open in binary mode
+        cmode += "b";
+
+        file = nullptr;
+        auto pstr = path.generic_string();
+#ifdef _WIN32
+        errno_t err = fopen_s(&file, pstr.c_str(), cmode.c_str());
+        bool success = (err == 0 && file != nullptr);
+#else
+        file = std::fopen(pstr.c_str(), cmode.c_str());
+        bool success = (file != nullptr);
+#endif
+        return success;
+        //auto pstr = path.generic_string();
+        //file = std::fopen(pstr.c_str(), cmode.c_str());
+        return file != nullptr;
+    }
+
+    void close() {
+        sync(); // flush output buffer
+        if (file) {
+            std::fclose(file);
+            file = nullptr;
+        }
+    }
+
+protected:
+    // Read from file into input buffer
+    int_type underflow() override {
+        if (!file || feof(file)) return traits_type::eof();
+
+        std::size_t n = std::fread(input_buffer, 1, buffer_size, file);
+        if (n == 0) return traits_type::eof();
+
+        setg(input_buffer, input_buffer, input_buffer + n);
+        return traits_type::to_int_type(*gptr());
+    }
+
+    // Flush the output buffer to the file
+    int_type overflow(int_type ch) override {
+        if (!file) return traits_type::eof();
+
+        auto n = pptr() - pbase();
+        if (n > 0) {
+            std::fwrite(pbase(), 1, static_cast<size_t>(n), file);
+        }
+        setp(output_buffer, output_buffer + buffer_size);
+
+        if (ch != traits_type::eof()) {
+            *pptr() = static_cast<char_type>(ch);
+            pbump(1);
+        }
+
+        return traits_type::not_eof(ch);
+    }
+
+    // Flush on sync (e.g., std::endl)
+    int sync() override {
+        return overflow(traits_type::eof()) == traits_type::eof() ? -1 : 0;
+    }
+};
+
+class FileStream : public std::iostream {
+public:
+    FileStream() : std::iostream(nullptr)
+    {
+    }
+
+    explicit FileStream(std::unique_ptr<std::streambuf> && stream_buff) : std::iostream(nullptr)
+    {
+        this->rdbuf(stream_buff.get());
+        _streamBuf = std::move(stream_buff);
+    }
+private:
+    std::unique_ptr<std::streambuf> _streamBuf;
+};
 
 enum FSResult2
 {
@@ -92,7 +256,7 @@ struct FSMountBase
     virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) = 0;
     virtual NodeType2 getType(path_type relPath) const = 0;
 
-    virtual generator<path_type> list_dir(path_type relPath) = 0;
+    virtual Generator<path_type> list_dir(path_type relPath) = 0;
 };
 
 struct FSNodeDir : public FSNode
@@ -172,7 +336,7 @@ struct FSNodeHostMount : public FSMountBase
         return p;
     }
 
-    virtual generator<path_type> list_dir(path_type relPath) override
+    virtual Generator<path_type> list_dir(path_type relPath) override
     {
         namespace fs = std::filesystem;
         auto abs_path = m_path_on_host / relPath;
@@ -181,6 +345,40 @@ struct FSNodeHostMount : public FSMountBase
         }
     }
 };
+
+struct FileSystem2;
+struct NodeRef
+{
+    FSNode::path_type absPath;
+    FileSystem2 *fs;
+};
+
+inline void _clean(std::filesystem::path & P1)
+{
+    auto& p = P1;
+
+    auto str = P1.generic_string();
+    for (auto& s : str)
+    {
+        if (s == '\\') s = '/';
+    }
+    P1 = std::filesystem::path(str);
+
+    if(p.has_root_directory())
+    {
+        P1 = std::filesystem::path("/") / p.lexically_normal().relative_path();
+    }
+    else
+    {
+        P1 = p.lexically_normal().relative_path();
+    }
+
+
+    if (P1.filename().empty())
+    {
+        P1 = p.parent_path();
+    }
+}
 
 struct FileSystem2
 {
@@ -610,7 +808,7 @@ struct FileSystem2
         return NodeType2::NoExist;
     }
 
-    generator<path_type> list_dir(path_type absPath)
+    Generator<path_type> list_dir(path_type absPath)
     {
         auto [mnt, rem] = find_last_valid_virtual_node(absPath);
 
@@ -634,8 +832,25 @@ struct FileSystem2
         }
     }
 
+    NodeRef fs(path_type absPath)
+    {
+        _clean(absPath);
+        return NodeRef{absPath, this};
+
+    }
     std::shared_ptr<FSNodeDir> m_rootNode = std::make_shared<FSNodeDir>("/");
 };
 
 }
+
+void operator << (PseudoNix::NodeRef left, std::string_view right)
+{
+    (void)left;
+    (void)right;
+    auto out = left.fs->open(left.absPath, std::ios::out);
+    if(!out.good())
+        return;
+    out << right;
+}
+
 #endif

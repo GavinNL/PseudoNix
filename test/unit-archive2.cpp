@@ -36,8 +36,8 @@ std::string file_to_string(FileSystem2 & F, FileSystem2::path_type path)
     std::stringstream buffer;
     buffer << in.rdbuf();        // read entire file into buffer
     return buffer.str();           // convert to string
-
 }
+
 SCENARIO("Mounting From File")
 {
     FileSystem2 F;

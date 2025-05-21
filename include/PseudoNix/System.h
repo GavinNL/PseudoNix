@@ -14,7 +14,7 @@
 #include <span>
 #include <thread>
 #include <semaphore>
-#include "FileSystem.h"
+#include "FileSystem2.h"
 #include "helpers.h"
 
 #define PSEUDONIX_VERSION_MAJOR 0
@@ -95,7 +95,7 @@ enum class AwaiterResult
 };
 
 
-struct System : public PseudoNix::FileSystem
+struct System : public PseudoNix::FileSystem2
 {
     using stream_type      = ReaderWriterStream_t<char>;
     using pid_type         = uint32_t;
@@ -559,6 +559,22 @@ struct System : public PseudoNix::FileSystem
             return true;
         }
         return false;
+    }
+
+    /**
+     * @brief terminateAll
+     *
+     * Terminate all running processes by sending a
+     * SIG_KILL signal to all currently running processes
+     */
+    void terminateAll(std::string queue_name)
+    {
+        for(auto & [pid, P] : m_procs2)
+        {
+            if(P->control->queue_name == queue_name)
+                signal(pid, sig_terminate);
+        }
+        while(taskQueueExecute(queue_name, std::chrono::milliseconds(1), 15));
     }
 
     /**
@@ -1161,8 +1177,9 @@ protected:
             }
 
 #define HANDLE_AWAIT_BREAK_ON_SIGNAL(returned_signal, CTRL)\
-            if(returned_signal == PseudoNix::AwaiterResult::SIGNAL_INTERRUPT) { break;}\
-            if(returned_signal == PseudoNix::AwaiterResult::SIGNAL_TERMINATE) { break;}
+            auto returned_signal_value = returned_signal; \
+            if(returned_signal_value == PseudoNix::AwaiterResult::SIGNAL_INTERRUPT) { break;}\
+            if(returned_signal_value == PseudoNix::AwaiterResult::SIGNAL_TERMINATE) { break;}
 
 #define HANDLE_AWAIT_TERM(returned_signal, CTRL)\
         switch(returned_signal)\
@@ -1838,18 +1855,8 @@ protected:
         };
 
 #define FS_PRINT_ERROR(_error) \
-        switch(_error)\
-            {\
-                case FSResult::PathExists:        COUT << std::format("Directory already exists.\n"); co_return 1; break;\
-                case FSResult::DoesNotExist:     COUT << std::format("Does not exist\n"); co_return 1; break;\
-                case FSResult::NotEmpty:          COUT << std::format("Not Empty\n"); co_return 1; break;\
-                case FSResult::NotValidMount:    COUT << std::format("Not a valid Mount\n"); co_return 1; break;\
-                case FSResult::HostDoesNotExist: COUT << std::format("Host does not exist\n"); co_return 1; break;\
-                case FSResult::CannotCreate:      COUT << std::format("Cannot create\n"); co_return 1; break;\
-                case FSResult::InvalidFileName:  COUT << std::format("Invalid Filename\n"); co_return 1; break;\
-                default: \
-                    break;\
-            }\
+        (void)_error; \
+        COUT << std::format("Unknown error");
 
         DEF_FUNC_HELP("ls", "Lists files and directories")
         {
@@ -1867,7 +1874,7 @@ protected:
 
             for(auto u : SYSTEM.list_dir(path))
             {
-                COUT << std::format("{}\n", u.lexically_relative(path).generic_string());
+                COUT << std::format("{}\n", u.generic_string());
             }
 
             co_return 0;
@@ -1931,7 +1938,7 @@ protected:
                 {
                     path = ARGS[i];
                     HANDLE_PATH(CWD, path);
-                    auto res = SYSTEM.touch(path);
+                    auto res = SYSTEM.mkfile(path);
                     FS_PRINT_ERROR(res);
                 }
             }
@@ -1957,7 +1964,7 @@ protected:
                     path_type path = ARGS[i];
                     _clean(path);
                     HANDLE_PATH(CWD, path);
-                    SYSTEM.cp(path, cpy_to);
+                    SYSTEM.copy(path, cpy_to);
                 }
             }
             else
@@ -1969,6 +1976,7 @@ protected:
             co_return 0;
         };
 
+#if 0
         DEF_FUNC_HELP("mount", "Mounts host filesystems inside the VFS")
         {
             PSEUDONIX_PROC_START(ctrl);
@@ -2023,7 +2031,7 @@ protected:
 
             co_return 1;
         };
-
+#endif
         DEF_FUNC_HELP("test", "Test file types and compares values")
         {
             // very simple implemntation of the "test" function in linux
@@ -2053,19 +2061,20 @@ protected:
                 if(!path.has_root_directory())
                     path = CWD / path;
 
+                auto t = SYSTEM.getType(path);
                 if(flag == "-f")
                 {
                     // note: 0 == true and 1 == false in
                     // a shell
-                    co_return _cmp(SYSTEM.is_file(path));
+                    co_return _cmp(t == NodeType2::MemFile || t == NodeType2::MountFile);
                 }
                 else if(flag == "-d")
                 {
-                    co_return _cmp(SYSTEM.is_dir(path));
+                    co_return _cmp(t == NodeType2::MemDir || t == NodeType2::MountDir);
                 }
                 else if (flag == "-e")
                 {
-                    co_return _cmp(SYSTEM.exists(path));
+                    co_return _cmp(t != NodeType2::NoExist);
                 }
             }
             else if (_args.size() == 4)
@@ -2121,10 +2130,10 @@ protected:
                 if(!path.has_root_directory())
                     path = CWD / path;
 
-                switch(SYSTEM.get_type(path))
+                switch(SYSTEM.getType(path))
                 {
-                    case Type::MEM_FILE:
-                    case Type::HOST_FILE:
+                    case NodeType2::MemFile:
+                    case NodeType2::MountFile:
                     {
                         auto file = SYSTEM.open(path, std::ios::in);
                         if (!file) {
@@ -2279,7 +2288,7 @@ protected:
                 a.second->control->queue_name = queue_name;
                 a.second->control->env["QUEUE"] = queue_name;
                 a.second->control->env["THREAD_ID"] = std::format("{}", std::this_thread::get_id());
-                //DEBUG_SYSTEM("  Resuming on QUEUE: {} PID: {} : {}", queue_name, a.second->control->pid, join(a.second->control->args));
+                DEBUG_SYSTEM("  Resuming on QUEUE: {} PID: {} : {}", queue_name, a.second->control->pid, join(a.second->control->args));
                 a.first->resume();
             }
             else

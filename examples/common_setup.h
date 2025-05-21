@@ -1,6 +1,6 @@
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
-#include <PseudoNix/ArchiveMount.h>
+#include <PseudoNix/ArchiveMount2.h>
 
 #include <PseudoNix/sample_archive.h>
 
@@ -88,7 +88,7 @@ inline void setup_functions(PseudoNix::System & sys)
     };
 
     sys.mkdir("/bin");
-    sys.touch("/bin/hello.sh");
+    sys.mkfile("/bin/hello.sh");
     sys.fs("/bin/hello.sh") <<
         R"foo(
 echo Arguments: ${1} ${2} ${3} ${4}
@@ -105,7 +105,7 @@ echo "Hey! I'm awake!"
     // every instance of the sh command will execute
     // those commands first
     sys.mkdir("/etc");
-    sys.touch("/etc/profile");
+    sys.mkfile("/etc/profile");
     sys.fs("/etc/profile") << R"foo(
 export PATH=/usr/bin:/bin
 echo "###################################"
@@ -128,7 +128,7 @@ echo "###################################"
 
     sys.mkdir("/mnt");
 
-    if(PseudoNix::FSResult::Success != sys.mount2_t<PseudoNix::ArchiveNodeMount>("/mnt", archive_tar_gz, archive_tar_gz_len))
+    if(PseudoNix::FSResult2::True != sys.mount<PseudoNix::ArchiveNodeMount2>("/mnt", archive_tar_gz, archive_tar_gz_len))
     {
         std::cerr << "Failed to load the tar.gz from memory" << std::endl;
     }
