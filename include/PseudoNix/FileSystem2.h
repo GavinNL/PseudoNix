@@ -4,16 +4,12 @@
 #include <format>
 #include <map>
 #include <string>
-#include <typeindex>
-#include <variant>
 #include <cassert>
 #include <filesystem>
 #include <fstream>
-#include <any>
 #include <vector>
-#include "generator.h"
-//#include "FileSystem.h"
-#include <algorithm>
+#include "FileSystemMount.h"
+#include "FileSystemHostMount.h"
 
 namespace PseudoNix
 {
@@ -78,110 +74,6 @@ private:
 };
 
 
-class DelegatingFileStreamBuf : public std::streambuf {
-    static constexpr std::size_t buffer_size = 4096;
-
-    FILE* file = nullptr;
-    char input_buffer[buffer_size];
-    char output_buffer[buffer_size];
-
-public:
-    DelegatingFileStreamBuf() {
-        setg(input_buffer, input_buffer, input_buffer);
-        setp(output_buffer, output_buffer + buffer_size);
-    }
-
-    ~DelegatingFileStreamBuf() {
-        sync();
-        if (file) {
-            fclose(file);
-        }
-    }
-
-    bool open(const std::filesystem::path& path, std::ios::openmode mode) {
-        std::string cmode;
-
-        bool read = (mode & std::ios::in);
-        bool write = (mode & std::ios::out);
-        bool append = (mode & std::ios::app);
-        bool truncate = (mode & std::ios::trunc);
-
-        if (read && write) {
-            if (append)        cmode = "a+";
-            else if (truncate) cmode = "w+";
-            else               cmode = "r+";
-        } else if (read) {
-            cmode = "r";
-        } else if (write) {
-            if (append)        cmode = "a";
-            //else if (truncate) cmode = "w";
-            else               cmode = "w";  // Default to truncating if only writing
-        } else {
-            return false; // Invalid mode
-        }
-
-        // Always open in binary mode
-        cmode += "b";
-
-        file = nullptr;
-        auto pstr = path.generic_string();
-#ifdef _WIN32
-        errno_t err = fopen_s(&file, pstr.c_str(), cmode.c_str());
-        bool success = (err == 0 && file != nullptr);
-#else
-        file = std::fopen(pstr.c_str(), cmode.c_str());
-        bool success = (file != nullptr);
-#endif
-        return success;
-        //auto pstr = path.generic_string();
-        //file = std::fopen(pstr.c_str(), cmode.c_str());
-        return file != nullptr;
-    }
-
-    void close() {
-        sync(); // flush output buffer
-        if (file) {
-            std::fclose(file);
-            file = nullptr;
-        }
-    }
-
-protected:
-    // Read from file into input buffer
-    int_type underflow() override {
-        if (!file || feof(file)) return traits_type::eof();
-
-        std::size_t n = std::fread(input_buffer, 1, buffer_size, file);
-        if (n == 0) return traits_type::eof();
-
-        setg(input_buffer, input_buffer, input_buffer + n);
-        return traits_type::to_int_type(*gptr());
-    }
-
-    // Flush the output buffer to the file
-    int_type overflow(int_type ch) override {
-        if (!file) return traits_type::eof();
-
-        auto n = pptr() - pbase();
-        if (n > 0) {
-            std::fwrite(pbase(), 1, static_cast<size_t>(n), file);
-        }
-        setp(output_buffer, output_buffer + buffer_size);
-
-        if (ch != traits_type::eof()) {
-            *pptr() = static_cast<char_type>(ch);
-            pbump(1);
-        }
-
-        return traits_type::not_eof(ch);
-    }
-
-    // Flush on sync (e.g., std::endl)
-    int sync() override {
-        return overflow(traits_type::eof()) == traits_type::eof() ? -1 : 0;
-    }
-};
-
 class FileStream : public std::iostream {
 public:
     FileStream() : std::iostream(nullptr)
@@ -195,13 +87,6 @@ public:
     }
 private:
     std::unique_ptr<std::streambuf> _streamBuf;
-};
-
-enum FSResult2
-{
-    False,
-    True,
-    UnknownError = 255,
 };
 
 
@@ -232,32 +117,6 @@ struct FSNodeFile : public FSNode
     }
 };
 
-enum class NodeType2 {
-    Unknown,
-    MemFile,
-    MemDir,
-    MountFile,
-    MountDir,
-    NoExist
-};
-
-struct FSMountBase
-{
-    using path_type = std::filesystem::path;
-    using result_type = FSResult2;
-    virtual ~FSMountBase()
-    {
-
-    }
-    virtual result_type exists(path_type relPath) const = 0;
-    virtual result_type mkdir(path_type relPath) = 0;
-    virtual result_type mkfile(path_type relPath) = 0;
-    virtual result_type rm(path_type relPath) = 0;
-    virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) = 0;
-    virtual NodeType2 getType(path_type relPath) const = 0;
-
-    virtual Generator<path_type> list_dir(path_type relPath) = 0;
-};
 
 struct FSNodeDir : public FSNode
 {
@@ -271,80 +130,6 @@ struct FSNodeDir : public FSNode
     }
 };
 
-
-
-/**
- * @brief The FSNodeHostMount class
- *
- * A node for mounting host directories
- */
-struct FSNodeHostMount : public FSMountBase
-{
-    std::filesystem::path m_path_on_host;
-    FSNodeHostMount(std::filesystem::path path_on_host) : m_path_on_host(path_on_host)
-    {
-    }
-
-    virtual NodeType2 getType(path_type relPath) const override
-    {
-        if( std::filesystem::is_directory(m_path_on_host / relPath) )
-        {
-            return NodeType2::MountDir;
-        }
-        if( std::filesystem::is_regular_file(m_path_on_host / relPath) )
-        {
-            return NodeType2::MountFile;
-        }
-        return NodeType2::NoExist;
-    }
-
-    virtual result_type exists(path_type relPath) const override
-    {
-        auto b = std::filesystem::exists( m_path_on_host / relPath );
-        return b ? result_type::True : result_type::False;
-    }
-
-    virtual result_type rm(path_type relPath) override
-    {
-        (void)relPath;
-        return std::filesystem::remove(m_path_on_host / relPath) ? result_type::True : result_type::False;
-    }
-
-    virtual result_type mkdir(path_type relPath) override
-    {
-        (void)relPath;
-        return std::filesystem::create_directory(m_path_on_host / relPath) ? result_type::True : result_type::False;
-    }
-
-    virtual result_type mkfile(path_type relPath) override
-    {
-        (void)relPath;
-        std::ofstream out(m_path_on_host / relPath);
-        if(out)
-        {
-            out.close();
-            return result_type::True;
-        }
-        return result_type::False;
-    }
-
-    virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) override
-    {
-        (void)mode;
-        auto p = std::make_unique<DelegatingFileStreamBuf>();
-        p->open(m_path_on_host / relPath, mode);
-        return p;
-    }
-
-    virtual Generator<path_type> list_dir(path_type relPath) override
-    {
-        namespace fs = std::filesystem;
-        auto abs_path = m_path_on_host / relPath;
-        for (const auto& entry : fs::directory_iterator(abs_path)) {
-            co_yield entry.path().lexically_proximate(abs_path);
-        }
-    }
-};
 
 struct FileSystem2;
 struct NodeRef
