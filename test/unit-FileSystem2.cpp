@@ -588,7 +588,6 @@ SCENARIO("Moving Folders from Mem->Mem")
         REQUIRE(F.getType("/src/B") == NodeType2::MemDir);
         REQUIRE(F.getType("/src/C") == NodeType2::MemDir);
 
-
         THEN("We can move the folder")
         {
             REQUIRE(FSResult2::True == F.move("/src", "/dst") );
@@ -602,6 +601,32 @@ SCENARIO("Moving Folders from Mem->Mem")
             REQUIRE(F.getType("/src/A") == NodeType2::NoExist);
             REQUIRE(F.getType("/src/B") == NodeType2::NoExist);
             REQUIRE(F.getType("/src/C") == NodeType2::NoExist);
+        }
+    }
+}
+
+
+SCENARIO("List Dir")
+{
+    GIVEN("A filesystem with some directories and files")
+    {
+        FileSystem2 F;
+        REQUIRE(F.exists("/")     == FSResult2::True);
+        REQUIRE(F.mkdir("/src")   == FSResult2::True);
+        REQUIRE(F.mkdir("/src/A") == FSResult2::True);
+        REQUIRE(F.mkdir("/src/B") == FSResult2::True);
+        REQUIRE(F.mkdir("/src/C") == FSResult2::True);
+
+        REQUIRE(F.mkdir("/build") == FSResult2::True);
+        REQUIRE(F.mount<FSNodeHostMount>("/build", CMAKE_BINARY_DIR) == FSResult2::True);
+        for(auto n : F.list_dir("/src"))
+        {
+            std::cout << n << std::endl;
+        }
+
+        for(auto n : F.list_dir("/build/test"))
+        {
+            std::cout << n << std::endl;
         }
     }
 }

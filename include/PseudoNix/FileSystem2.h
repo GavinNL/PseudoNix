@@ -91,6 +91,8 @@ struct FSMountBase
     virtual result_type rm(path_type relPath) = 0;
     virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) = 0;
     virtual NodeType2 getType(path_type relPath) const = 0;
+
+    virtual generator<path_type> list_dir(path_type relPath) = 0;
 };
 
 struct FSNodeDir : public FSNode
@@ -168,6 +170,15 @@ struct FSNodeHostMount : public FSMountBase
         auto p = std::make_unique<DelegatingFileStreamBuf>();
         p->open(m_path_on_host / relPath, mode);
         return p;
+    }
+
+    virtual generator<path_type> list_dir(path_type relPath) override
+    {
+        namespace fs = std::filesystem;
+        auto abs_path = m_path_on_host / relPath;
+        for (const auto& entry : fs::directory_iterator(abs_path)) {
+            co_yield entry.path().lexically_proximate(abs_path);
+        }
     }
 };
 
@@ -597,6 +608,30 @@ struct FileSystem2
                 return d->mount->getType(rem);
         }
         return NodeType2::NoExist;
+    }
+
+    generator<path_type> list_dir(path_type absPath)
+    {
+        auto [mnt, rem] = find_last_valid_virtual_node(absPath);
+
+        if(auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt))
+        {
+            if(d->mount)
+            {
+                auto gen = d->mount->list_dir(rem);
+                for(auto n : gen)
+                {
+                    co_yield n;
+                }
+            }
+            else
+            {
+                for(auto & [name, n] : d->nodes)
+                {
+                    co_yield name;
+                }
+            }
+        }
     }
 
     std::shared_ptr<FSNodeDir> m_rootNode = std::make_shared<FSNodeDir>("/");
