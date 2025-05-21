@@ -67,9 +67,6 @@ public:
         bool success = (file != nullptr);
 #endif
         return success;
-        //auto pstr = path.generic_string();
-        //file = std::fopen(pstr.c_str(), cmode.c_str());
-        return file != nullptr;
     }
 
     void close() {

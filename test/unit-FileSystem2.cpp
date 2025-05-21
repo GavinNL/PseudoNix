@@ -10,7 +10,7 @@ std::string StreamToString(std::istream & in)
     std::stringstream buffer;
     buffer << in.rdbuf();        // read entire file into buffer
     auto str = buffer.str();           // convert to string
-    if(str.ends_with('\n'))
+    while (str.ends_with('\n') || str.ends_with('\r'))
         str.pop_back();
     return str;
 }
@@ -21,7 +21,8 @@ std::string readFile(const std::string& filename) {
     std::stringstream buffer;
     buffer << file.rdbuf();        // read entire file into buffer
     auto str = buffer.str();           // convert to string
-    if(str.ends_with('\n'))
+
+    while(str.ends_with('\n') || str.ends_with('\r'))
         str.pop_back();
     return str;
 }
