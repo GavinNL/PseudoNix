@@ -468,6 +468,26 @@ struct FileSystem2
 
             return result_type::True;
         }
+        else if(tSrc == NodeType2::MemDir && tDstFolder == NodeType2::MemDir )
+        {
+            auto [srcMnt, srcRem ] = find_last_valid_virtual_node(srcAbsPath);
+            auto [dstMnt, dstRem ] = find_last_valid_virtual_node(dstAbsPath.parent_path());
+
+            auto srcDir_p = std::dynamic_pointer_cast<FSNodeDir>(srcMnt);
+            auto dstDir_p  = std::dynamic_pointer_cast<FSNodeDir>(dstMnt);
+
+            dstDir_p->nodes[dstAbsPath.filename()] = srcDir_p;
+
+            {
+                auto [srcParent, srcParentRem ] = find_last_valid_virtual_node(srcAbsPath.parent_path());
+                assert(srcParentRem.empty());
+                auto srcParent_p = std::dynamic_pointer_cast<FSNodeDir>(srcParent);
+                assert(srcParent_p);
+                srcParent_p->nodes.erase(srcAbsPath.filename());
+            }
+
+            return result_type::True;
+        }
         else
         {
             // do the long way around, copy+delete

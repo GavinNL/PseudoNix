@@ -570,3 +570,38 @@ SCENARIO("Moving file from Mount->Mem->Mount")
         }
     }
 }
+
+SCENARIO("Moving Folders from Mem->Mem")
+{
+    GIVEN("A filesystem with some directories and files")
+    {
+        FileSystem2 F;
+        REQUIRE(F.exists("/")     == FSResult2::True);
+        REQUIRE(F.mkdir("/src")   == FSResult2::True);
+        REQUIRE(F.mkdir("/src/A") == FSResult2::True);
+        REQUIRE(F.mkdir("/src/B") == FSResult2::True);
+        REQUIRE(F.mkdir("/src/C") == FSResult2::True);
+
+
+        REQUIRE(F.getType("/src")   == NodeType2::MemDir);
+        REQUIRE(F.getType("/src/A") == NodeType2::MemDir);
+        REQUIRE(F.getType("/src/B") == NodeType2::MemDir);
+        REQUIRE(F.getType("/src/C") == NodeType2::MemDir);
+
+
+        THEN("We can move the folder")
+        {
+            REQUIRE(FSResult2::True == F.move("/src", "/dst") );
+
+            REQUIRE(F.getType("/dst")   == NodeType2::MemDir);
+            REQUIRE(F.getType("/dst/A") == NodeType2::MemDir);
+            REQUIRE(F.getType("/dst/B") == NodeType2::MemDir);
+            REQUIRE(F.getType("/dst/C") == NodeType2::MemDir);
+
+            REQUIRE(F.getType("/src")   == NodeType2::NoExist);
+            REQUIRE(F.getType("/src/A") == NodeType2::NoExist);
+            REQUIRE(F.getType("/src/B") == NodeType2::NoExist);
+            REQUIRE(F.getType("/src/C") == NodeType2::NoExist);
+        }
+    }
+}
