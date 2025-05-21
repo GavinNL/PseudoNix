@@ -29,9 +29,9 @@ inline std::pair<std::filesystem::path, std::filesystem::path> split_first(const
     return {first, rest};
 }
 
-class vector_backed_streambuf : public std::streambuf {
+class VectorBackedStreamBuf : public std::streambuf {
 public:
-    explicit vector_backed_streambuf(std::vector<char>& buffer)
+    explicit VectorBackedStreamBuf(std::vector<char>& buffer)
         : buffer_(buffer)
     {
         setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
@@ -116,7 +116,6 @@ struct FSNodeFile : public FSNode
     {
     }
 };
-
 
 struct FSNodeDir : public FSNode
 {
@@ -551,7 +550,7 @@ struct FileSystem2
         {
             if(auto f = std::dynamic_pointer_cast<FSNodeFile>(mnt))
             {
-                auto bff = std::make_unique<vector_backed_streambuf>(f->data);
+                auto bff = std::make_unique<VectorBackedStreamBuf>(f->data);
                 return FileStream(std::move(bff));
             }
             // an empty folder cannot open
