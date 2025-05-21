@@ -8,6 +8,7 @@
 #include <format>
 #include "../FileSystemMount.h"
 #include "../FileSystemHelpers.h"
+#include "../System.h"
 
 namespace PseudoNix
 {
@@ -254,6 +255,49 @@ struct ArchiveNodeMount2 : public FSMountBase
         return p;
     }
 };
+
+inline void enable_archive_mount(System & sys)
+{
+    sys.setFunction("archive", "Mount tar and tar.gz files", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+    {
+        PSEUDONIX_PROC_START(ctrl);
+
+        std::map<std::string, std::string> typeToMnt;
+
+        // 0    1     2   3
+        // host mount SRC DST
+        //
+        if(ARGS.size() == 4)
+        {
+            PseudoNix::System::path_type ACT  = ARGS[1];
+            PseudoNix::System::path_type SRC  = ARGS[2];
+            PseudoNix::System::path_type DST  = ARGS[3];
+
+            if(ACT == "mount")
+            {
+                HANDLE_PATH(CWD, DST);
+                HANDLE_PATH(CWD, SRC);
+
+                if( SYSTEM.getType(SRC) == PseudoNix::NodeType::MemFile)
+                {
+                    auto p = SYSTEM.getVirtualFileData(SRC);
+                    if(p)
+                    {
+                        auto er = SYSTEM.mount<PseudoNix::ArchiveNodeMount2>(DST, p->data(), p->size(), SRC.generic_string());
+
+                        co_return er == PseudoNix::FSResult::True;
+                    }
+                }
+                COUT << std::format("Archive {} does not exist in the VFS\n", SRC.generic_string());
+            }
+            co_return 0;
+        }
+
+        COUT << std::format("Unknown error\n");
+
+        co_return 1;
+    });
+}
 
 }
 

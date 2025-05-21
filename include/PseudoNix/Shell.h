@@ -1022,6 +1022,11 @@ System::task_type shell_coro(System::e_type ctrl)
     co_return std::move(ret_value);
 }
 
+inline void enable_default_shell(System & sys)
+{
+    sys.setFunction("sh", "Default Shell", PseudoNix::shell_coro);
+}
+
 
 }
 

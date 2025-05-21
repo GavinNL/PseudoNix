@@ -1,7 +1,7 @@
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
 #include <PseudoNix/FileSystem.h>
-#include <PseudoNix/FileSystemHostMount.h>
+#include <PseudoNix/HostMount.h>
 #include <PseudoNix/ArchiveMount.h>
 
 #include <PseudoNix/sample_archive.h>
@@ -17,7 +17,9 @@ inline void setup_functions(PseudoNix::System & sys)
     // cmd1 || cmd2
     // echo "Hello ${USER}"
     //
-    sys.setFunction("sh", "Default Shell", PseudoNix::shell_coro);
+    PseudoNix::enable_default_shell(sys);
+    PseudoNix::enable_archive_mount(sys); // lets you mount tar/tar.gz files
+    PseudoNix::enable_host_mount(sys);    // lets you moung host file systems
 
     // Here's a very simple guessing game process
     sys.setFunction("guess", "A simple guessing game", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
@@ -69,45 +71,8 @@ inline void setup_functions(PseudoNix::System & sys)
                       co_return 0;
                   });
 
-    sys.setFunction("archive", "Mount tar and tar.gz files", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
-    {
-        PSEUDONIX_PROC_START(ctrl);
 
-        std::map<std::string, std::string> typeToMnt;
 
-        // 0    1     2   3
-        // host mount SRC DST
-        //
-        if(ARGS.size() == 4)
-        {
-            PseudoNix::System::path_type ACT  = ARGS[1];
-            PseudoNix::System::path_type SRC  = ARGS[2];
-            PseudoNix::System::path_type DST  = ARGS[3];
-
-            if(ACT == "mount")
-            {
-                HANDLE_PATH(CWD, DST);
-                HANDLE_PATH(CWD, SRC);
-
-                if( SYSTEM.getType(SRC) == PseudoNix::NodeType::MemFile)
-                {
-                    auto p = SYSTEM.getVirtualFileData(SRC);
-                    if(p)
-                    {
-                        auto er = SYSTEM.mount<PseudoNix::ArchiveMount>(DST, p->data(), p->size(), SRC.generic_string());
-
-                        co_return er == PseudoNix::FSResult::True;
-                    }
-                }
-                COUT << std::format("Archive {} does not exist in the VFS\n", SRC.generic_string());
-            }
-            co_return 0;
-        }
-
-        COUT << std::format("Unknown error\n");
-
-        co_return 1;
-    });
     // This is the pre-exec function that gets called
     // right before the coroutine is first executed
     //
@@ -167,14 +132,7 @@ echo "type 'help' for a list of commands"
 echo "###################################"
 )foo";
 
-    sys.mkdir("/share");
-    sys.mkfile("/share/archive.tar.gz");
-    sys.fs("/share/archive.tar.gz") << PseudoNix::archive_tar_gz;
-
     sys.mkdir("/mnt");
-    sys.mkdir("/mnt/ar_vfs");
-    sys.mkdir("/mnt/ar_app");
-
     sys.mkfile("/mnt/README.md");
     sys.fs("/mnt/README.md") <<
 R"foo(
@@ -191,23 +149,41 @@ R"foo(
                mount archive /share/archive.tar.gz /mnt/ar_vfs
 )foo";
 
-    for(auto c : sys.list_nodes_recursive("/"))
     {
-        std::cout << c << std::endl;
+        // Create a virtual data file of the tar.gz data
+        // and place it in /share/archive.tar.gz
+        //
+        sys.mkdir("/share");
+        sys.mkfile("/share/archive.tar.gz");
+        sys.fs("/share/archive.tar.gz") << PseudoNix::archive_tar_gz;
+
+        // Mount that virtual archive at /mnt/ar_vfs
+        sys.mkdir("/mnt/ar_vfs");
+        sys.spawnProcess({"mount", "archive", "/share/archive.tar.gz", "/mnt/ar_vfs"});
     }
-    sys.spawnProcess({"archive", "mount", "/share/archive.tar.gz", "/mnt/ar_vfs"});
+
+    {
+        // The data for the archive is a available at compile time
+        // mount the raw data directly at /mnt/ar_app
+        //
+        sys.mkdir("/mnt/ar_app");
+        if(PseudoNix::FSResult2::True != sys.mount<PseudoNix::ArchiveMount>("/mnt/ar_app",
+                                                                             static_cast<void*>(PseudoNix::archive_tar_gz.data()),
+                                                                             static_cast<size_t>(PseudoNix::archive_tar_gz.size())))
+        {
+            std::cerr << "Failed to load the tar.gz from memory" << std::endl;
+        }
+    }
 
 #if !defined __EMSCRIPTEN__
-    sys.mkdir("/tmp");
-    sys.spawnProcess({"mount", "host", "/tmp", "/tmp"});
+    {
+        // Mount a temporary folder
+        sys.mkdir("/tmp");
+        sys.spawnProcess({"mount", "host", "/tmp", "/tmp"});
+    }
 #endif
 
-    if(PseudoNix::FSResult2::True != sys.mount<PseudoNix::ArchiveMount>("/mnt/ar_app",
-                                                                         static_cast<void*>(PseudoNix::archive_tar_gz.data()),
-                                                                         static_cast<size_t>(PseudoNix::archive_tar_gz.size())))
-    {
-        std::cerr << "Failed to load the tar.gz from memory" << std::endl;
-    }
+
 
     // Create a new task queue called "THREAD"
     // This can be executed at a different

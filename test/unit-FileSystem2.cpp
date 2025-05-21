@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 #include <PseudoNix/detail/FileSystem2.h>
-#include <PseudoNix/FileSystemHostMount.h>
+#include <PseudoNix/HostMount.h>
 
 using namespace PseudoNix;
 

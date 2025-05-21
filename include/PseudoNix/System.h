@@ -15,7 +15,6 @@
 #include <thread>
 #include <semaphore>
 #include "FileSystem.h"
-#include "FileSystemHostMount.h"
 #include "helpers.h"
 
 
@@ -1987,45 +1986,8 @@ protected:
         };
 
 #if 1
-        DEF_FUNC_HELP("host", "Does stuff with the host")
-        {
-            PSEUDONIX_PROC_START(ctrl);
-
-            std::map<std::string, std::string> typeToMnt;
-
-            // 0    1     2   3
-            // host mount SRC DST
-            //
-            if(ARGS.size() == 4)
-            {
-                System::path_type ACT  = ARGS[1];
-                System::path_type SRC  = ARGS[2];
-                System::path_type DST  = ARGS[3];
-
-                if(ACT == "mount")
-                {
-                    HANDLE_PATH(CWD, DST);
-                    HANDLE_PATH(CWD, SRC);
-
-                    if( !std::filesystem::is_directory(SRC))
-                    {
-                        COUT << std::format("Directory {} does not exist on the host\n", SRC.generic_string());
-                        co_return 1;
-                    }
-                    auto er = SYSTEM.mount<FSNodeHostMount>(DST, SRC);
-                    FS_PRINT_ERROR(er);
-                }
-                co_return 0;
-            }
-
-            COUT << std::format("Unknown error\n");
-
-            co_return 1;
-        };
-
-        auto _mountInfo = std::make_shared< std::map<std::string, std::string> >();
         (*funcDescs)["mount"] = "Mounts host filesystems inside the VFS";
-        m_funcs["mount"] = [_mountInfo](e_type ctrl) -> task_type
+        m_funcs["mount"] = [](e_type ctrl) -> task_type
         {
             //
             // mount [host/archive] <src> <mnt point>

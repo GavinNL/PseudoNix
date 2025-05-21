@@ -7,6 +7,7 @@
 #include <fstream>
 #include <format>
 #include "FileSystemMount.h"
+#include "System.h"
 
 namespace PseudoNix
 {
@@ -193,6 +194,47 @@ struct FSNodeHostMount : public FSMountBase
         return std::format("host://{}", m_path_on_host.generic_string());
     }
 };
+
+inline void enable_host_mount(System & sys)
+{
+    sys.setFunction("host", "Mount host file systems", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+                    {
+                        PSEUDONIX_PROC_START(ctrl);
+
+                        std::map<std::string, std::string> typeToMnt;
+
+                        // 0    1     2   3
+                        // host mount SRC DST
+                        //
+                        if(ARGS.size() == 4)
+                        {
+                            System::path_type ACT  = ARGS[1];
+                            System::path_type SRC  = ARGS[2];
+                            System::path_type DST  = ARGS[3];
+
+                            if(ACT == "mount")
+                            {
+                                HANDLE_PATH(CWD, DST);
+                                HANDLE_PATH(CWD, SRC);
+
+                                if( !std::filesystem::is_directory(SRC))
+                                {
+                                    COUT << std::format("Directory {} does not exist on the host\n", SRC.generic_string());
+                                    co_return 1;
+                                }
+                                auto er = SYSTEM.mount<FSNodeHostMount>(DST, SRC);
+                                FS_PRINT_ERROR(er);
+                            }
+                            co_return 0;
+                        }
+
+                        COUT << std::format("Unknown error\n");
+
+                        co_return 1;
+                    });
+}
+
+using HostMount = FSNodeHostMount;
 
 }
 
