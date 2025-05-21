@@ -15,7 +15,11 @@
 #include <thread>
 #include <semaphore>
 #include "FileSystem.h"
+#include "FileSystemHostMount.h"
 #include "helpers.h"
+
+
+#include "ArchiveMount.h"
 
 #define PSEUDONIX_VERSION_MAJOR 0
 #define PSEUDONIX_VERSION_MINOR 1
@@ -1984,39 +1988,66 @@ protected:
             co_return 0;
         };
 
-#if 0
+#if 1
         DEF_FUNC_HELP("mount", "Mounts host filesystems inside the VFS")
         {
+            //
+            // mount [host/archive] <src> <mnt point>
+            //
+
             PSEUDONIX_PROC_START(ctrl);
 
-            if(ARGS.size() == 1)
+            // if(ARGS.size() == 1)
+            // {
+            //     auto r = SYSTEM.m_rootNode;
+            //     for(auto & n : SYSTEM.m_nodes)
+            //     {
+            //         if( std::holds_alternative<NodeMount>(n.second) )
+            //         {
+            //             COUT << std::format("{} on {}\n", n.first.generic_string(), std::get<NodeMount>(n.second).host_path.generic_string());
+            //         }
+            //     }
+            //     co_return 0;
+            // }
+            std::map<std::string, std::string> typeToMnt;
+
+            if(ARGS.size() == 4)
             {
-                for(auto & n : SYSTEM.m_nodes)
+                auto TYPE = ARGS[1];
+                System::path_type SRC  = ARGS[2];
+                System::path_type DST  = ARGS[3];
+                HANDLE_PATH(CWD, DST);
+                HANDLE_PATH(CWD, SRC);
+
+                if(TYPE == "archive")
                 {
-                    if( std::holds_alternative<NodeMount>(n.second) )
+                    if( SYSTEM.getType(SRC) == NodeType::MemFile)
                     {
-                        COUT << std::format("{} on {}\n", n.first.generic_string(), std::get<NodeMount>(n.second).host_path.generic_string());
+                        auto  p = SYSTEM.getVirtualFileData(SRC);
+                        if(!p)
+                        {
+                            COUT << std::format("Archive {} does not exist\n", SRC.generic_string());
+                            co_return 1;
+                        }
+
+                        auto er = SYSTEM.mount<ArchiveMount>(DST, p->data(), p->size());
+                        FS_PRINT_ERROR(er);
+                        co_return 0;
                     }
                 }
-                co_return 0;
-            }
-            if(ARGS.size() == 3)
-            {
-                if( std::filesystem::is_directory(ARGS[1]) )
+                else if(TYPE == "host")
                 {
-                    path_type vfs_path = ARGS[2];
-                    HANDLE_PATH(CWD, vfs_path);
-
-                    auto er = SYSTEM.mount(ARGS[1], vfs_path);
+                    if( !std::filesystem::is_directory(SRC))
+                    {
+                        COUT << std::format("Directory {} does not exist on the host\n", SRC.generic_string());
+                        co_return 1;
+                    }
+                    auto er = SYSTEM.mount<FSNodeHostMount>(DST, SRC);
                     FS_PRINT_ERROR(er);
                     co_return 0;
                 }
-                else
-                {
-                    COUT << std::format("Directory {} does not exist on the host", ARGS[1]);
-                    co_return 1;
-                }
             }
+
             COUT << std::format("Unknown error\n");
 
             co_return 1;
@@ -2031,7 +2062,7 @@ protected:
                 path_type p = ARGS[1];
                 if(!p.has_root_directory())
                     p = CWD / p;
-                auto res = SYSTEM.umount(p);
+                auto res = SYSTEM.unmount(p);
                 FS_PRINT_ERROR(res);
                 co_return 0;
             }

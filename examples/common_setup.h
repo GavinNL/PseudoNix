@@ -128,9 +128,36 @@ echo "type 'help' for a list of commands"
 echo "###################################"
 )foo";
 
-    sys.mkdir("/mnt");
+    sys.mkdir("/share");
+    sys.mkfile("/share/archive.tar.gz");
+    sys.fs("/share/archive.tar.gz") << PseudoNix::archive_tar_gz;
 
-    if(PseudoNix::FSResult2::True != sys.mount<PseudoNix::ArchiveMount>("/mnt", static_cast<void*>(archive_tar_gz), static_cast<size_t>(archive_tar_gz_len)))
+    sys.mkdir("/mnt");
+    sys.mkdir("/mnt/ar_vfs");
+    sys.mkdir("/mnt/ar_app");
+
+    sys.mkfile("/mnt/README.md");
+    sys.fs("/mnt/README.md") <<
+R"foo(
+/mnt/ar_app - The actual archive data exists in
+               application memory. Unmounting
+               this folder us not undoable.
+
+/mnt/ar_vfs  - /share/archive.tar.gz exists in the
+               virtual file system. It is mounted
+               at this location. You can unmount
+               this and remount using the following:
+
+               umount  /mnt/ar_vfs
+               mount archive /share/archive.tar.gz /mnt/ar_vfs
+)foo";
+
+
+    sys.spawnProcess({"mount", "archive", "/share/archive.tar.gz", "/mnt/ar_vfs"});
+
+    if(PseudoNix::FSResult2::True != sys.mount<PseudoNix::ArchiveMount>("/mnt/ar_app",
+                                                                         static_cast<void*>(PseudoNix::archive_tar_gz.data()),
+                                                                         static_cast<size_t>(PseudoNix::archive_tar_gz.size())))
     {
         std::cerr << "Failed to load the tar.gz from memory" << std::endl;
     }

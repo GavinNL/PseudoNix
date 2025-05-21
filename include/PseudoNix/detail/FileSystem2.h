@@ -577,8 +577,28 @@ struct FileSystem2
     {
         _clean(absPath);
         return NodeRef{absPath, this};
-
     }
+
+    /**
+     * @brief getVirtualFileData
+     * @param absPath
+     * @return
+     *
+     * Returns a pointer to the vector of data for the virtual
+     * file, if it exists. If it doesn't. nullptr is returned
+     */
+    std::vector<char>* getVirtualFileData(path_type absPath)
+    {
+        auto [mnt, rem] = find_last_valid_virtual_node(absPath);
+        if(!rem.empty())
+            return {};
+        auto f = std::dynamic_pointer_cast<FSNodeFile>(mnt);
+        if(!f)
+            return {};
+
+        return &f->data;
+    }
+
     std::shared_ptr<FSNodeDir> m_rootNode = std::make_shared<FSNodeDir>("/");
 };
 
@@ -607,6 +627,20 @@ void operator << (PseudoNix::NodeRef left, std::string_view right)
     if(!out.good())
         return;
     out << right;
+}
+
+void operator << (PseudoNix::NodeRef left, std::vector<uint8_t> const &right)
+{
+    //
+    // F.fs("/path/to/my/file.txt") << "hello world";
+    //
+
+    (void)left;
+    (void)right;
+    auto out = left.fs->open(left.absPath, std::ios::out);
+    if(!out.good())
+        return;
+    out.write( static_cast<char const*>(static_cast<void const*>(right.data())), static_cast<std::streamsize>(right.size()));
 }
 
 

@@ -59,4 +59,3 @@ foreach(file ${files})
     message("  ${UNIT_EXE_NAME} ")
 endforeach()
 
-add_dependencies(${PROJECT_NAME}-unit-archive archive)

@@ -49,7 +49,7 @@ public:
         archive_read_support_format_tar(archive_); // Add TAR support
         archive_read_support_filter_gzip(archive_);
 
-        int r = archive_read_open_memory2(archive_, data, length, 10240); // 10KB block size
+        int r = archive_read_open_memory(archive_, data, length); // 10KB block size
         if (r != ARCHIVE_OK) {
             fprintf(stderr, "Could not open archive: %s\n", archive_error_string(archive_));
             return false;
@@ -128,7 +128,10 @@ struct ArchiveNodeMount2 : public FSMountBase
     ArchiveNodeMount2(path_type const & hostPath) : host_path(hostPath)
     {
         ArchiveEntryStreamBuf buf;
-        buf.open_archive(hostPath);
+        if(!buf.open_archive(hostPath))
+        {
+            return;
+        }
 
         do
         {
@@ -153,7 +156,10 @@ struct ArchiveNodeMount2 : public FSMountBase
         _length = length;
 
         ArchiveEntryStreamBuf buf;
-        buf.open_archive(data, length);
+        if(!buf.open_archive(data, length))
+        {
+            return;
+        }
 
         do
         {

@@ -58,24 +58,24 @@ target_link_libraries( ${PROJECT_NAME}  INTERFACE  ${PublicLinkedTargets})
 ## Create an tar archive from the src/archive folder
 # and store it in the build directory. Additionally
 # convert the tar file into a raw c source code
-if(NOT WIN32)
-    add_custom_target(archive
-        COMMAND rm -rf ${CMAKE_BINARY_DIR}/archive
-        COMMAND mkdir -p ${CMAKE_BINARY_DIR}/archive
-        COMMAND rm -rf archive.tar archive.c archive_zip.c
-        COMMAND tar -cf archive.tar *
-        COMMAND xxd -i archive.tar > ${CMAKE_BINARY_DIR}/archive/archive.c
-        COMMAND mv archive.tar ${CMAKE_BINARY_DIR}
-
-        COMMAND tar -czf archive.tar.gz *
-        COMMAND xxd -i archive.tar.gz > ${CMAKE_BINARY_DIR}/archive/archive_zip.c
-        COMMAND mv archive.tar.gz ${CMAKE_BINARY_DIR}
-
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/archive
-    )
-else()
-    add_custom_target(archive)
-endif()
+# if(NOT WIN32)
+#     add_custom_target(archive
+#         COMMAND rm -rf ${CMAKE_BINARY_DIR}/archive
+#         COMMAND mkdir -p ${CMAKE_BINARY_DIR}/archive
+#         COMMAND rm -rf archive.tar archive.c archive_zip.c
+#         COMMAND tar -cf archive.tar *
+#         COMMAND xxd -i archive.tar > ${CMAKE_BINARY_DIR}/archive/archive.c
+#         COMMAND mv archive.tar ${CMAKE_BINARY_DIR}
+#
+#         COMMAND tar -czf archive.tar.gz *
+#         COMMAND xxd -i archive.tar.gz > ${CMAKE_BINARY_DIR}/archive/archive_zip.c
+#         COMMAND mv archive.tar.gz ${CMAKE_BINARY_DIR}
+#
+#         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/archive
+#     )
+# else()
+#     add_custom_target(archive)
+# endif()
 
 
 
@@ -141,10 +141,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
         add_executable(example4 examples/example4.cpp)
         target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
 
-        add_dependencies(main archive)
     endif()
-
-    add_dependencies(terminal archive)
 
 endif()
 

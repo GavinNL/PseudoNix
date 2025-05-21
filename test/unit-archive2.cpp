@@ -7,6 +7,8 @@
 
 #include <PseudoNix/detail/FileSystem2.h>
 #include <PseudoNix/detail/ArchiveMount2.h>
+#include <PseudoNix/sample_archive.h>
+#include <zlib.h>
 
 using namespace PseudoNix;
 
@@ -30,6 +32,18 @@ std::vector<uint8_t> loadFile(const std::string& filename) {
     return buffer;
 }
 
+void writeVectorToFile(const std::vector<uint8_t>& data, const std::string& filename) {
+    std::ofstream out(filename, std::ios::binary);
+    if (!out) {
+        throw std::runtime_error("Failed to open file for writing: " + filename);
+    }
+
+    out.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
+    if (!out) {
+        throw std::runtime_error("Failed to write data to file: " + filename);
+    }
+}
+
 std::string file_to_string(FileSystem2 & F, FileSystem2::path_type path)
 {
     auto in = F.open(path, std::ios::in);
@@ -37,6 +51,65 @@ std::string file_to_string(FileSystem2 & F, FileSystem2::path_type path)
     buffer << in.rdbuf();        // read entire file into buffer
     return buffer.str();           // convert to string
 }
+
+std::vector<uint8_t> decompressGzipToTar(const std::vector<uint8_t>& gzipData) {
+    constexpr size_t CHUNK_SIZE = 262144; // 256 KB
+    std::vector<uint8_t> output;
+
+    z_stream strm{};
+    strm.next_in = const_cast<Bytef*>(gzipData.data());
+    strm.avail_in = static_cast<uInt>(gzipData.size());
+
+    // 16 + MAX_WBITS tells zlib to decode a gzip stream
+    if (inflateInit2(&strm, 16 + MAX_WBITS) != Z_OK) {
+        throw std::runtime_error("inflateInit2 failed");
+    }
+
+    uint8_t outBuffer[CHUNK_SIZE];
+
+    int ret;
+    do {
+        strm.next_out = outBuffer;
+        strm.avail_out = CHUNK_SIZE;
+
+        ret = inflate(&strm, Z_NO_FLUSH);
+
+        if (ret == Z_MEM_ERROR || ret == Z_DATA_ERROR || ret == Z_NEED_DICT) {
+            inflateEnd(&strm);
+            throw std::runtime_error("inflate failed during decompression");
+        }
+
+        size_t have = CHUNK_SIZE - strm.avail_out;
+        output.insert(output.end(), outBuffer, outBuffer + have);
+
+    } while (ret != Z_STREAM_END);
+
+    inflateEnd(&strm);
+    return output;
+}
+
+#define ARCHIVE_TAR_GZ_PATH CMAKE_BINARY_DIR "/archive.tar.gz"
+#define ARCHIVE_TAR_PATH    CMAKE_BINARY_DIR "/archive.tar"
+
+
+SCENARIO("Uncompress")
+{
+    // uncompress the ziped archive
+    auto archive_tar = decompressGzipToTar(archive_tar_gz);
+
+    writeVectorToFile(archive_tar_gz, ARCHIVE_TAR_GZ_PATH);
+    writeVectorToFile(archive_tar,    ARCHIVE_TAR_PATH);
+
+    std::vector<uint8_t> randomData(1024);
+
+    auto p = std::make_shared<ArchiveNodeMount2>(randomData.data(), randomData.size());
+    for(auto d : p->_files)
+    {
+        std::cout << d.first << std::endl;
+    }
+    std::cout << "---" << std::endl;
+}
+
 
 SCENARIO("Mounting From File")
 {
@@ -49,7 +122,7 @@ SCENARIO("Mounting From File")
 
         WHEN("We mount a uncompressed tar")
         {
-            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", CMAKE_BINARY_DIR "/archive.tar") == FSResult2::True);
+            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", ARCHIVE_TAR_PATH) == FSResult2::True);
 
             REQUIRE(F.mkfile("/tar/file") == FSResult2::False);
             REQUIRE(F.mkdir("/tar/file")  == FSResult2::False);
@@ -68,7 +141,7 @@ SCENARIO("Mounting From File")
         }
         WHEN("We mount a compressed tar")
         {
-            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", CMAKE_BINARY_DIR "/archive.tar.gz") == FSResult2::True);
+            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", ARCHIVE_TAR_GZ_PATH) == FSResult2::True);
 
             REQUIRE(F.mkfile("/tar/file") == FSResult2::False);
             REQUIRE(F.mkdir("/tar/file")  == FSResult2::False);
@@ -99,7 +172,7 @@ SCENARIO("Mounting From Memory")
 
         WHEN("We mount a uncompressed tar")
         {
-            auto raw_data = loadFile(CMAKE_BINARY_DIR "/archive.tar");
+            auto raw_data = loadFile(ARCHIVE_TAR_PATH);
             REQUIRE(F.mount<ArchiveNodeMount2>("/tar", raw_data.data(), raw_data.size()) == FSResult2::True);
 
             REQUIRE(F.mkfile("/tar/file") == FSResult2::False);
@@ -119,7 +192,7 @@ SCENARIO("Mounting From Memory")
         }
         WHEN("We mount a compressed tar")
         {
-            auto raw_data = loadFile(CMAKE_BINARY_DIR "/archive.tar.gz");
+            auto raw_data = loadFile(ARCHIVE_TAR_GZ_PATH);
             REQUIRE(F.mount<ArchiveNodeMount2>("/tar", raw_data.data(), raw_data.size()) == FSResult2::True);
 
             REQUIRE(F.mkfile("/tar/file") == FSResult2::False);
