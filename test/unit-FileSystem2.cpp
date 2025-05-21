@@ -191,7 +191,6 @@ SCENARIO("mount")
 
             }
         }
-
     }
 }
 
@@ -248,95 +247,83 @@ SCENARIO("write to files")
     }
 }
 
-#if 0
-SCENARIO("mount")
-{
-    GIVEN("A filesystem with some directories and files")
-    {
-        FileSystem2 F;
-        REQUIRE(F.exists("/") == FSResult2::True);
 
-        REQUIRE(F.mkdir("/bin") == FSResult2::True);
-        REQUIRE(F.mkdir("/mem") == FSResult2::True);
-        REQUIRE(F.mkdir("/mem/dir") == FSResult2::True);
-        REQUIRE(F.mkfile("/mem/dir/file.txt") == FSResult2::True);
-
-        REQUIRE(F.mkdir("/build") == FSResult2::True);
-        REQUIRE( FSResult2::True == F.mount<FSNodeHostMount>("/bin", CMAKE_SOURCE_DIR));
-        REQUIRE( FSResult2::True == F.mount<FSNodeHostMount>("/build", CMAKE_BINARY_DIR));
-
-        REQUIRE(F.exists("/bin/conanfile.py") == FSResult2::True);
-
-
-        std::filesystem::remove_all(CMAKE_BINARY_DIR "/hello");
-        REQUIRE(FSResult2::True == F.mkdir("/build/hello"));
-        REQUIRE(FSResult2::True == F.exists("/build/hello"));
-        REQUIRE(std::filesystem::exists(CMAKE_BINARY_DIR "/hello" ));
-
-        REQUIRE(FSResult2::True == F.mkfile("/build/hello/file.txt"));
-        REQUIRE(FSResult2::True == F.exists("/build/hello/file.txt"));
-        REQUIRE(std::filesystem::exists(CMAKE_BINARY_DIR "/hello/file.txt" ));
-
-        {
-            REQUIRE(FSResult2::True == F.mkdir("/path"));
-            REQUIRE(FSResult2::True == F.mkdir("/path/to"));
-            REQUIRE(FSResult2::True == F.mkdir("/path/to/mount"));
-            REQUIRE(FSResult2::True == F.mount<FSNodeHostMount>("/path/to/mount", CMAKE_BINARY_DIR));
-
-            REQUIRE(FSResult2::True == F.exists("/path/to/mount/hello/file.txt"));
-            auto pp = F.find_last_valid_virtual_node("/path/to/mount/hello/file.txt");
-            REQUIRE(pp.first->name == "mount");
-
-            REQUIRE(FSResult2::True == F.unmount("/path/to/mount") );
-            REQUIRE(FSResult2::False == F.exists("/path/to/mount/hello/file.txt"));
-
-            {
-                auto pp2 = F.find_last_valid_virtual_node("/path/to/mount");
-                REQUIRE(pp2.first->name == "mount");
-            }
-            {
-                auto pp2 = F.find_last_valid_virtual_node("/mem/dir/file.txt");
-                REQUIRE(pp2.first->name == "file.txt");
-            }
-
-        }
-
-        for(auto p : F.list_dir("/"))
-        {
-            std::cout << p << std::endl;
-        }
-
-        REQUIRE(FSResult2::True == F.unmount("/build") );
-        for(auto p : F.list_dir("/build"))
-        {
-            std::cout << p << std::endl;
-        }
-
-    }
-}
-
-
-SCENARIO("write to files")
+SCENARIO("Remove files/directories")
 {
     GIVEN("A filesystem with some directories and files")
     {
         FileSystem2 F;
         REQUIRE(F.exists("/") == FSResult2::True);
         REQUIRE(F.mkdir("/folder") == FSResult2::True);
-        REQUIRE(F.mkfile("/folder/file.txt") == FSResult2::True);
+        REQUIRE(F.mkdir("/folder/A") == FSResult2::True);
+        REQUIRE(F.mkfile("/folder/B") == FSResult2::True);
+        REQUIRE(F.mkfile("/C") == FSResult2::True);
+        REQUIRE(F.mkdir("/D") == FSResult2::True);
 
-        {
-            auto out = F.open("/folder/file.txt", std::ios::out);
-            out << "Hello";
-        }
+        REQUIRE(F.exists("/folder") == FSResult2::True);
+        REQUIRE(F.exists("/folder/A") == FSResult2::True);
+        REQUIRE(F.exists("/folder/B") == FSResult2::True);
+        REQUIRE(F.exists("/C") == FSResult2::True);
+        REQUIRE(F.exists("/D") == FSResult2::True);
 
-        {
-            std::string str;
-            auto in = F.open("/folder/file.txt", std::ios::in);
-            in >> str;
-            REQUIRE(str == "Hello");
-        }
+
+        // not empty
+        REQUIRE(F.rm("/folder") == FSResult2::False);
+        REQUIRE(F.rm("/folder/A") == FSResult2::True);
+        REQUIRE(F.exists("/folder/A") == FSResult2::False);
+
+        REQUIRE(F.rm("/folder/B") == FSResult2::True);
+        REQUIRE(F.exists("/folder/B") == FSResult2::False);
+
+        REQUIRE(F.rm("/C") == FSResult2::True);
+        REQUIRE(F.rm("/D") == FSResult2::True);
+        REQUIRE(F.exists("/C") == FSResult2::False);
+        REQUIRE(F.exists("/D") == FSResult2::False);
+
+        REQUIRE(F.rm("/C/does/not/exist") == FSResult2::False);
     }
 }
 
-#endif
+
+
+SCENARIO("Remove files/directories on host")
+{
+    GIVEN("A filesystem with some directories and files")
+    {
+        FileSystem2 F;
+        REQUIRE(F.exists("/") == FSResult2::True);
+
+        std::filesystem::remove_all(CMAKE_BINARY_DIR "/folder");
+        std::filesystem::create_directories(CMAKE_BINARY_DIR "/folder");
+
+        REQUIRE(F.mkdir("/folder") == FSResult2::True);
+        REQUIRE( FSResult2::True == F.mount<FSNodeHostMount>("/folder", CMAKE_BINARY_DIR "/folder"));
+
+        REQUIRE(F.mkdir("/folder/A") == FSResult2::True);
+        REQUIRE(F.mkfile("/folder/B") == FSResult2::True);
+        REQUIRE(F.mkfile("/C") == FSResult2::True);
+        REQUIRE(F.mkdir("/D") == FSResult2::True);
+
+        REQUIRE(F.exists("/folder") == FSResult2::True);
+        REQUIRE(F.exists("/folder/A") == FSResult2::True);
+        REQUIRE(F.exists("/folder/B") == FSResult2::True);
+        REQUIRE(F.exists("/C") == FSResult2::True);
+        REQUIRE(F.exists("/D") == FSResult2::True);
+
+
+        // not empty
+        REQUIRE(F.rm("/folder") == FSResult2::False);
+        REQUIRE(F.rm("/folder/A") == FSResult2::True);
+        REQUIRE(F.exists("/folder/A") == FSResult2::False);
+
+        REQUIRE(F.rm("/folder/B") == FSResult2::True);
+        REQUIRE(F.exists("/folder/B") == FSResult2::False);
+
+        REQUIRE(F.rm("/C") == FSResult2::True);
+        REQUIRE(F.rm("/D") == FSResult2::True);
+        REQUIRE(F.exists("/C") == FSResult2::False);
+        REQUIRE(F.exists("/D") == FSResult2::False);
+
+        REQUIRE(F.rm("/C/does/not/exist") == FSResult2::False);
+    }
+}

@@ -57,20 +57,6 @@ struct FSNode
     virtual ~FSNode()
     {
     }
-
-    //virtual result_type mkdir(path_type relPath) = 0;
-    //virtual result_type mkfile(path_type relPath) = 0;
-    //virtual Generator<path_type> list_dir(path_type relPath) = 0;
-
-    /**
-     * @brief open
-     * @param relPath
-     * @param mode
-     * @return
-     *
-     * return an opened streambuf to the file indicated by relpath
-     */
-    virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) = 0;
 };
 
 struct FSNodeFile : public FSNode
@@ -79,16 +65,6 @@ struct FSNodeFile : public FSNode
 
     FSNodeFile(std::string const & _name) : FSNode(_name)
     {
-    }
-
-    virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) override
-    {
-        (void)relPath;
-        (void)mode;
-        // RelPath must be empty because this is a file node
-        assert(relPath.empty());
-        auto bff = std::make_unique<vector_backed_streambuf>(data);
-        return bff;
     }
 };
 
@@ -104,8 +80,10 @@ struct FSMountBase
     virtual result_type exists(path_type relPath) const = 0;
     virtual result_type mkdir(path_type relPath) = 0;
     virtual result_type mkfile(path_type relPath) = 0;
+    virtual result_type rm(path_type relPath) = 0;
     virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) = 0;
 };
+
 struct FSNodeDir : public FSNode
 {
     std::map<std::string, std::shared_ptr<FSNode> > nodes;
@@ -116,79 +94,7 @@ struct FSNodeDir : public FSNode
     FSNodeDir(std::string const & _name) : FSNode(_name)
     {
     }
-    virtual bool contains(std::string node_name) const
-    {
-        return nodes.contains(node_name);
-    }
 
-    virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) override
-    {
-        assert(!relPath.has_root_directory());
-        if(mount)
-            return mount->open(relPath, mode);
-        // an empty path always means
-        // this current node, which has to exist
-        if(relPath.empty())
-            return nullptr;
-
-        auto [first, remaining] = split_first(relPath);
-        auto first_str = first.generic_string();
-
-        auto it = nodes.find(first);
-        if(it != nodes.end())
-        {
-            return it->second->open(remaining, mode);
-        }
-        return nullptr;
-    }
-
-    virtual result_type rm(path_type relPath)
-    {
-        assert(!relPath.has_root_directory());
-        auto [first, remaining] = split_first(relPath);
-        auto first_str = first.generic_string();
-
-        if(remaining.empty())
-        {
-            // first_str needs to be deleted
-            auto it = nodes.find(first_str);
-            if(it == nodes.end())
-            {
-                // file/folder doesn't exist
-                return result_type::False;
-            }
-            auto f_p = std::dynamic_pointer_cast<FSNodeFile>(it->second);
-            if(f_p)
-            {
-                // can erase
-                nodes.erase(it);
-                return result_type::True;
-            }
-            auto d_p = std::dynamic_pointer_cast<FSNodeDir>(it->second);
-            if(d_p)
-            {
-                // not empty. cannot delete
-                if(!d_p->nodes.empty()) return result_type::False;
-                nodes.erase(it);
-                return result_type::True;
-            }
-            return result_type::UnknownError;
-        }
-        else
-        {
-            auto it = nodes.find(first_str);
-            //  dones't exist
-            if(it == nodes.end())
-                return result_type::False;
-
-            auto d_p = std::dynamic_pointer_cast<FSNodeDir>(it->second);
-            if(d_p)
-            {
-                return d_p->rm(remaining);
-            }
-            return result_type::UnknownError;
-        }
-    }
 };
 
 /**
@@ -207,6 +113,12 @@ struct FSNodeHostMount : public FSMountBase
     {
         auto b = std::filesystem::exists( m_path_on_host / relPath );
         return b ? result_type::True : result_type::False;
+    }
+
+    virtual result_type rm(path_type relPath) override
+    {
+        (void)relPath;
+        return std::filesystem::remove(m_path_on_host / relPath) ? result_type::True : result_type::False;
     }
 
     virtual result_type mkdir(path_type relPath) override
@@ -346,6 +258,7 @@ struct FileSystem2
         }
         return result_type::False;
     }
+
     result_type rm(path_type abs_path)
     {
         _clean(abs_path);
@@ -353,7 +266,41 @@ struct FileSystem2
 
         auto rel_path_to_root = abs_path.relative_path();
 
-        return m_rootNode->rm(rel_path_to_root);
+        auto [mnt, rem] = find_last_valid_virtual_node(abs_path.parent_path());
+
+        auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt);
+        if(d)
+        {
+            if(d->mount)
+            {
+                return d->mount->rm(rem / abs_path.filename());
+            }
+            else
+            {
+                auto it = d->nodes.find(abs_path.filename());
+                if(it != d->nodes.end())
+                {
+                    if(auto cp = std::dynamic_pointer_cast<FSNodeDir>(it->second) )
+                    {
+                        if(!cp->nodes.empty())
+                            return result_type::False;
+                        if(cp->mount)
+                            return result_type::False;
+                        d->nodes.erase(it);
+                        return result_type::True;
+                    }
+                    else
+                    {
+                        d->nodes.erase(it);
+                        return result_type::True;
+                    }
+                    return result_type::True;
+                }
+                // doens't exist
+                return result_type::False;
+            }
+        }
+        return result_type::False;
     }
 
     result_type unmount(path_type abs_path_in_vfs)
