@@ -99,11 +99,12 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
     ################################################################################
 
 
-    find_package(readerwriterqueue)
-    find_package(concurrentqueue)
-    find_package(LibArchive)
+    find_package(readerwriterqueue REQUIRED)
+    find_package(concurrentqueue   REQUIRED)
+    find_package(LibArchive        REQUIRED)
+    find_package(ZLIB              REQUIRED)
 
-    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue LibArchive::LibArchive )
+    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue LibArchive::LibArchive ZLIB::ZLIB )
 
     add_executable(terminal examples/terminal.cpp)
     target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET}  ${third_party_libs})
