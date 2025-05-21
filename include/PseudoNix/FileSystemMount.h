@@ -40,6 +40,11 @@ struct FSMountBase
     virtual NodeType2 getType(path_type relPath) const = 0;
 
     virtual Generator<path_type> list_dir(path_type relPath) = 0;
+
+    virtual std::string get_info()
+    {
+        return "No Info";
+    }
 };
 
 }

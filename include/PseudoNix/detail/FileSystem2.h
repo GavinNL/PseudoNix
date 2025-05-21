@@ -573,6 +573,34 @@ struct FileSystem2
         }
     }
 
+    /**
+     * @brief list_nodes_recursive
+     * @param absPath
+     * @return
+     *
+     * Return a generator that gernates a list of all virtual filessystem
+     * nodes. Mounted files/folders are not returned
+     */
+    Generator<path_type> list_nodes_recursive(path_type absPath) const
+    {
+        auto [mnt, rem] = find_last_valid_virtual_node(absPath);
+        if(!rem.empty())
+            co_return;
+
+        if(auto d = std::dynamic_pointer_cast<FSNodeDir const>(mnt))
+        {
+            for(auto & n : d->nodes)
+            {
+                co_yield absPath / n.first;
+                for(auto cc : list_nodes_recursive(absPath / n.first))
+                {
+                    co_yield cc;
+                }
+            }
+        }
+
+    }
+
     NodeRef fs(path_type absPath)
     {
         _clean(absPath);

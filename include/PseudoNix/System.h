@@ -19,8 +19,6 @@
 #include "helpers.h"
 
 
-#include "ArchiveMount.h"
-
 #define PSEUDONIX_VERSION_MAJOR 0
 #define PSEUDONIX_VERSION_MINOR 1
 
@@ -1989,54 +1987,26 @@ protected:
         };
 
 #if 1
-        DEF_FUNC_HELP("mount", "Mounts host filesystems inside the VFS")
+        DEF_FUNC_HELP("host", "Does stuff with the host")
         {
-            //
-            // mount [host/archive] <src> <mnt point>
-            //
-
             PSEUDONIX_PROC_START(ctrl);
 
-            // if(ARGS.size() == 1)
-            // {
-            //     auto r = SYSTEM.m_rootNode;
-            //     for(auto & n : SYSTEM.m_nodes)
-            //     {
-            //         if( std::holds_alternative<NodeMount>(n.second) )
-            //         {
-            //             COUT << std::format("{} on {}\n", n.first.generic_string(), std::get<NodeMount>(n.second).host_path.generic_string());
-            //         }
-            //     }
-            //     co_return 0;
-            // }
             std::map<std::string, std::string> typeToMnt;
 
+            // 0    1     2   3
+            // host mount SRC DST
+            //
             if(ARGS.size() == 4)
             {
-                auto TYPE = ARGS[1];
+                System::path_type ACT  = ARGS[1];
                 System::path_type SRC  = ARGS[2];
                 System::path_type DST  = ARGS[3];
-                HANDLE_PATH(CWD, DST);
-                HANDLE_PATH(CWD, SRC);
 
-                if(TYPE == "archive")
+                if(ACT == "mount")
                 {
-                    if( SYSTEM.getType(SRC) == NodeType::MemFile)
-                    {
-                        auto  p = SYSTEM.getVirtualFileData(SRC);
-                        if(!p)
-                        {
-                            COUT << std::format("Archive {} does not exist\n", SRC.generic_string());
-                            co_return 1;
-                        }
+                    HANDLE_PATH(CWD, DST);
+                    HANDLE_PATH(CWD, SRC);
 
-                        auto er = SYSTEM.mount<ArchiveMount>(DST, p->data(), p->size());
-                        FS_PRINT_ERROR(er);
-                        co_return 0;
-                    }
-                }
-                else if(TYPE == "host")
-                {
                     if( !std::filesystem::is_directory(SRC))
                     {
                         COUT << std::format("Directory {} does not exist on the host\n", SRC.generic_string());
@@ -2044,13 +2014,69 @@ protected:
                     }
                     auto er = SYSTEM.mount<FSNodeHostMount>(DST, SRC);
                     FS_PRINT_ERROR(er);
-                    co_return 0;
                 }
+                co_return 0;
             }
 
             COUT << std::format("Unknown error\n");
 
             co_return 1;
+        };
+
+        auto _mountInfo = std::make_shared< std::map<std::string, std::string> >();
+        (*funcDescs)["mount"] = "Mounts host filesystems inside the VFS";
+        m_funcs["mount"] = [_mountInfo](e_type ctrl) -> task_type
+        {
+            //
+            // mount [host/archive] <src> <mnt point>
+            //
+
+            PSEUDONIX_PROC_START(ctrl);
+
+            int ret_value;
+
+            if(ARGS.size() == 1)
+            {
+                // list all mounts
+                for(auto c : SYSTEM.list_nodes_recursive("/"))
+                {
+                    auto [srcMnt, srcRem ] = SYSTEM.find_last_valid_virtual_node(c);
+                    if(auto d = std::dynamic_pointer_cast<FSNodeDir>(srcMnt))
+                    {
+                        if(d->mount)
+                        {
+                            COUT << std::format("{} on {}\n", d->mount->get_info(), c.generic_string());
+                        }
+                    }
+                }
+            }
+            else if(ARGS.size() == 4)
+            {
+                auto TYPE = ARGS[1];
+                System::path_type SRC  = ARGS[2];
+                System::path_type DST  = ARGS[3];
+                HANDLE_PATH(CWD, DST);
+                HANDLE_PATH(CWD, SRC);
+
+                std::vector<std::string> mount_args = { TYPE, "mount"};
+                for(size_t i=2;i<ARGS.size();i++)
+                {
+                    mount_args.push_back(ARGS[i]);
+                }
+                auto E = System::parseArguments(mount_args);
+                E.in = ctrl->in;
+                E.out = ctrl->out;
+
+                auto s_pid = ctrl->executeSubProcess(E);
+                HANDLE_AWAIT_TERM( co_await ctrl->await_finished(s_pid), ctrl);
+
+                if(!to_number(ENV["?"], ret_value))
+                {
+                    co_return 0;
+                }
+            }
+
+            co_return std::move(ret_value);
         };
 
         DEF_FUNC_HELP("umount", "Unmounts a host filesystem")

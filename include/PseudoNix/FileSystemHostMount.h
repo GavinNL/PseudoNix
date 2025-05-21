@@ -5,7 +5,7 @@
 #include <cassert>
 #include <filesystem>
 #include <fstream>
-#include <vector>
+#include <format>
 #include "FileSystemMount.h"
 
 namespace PseudoNix
@@ -186,6 +186,11 @@ struct FSNodeHostMount : public FSMountBase
         for (const auto& entry : fs::directory_iterator(abs_path)) {
             co_yield entry.path().lexically_proximate(abs_path);
         }
+    }
+
+    std::string get_info() override
+    {
+        return std::format("host://{}", m_path_on_host.generic_string());
     }
 };
 

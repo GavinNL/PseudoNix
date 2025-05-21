@@ -5,6 +5,7 @@
 #include <archive_entry.h>
 #include <map>
 #include <vector>
+#include <format>
 #include "../FileSystemMount.h"
 #include "../FileSystemHelpers.h"
 
@@ -118,6 +119,7 @@ struct ArchiveNodeMount2 : public FSMountBase
     path_type host_path;
     void const * _data = nullptr;
     size_t _length = 0;
+    std::string _info;
     struct EntryInfo
     {
         bool is_dir = false;
@@ -151,10 +153,16 @@ struct ArchiveNodeMount2 : public FSMountBase
     }
 
     ArchiveNodeMount2(void const* data, size_t length)
+        :ArchiveNodeMount2(data, length, std::format("{}", data))
+    {
+
+    }
+
+    ArchiveNodeMount2(void const* data, size_t length, std::string info)
     {
         _data = data;
         _length = length;
-
+        _info = info;
         ArchiveEntryStreamBuf buf;
         if(!buf.open_archive(data, length))
         {
@@ -175,9 +183,12 @@ struct ArchiveNodeMount2 : public FSMountBase
             _files[pth] = e;
 
         } while(true);
-
     }
 
+    std::string get_info() override
+    {
+        return _info;
+    }
     result_type exists(path_type path) const override
     {
         if(path == ".")
