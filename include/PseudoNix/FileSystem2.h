@@ -68,6 +68,14 @@ struct FSNodeFile : public FSNode
     }
 };
 
+enum class NodeType2 {
+    Unknown,
+    MemFile,
+    MemDir,
+    MountFile,
+    MountDir,
+    NoExist
+};
 
 struct FSMountBase
 {
@@ -82,6 +90,7 @@ struct FSMountBase
     virtual result_type mkfile(path_type relPath) = 0;
     virtual result_type rm(path_type relPath) = 0;
     virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) = 0;
+    virtual NodeType2 getType(path_type relPath) const = 0;
 };
 
 struct FSNodeDir : public FSNode
@@ -94,8 +103,9 @@ struct FSNodeDir : public FSNode
     FSNodeDir(std::string const & _name) : FSNode(_name)
     {
     }
-
 };
+
+
 
 /**
  * @brief The FSNodeHostMount class
@@ -107,6 +117,19 @@ struct FSNodeHostMount : public FSMountBase
     std::filesystem::path m_path_on_host;
     FSNodeHostMount(std::filesystem::path path_on_host) : m_path_on_host(path_on_host)
     {
+    }
+
+    virtual NodeType2 getType(path_type relPath) const override
+    {
+        if( std::filesystem::is_directory(m_path_on_host / relPath) )
+        {
+            return NodeType2::MountDir;
+        }
+        if( std::filesystem::is_regular_file(m_path_on_host / relPath) )
+        {
+            return NodeType2::MountFile;
+        }
+        return NodeType2::NoExist;
     }
 
     virtual result_type exists(path_type relPath) const override
@@ -365,6 +388,9 @@ struct FileSystem2
      *
      * return the node to the first path that contains a mount
      */
+    std::pair<std::shared_ptr<const FSNode>, path_type> find_last_valid_virtual_node(path_type abs_path) const {
+        return const_cast<FileSystem2*>(this)->find_last_valid_virtual_node(abs_path);
+    }
     std::pair<std::shared_ptr<FSNode>, path_type> find_last_valid_virtual_node(path_type abs_path)
     {
         _clean(abs_path);
@@ -407,6 +433,98 @@ struct FileSystem2
         }
     }
 
+    result_type move(path_type srcAbsPath, path_type dstAbsPath)
+    {
+        if(!exists(srcAbsPath))
+        {
+            // src file doesn't exist
+            return result_type::False;
+        }
+        if(!exists(dstAbsPath.parent_path()))
+        {
+            // parent folder of dst doesnt exist
+            return result_type::False;
+        }
+
+        auto tSrc = getType(srcAbsPath);
+        auto tDst = getType(dstAbsPath);
+
+        if( tDst == NodeType2::MemDir || tDst == NodeType2::MountDir)
+            dstAbsPath = dstAbsPath / srcAbsPath.filename();
+
+        auto tDstFolder = getType(dstAbsPath.parent_path());
+
+        if(tSrc == NodeType2::MemFile && tDstFolder == NodeType2::MemDir )
+        {
+            auto [srcMnt, srcRem ] = find_last_valid_virtual_node(srcAbsPath);
+            auto [dstMnt, dstRem ] = find_last_valid_virtual_node(dstAbsPath.parent_path());
+
+            auto srcFile_p = std::dynamic_pointer_cast<FSNodeFile>(srcMnt);
+            auto dstDir_p  = std::dynamic_pointer_cast<FSNodeDir>(dstMnt);
+
+            dstDir_p->nodes[dstAbsPath.filename()] = srcFile_p;
+
+            rm(srcAbsPath);
+
+            return result_type::True;
+        }
+        else
+        {
+            // do the long way around, copy+delete
+            auto ret = copy(srcAbsPath, dstAbsPath);
+            if(ret != result_type::True)
+                return ret;
+            ret = rm(srcAbsPath);
+            if(ret != result_type::True)
+                return ret;
+            return result_type::True;
+        }
+        return result_type::False;
+    }
+
+    result_type copy(path_type  srcAbsPath, path_type  dstAbsPath)
+    {
+        if(!exists(srcAbsPath))
+        {
+            // src file doesn't exist
+            return result_type::False;
+        }
+
+        auto dType = getType(dstAbsPath);
+        if(dType == NodeType2::MemDir || dType == NodeType2::MountDir)
+        {
+            dstAbsPath = dstAbsPath / srcAbsPath.filename();
+        }
+
+        if(!exists(dstAbsPath))
+        {
+            auto v = mkfile(dstAbsPath);
+            if(v != result_type::True)
+                return result_type::False; // cannot create dst file
+        }
+        auto Fout = this->open(dstAbsPath, std::ios::out | std::ios::binary);
+        auto Fin  = this->open(srcAbsPath, std::ios::in | std::ios::binary);
+
+        if(!Fout.good() )
+            return result_type::False;
+        if(!Fin.good() )
+            return result_type::False;
+
+        std::vector<char> _buff(1024 * 1024);
+
+        while(!Fin.eof())
+        {
+            Fin.read(&_buff[0], 1024*1024 - 1);
+            auto s = Fin.gcount();
+            if(s==0)
+                break;
+            Fout.write(&_buff[0], s);
+        }
+
+        return result_type::True;
+    }
+
+
     FileStream open(path_type abs_path,  std::ios::openmode openmode)
     {
         _clean(abs_path);
@@ -437,6 +555,28 @@ struct FileSystem2
             }
         }
         return {};
+    }
+
+    NodeType2 getType(path_type absPath) const
+    {
+        auto [mnt, rem] = find_last_valid_virtual_node(absPath);
+
+        if(rem.empty())
+        {
+            if(auto d = std::dynamic_pointer_cast<const FSNodeDir>(mnt))
+            {
+                if(d->mount)
+                    return d->mount->getType(rem);
+                return NodeType2::MemDir;
+            }
+            return NodeType2::MemFile;
+        }
+        if(auto d = std::dynamic_pointer_cast<const FSNodeDir>(mnt))
+        {
+            if(d->mount)
+                return d->mount->getType(rem);
+        }
+        return NodeType2::NoExist;
     }
 
     std::shared_ptr<FSNodeDir> m_rootNode = std::make_shared<FSNodeDir>("/");
