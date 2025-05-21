@@ -1,6 +1,5 @@
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
-#include <PseudoNix/FileSystem.h>
 #include <PseudoNix/HostMount.h>
 #include <PseudoNix/ArchiveMount.h>
 
@@ -162,6 +161,7 @@ R"foo(
         sys.spawnProcess({"mount", "archive", "/share/archive.tar.gz", "/mnt/ar_vfs"});
     }
 
+
     {
         // The data for the archive is a available at compile time
         // mount the raw data directly at /mnt/ar_app
@@ -176,11 +176,13 @@ R"foo(
     }
 
 #if !defined __EMSCRIPTEN__
+#if !defined _WIN32
     {
         // Mount a temporary folder
         sys.mkdir("/tmp");
         sys.spawnProcess({"mount", "host", "/tmp", "/tmp"});
     }
+#endif
 #endif
 
 

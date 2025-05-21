@@ -5,13 +5,16 @@
 PseudoNix is an embeddable header-only, Linux-like environment you can integrate
 directly into your project to provide concurrent process like behaviour.
 
-[Live Demo Using ImGui](https://filedn.eu/l0rnKqYfU3SSI61WTa9844f/mini/index.html)
+[Live Demo Using ImGui](https://filedn.eu/l0rnKqYfU3SSI61WTa9844f/PseudoNix/index.html)
 
 ## Dependendices
 
-* C++20 Compiler
-* [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) by cameron314 (available on Conan)
-* [concurrentqueue](https://github.com/cameron314/concurrentqueue) by cameron314 (available on Conan)
+* **Required**
+  * C++20 Compiler
+  * [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) by cameron314 (available on Conan)
+  * [concurrentqueue](https://github.com/cameron314/concurrentqueue) by cameron314 (available on Conan)
+* **Optional**
+  * [libarchive](https://github.com/libarchive/libarchive) (available on Conan) - required to mount tar/tar.gz files
 
 ## Compiling the Examples
 
@@ -35,6 +38,13 @@ If you are using the Conan Package Manager, you can add the following to your de
 ```python
     self.requires("readerwriterqueue/1.0.6")
     self.requires("concurrentqueue/1.0.4")
+
+    # Optional: Allows mounting tar/tar.gz files
+    self.requires("libarchive/3.7.9")
+
+    # Optional: Provides a working GUI terminal emulator
+    #           for Imgui applications
+    self.requires("imgui/1.91.8-docking")
 ```
 
 Add this repo as a submodule and then add it as a subdirectory
@@ -767,12 +777,9 @@ PseudoNix::System M;
 M.mkdir("/bin");
 
 // create an empty file
-M.touch("/bin/hello.sh");
+M.mkfile("/bin/hello.sh");
 
-// Mount a host directory inside the virtual
-// filesystem
-M.mkdir("/mnt");
-M.mount(path_on_host, "/mnt");
+
 
 // List all files/folders
 for(auto u : M.list_dir(/mnt))
@@ -792,5 +799,64 @@ Some common filesystem utilities are also provided for the shell:
  * cp - single file only. No directories, no globbing
  * mv - single file only. No directories, no globbing
 
-See the [Filesystem Unit Test](/test/unit-FileSystem.cpp) for more usage.
+### Mounting Host Directories
+
+You can mount a host directory inside the virtual file system using the following:
+
+```bash
+
+#include <PseudoNix/System.h>
+#include <PseudoNix/Shell.h>
+#include <PseudoNix/HostMount.h>
+#include <PseudoNix/ArchiveMount.h> // requires libarchive
+
+int main()
+{
+    PseudoNix::System M;
+
+    PseudoNix::enable_default_shell(M);
+    PseudoNix::enable_archive_mount(M); // lets you mount tar/tar.gz files
+    PseudoNix::enable_host_mount(M);    // lets you moung host file systems
+
+    // mount the user's home folderfolder
+    M.mkdir("/host");
+    sys.mount<PseudoNix::HostMount>("/host", "/home/user");
+
+    // mount an uncompressed tar file
+    M.mkdir("/tar");
+    M.mount<PseudoNix::ArchiveMount>("/tar", "/path/to/archive.tar");
+    
+    // mount a compressed tar file
+    M.mkdir("/tar.gz");
+    M.mount<PseudoNix::ArchiveMount>("/tar", "/path/to/archive.tar.gz");
+
+    // mount a tar file that is in embedded memory
+    M.mkdir("/tar_embedded");
+    M.mount<PseudoNix::ArchiveMount>("/tar_embedded", data_ptr, data_size);
+}
+
+```
+
+### Accessing File Content
+
+Now that you have either created virtual files or mounted host directories. You can 
+can access the file data in a number of ways.
+
+```c++
+    // Simple append a string to an already created file
+    M.mkfile("/path/to/file.txt");
+    M.fs("/path/to/file.txt") << "Hello world";
+
+    // get an std::istream to read directly from
+    // the data
+    auto in = M.open("/path/to/file.txt", std::ios::in);
+    while(in.eof())
+    {
+        std::string word;
+        in >> word;
+    }
+```
+
+
+See the [Filesystem Unit Test](/test/unit-FileSystem2.cpp) for more usage.
 
