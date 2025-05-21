@@ -420,7 +420,7 @@ SCENARIO("Copying file from Mount->Mem->Mount")
 
         auto ACTUAL_DATA = readFile(CMAKE_SOURCE_DIR "/archive/file.txt");
         REQUIRE(ACTUAL_DATA.size() > 0);
-
+        REQUIRE(ACTUAL_DATA == "Hello world");
         REQUIRE(FSResult2::True == F.exists("/src/file.txt") );
 
         THEN("We can copy from mount file to mem file")
