@@ -13,6 +13,7 @@ class EBashRecipe(ConanFile):
         self.requires("readerwriterqueue/1.0.6")
         self.requires("concurrentqueue/1.0.4")
         self.requires("libarchive/3.7.9")
+        self.requires("zlib/1.3.1")
 
         self.requires("doctest/2.4.11")
         self.requires("imgui/1.91.8-docking")
