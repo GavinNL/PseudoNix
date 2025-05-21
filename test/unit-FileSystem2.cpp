@@ -9,7 +9,10 @@ std::string StreamToString(std::istream & in)
 {
     std::stringstream buffer;
     buffer << in.rdbuf();        // read entire file into buffer
-    return buffer.str();           // convert to string
+    auto str = buffer.str();           // convert to string
+    if(str.ends_with('\n'))
+        str.pop_back();
+    return str;
 }
 std::string readFile(const std::string& filename) {
     std::ifstream file(filename);  // open file
@@ -17,7 +20,10 @@ std::string readFile(const std::string& filename) {
 
     std::stringstream buffer;
     buffer << file.rdbuf();        // read entire file into buffer
-    return buffer.str();           // convert to string
+    auto str = buffer.str();           // convert to string
+    if(str.ends_with('\n'))
+        str.pop_back();
+    return str;
 }
 
 SCENARIO("split_first")
