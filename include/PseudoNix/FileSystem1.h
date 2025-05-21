@@ -11,6 +11,7 @@
 #include <fstream>
 #include <any>
 #include <vector>
+#include <memory>
 #include "generator.h"
 
 namespace PseudoNix

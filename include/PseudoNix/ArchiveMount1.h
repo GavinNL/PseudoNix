@@ -1,7 +1,7 @@
 #ifndef PSEUDONIX_ARCHIVE_MOUNT_H
 #define PSEUDONIX_ARCHIVE_MOUNT_H
 
-#include "FileSystem.h"
+#include "FileSystem1.h"
 
 #include <archive.h>
 #include <archive_entry.h>
@@ -112,7 +112,7 @@ protected:
 
 struct ArchiveNodeMount : public PseudoNix::MountHelper
 {
-    std::filesystem::path host_path;
+    std::filesystem::path _host_path;
     void const * _data = nullptr;
     size_t _length = 0;
     struct EntryInfo
@@ -122,7 +122,7 @@ struct ArchiveNodeMount : public PseudoNix::MountHelper
 
     std::map<std::filesystem::path, EntryInfo> _files;
 
-    ArchiveNodeMount(std::filesystem::path const & hostPath) : host_path(hostPath)
+    ArchiveNodeMount(std::filesystem::path const & hostPath) : _host_path(hostPath)
     {
         ArchiveEntryStreamBuf buf;
         buf.open_archive(hostPath);
@@ -182,7 +182,7 @@ struct ArchiveNodeMount : public PseudoNix::MountHelper
     {
         return false;
         assert(!path.has_root_directory());
-        return std::filesystem::remove(host_path / path);
+        return std::filesystem::remove(_host_path / path);
     }
     bool is_dir(std::filesystem::path const & path) const  override
     {
@@ -215,7 +215,7 @@ struct ArchiveNodeMount : public PseudoNix::MountHelper
     bool is_empty(std::filesystem::path const & path) const  override
     {
         namespace fs = std::filesystem;
-        auto abs_path = host_path / path;
+        auto abs_path = _host_path / path;
         return fs::is_empty(abs_path);
     }
     PseudoNix::generator<std::filesystem::path> list_dir(std::filesystem::path path) const  override
@@ -236,11 +236,23 @@ struct ArchiveNodeMount : public PseudoNix::MountHelper
     {
         (void)mode;
         auto p = std::make_unique<ArchiveEntryStreamBuf>();
-        if(!host_path.empty())
-            p->open(host_path, path);
+        if(!_host_path.empty())
+            p->open(_host_path, path);
         else
             p->open(_data, _length, path);
         return p;
+    }
+
+    // MountHelper interface
+public:
+    bool is_read_only(const std::filesystem::__cxx11::path &path) const override
+    {
+        (void)path;
+        return true;
+    }
+    std::filesystem::__cxx11::path host_path() const override
+    {
+        return this->_host_path;
     }
 };
 

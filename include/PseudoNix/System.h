@@ -1855,8 +1855,15 @@ protected:
         };
 
 #define FS_PRINT_ERROR(_error) \
-        (void)_error; \
-        COUT << std::format("Unknown error");
+        switch(_error)\
+        {\
+        case False:\
+        case True:\
+            break;\
+        case UnknownError: COUT << std::format("Unknown Error");\
+            break;\
+        }
+
 
         DEF_FUNC_HELP("ls", "Lists files and directories")
         {
@@ -1890,6 +1897,7 @@ protected:
                 HANDLE_PATH(CWD, path);
 
                 auto res = SYSTEM.mkdir(path);
+
                 FS_PRINT_ERROR(res);
             }
             else

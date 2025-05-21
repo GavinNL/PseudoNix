@@ -921,7 +921,10 @@ System::task_type shell_coro(System::e_type ctrl)
         }
         if(load_etc_profile && SYSTEM.exists("/etc/profile"))
         {
-            profile_script += SYSTEM.file_to_string("/etc/profile");
+            auto in = SYSTEM.open("/etc/profile", std::ios::in);
+            std::stringstream buffer;
+            buffer << in.rdbuf();        // read entire file into buffer
+            profile_script += buffer.str();
         }
         if(_args.size() > 1)
         {
@@ -930,7 +933,11 @@ System::task_type shell_coro(System::e_type ctrl)
                 script_to_load_path = CWD / script_to_load_path;
             if(SYSTEM.exists(script_to_load_path))
             {
-                profile_script = SYSTEM.file_to_string(script_to_load_path);
+                auto in = SYSTEM.open(script_to_load_path, std::ios::in);
+                std::stringstream buffer;
+                buffer << in.rdbuf();        // read entire file into buffer
+
+                profile_script = buffer.str();
                 // add the exit command just in case
                 // so that the shell command will return the last
                 // exit code

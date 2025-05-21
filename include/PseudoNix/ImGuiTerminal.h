@@ -4,6 +4,9 @@
 #include "System.h"
 #include "ImGuiConsoleWidget.h"
 #include <imgui.h>
+#include <imgui_internal.h>
+
+extern IMGUI_API ImGuiContext* GImGui;
 
 namespace PseudoNix
 {
@@ -53,13 +56,15 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
     int frameCount[2] = {ImGui::GetFrameCount()-1, ImGui::GetFrameCount()-1};
     while(open)
     {
+        auto g = ImGui::GetCurrentContext();
+
         frameCount[0] = frameCount[1];
         frameCount[1] = ImGui::GetFrameCount();
         // its possible we could execute the
         // coroutines multiple times per ImGui frame
         // We dont want to draw the wiget multiple times
         // so only do this if the frames are different
-        if(frameCount[0] != frameCount[1])
+        if(g->WithinFrameScope && frameCount[0] != frameCount[1])
         {
             //--------------------------------------------------------------
             // The ImGui Draw section. Do not co_await
