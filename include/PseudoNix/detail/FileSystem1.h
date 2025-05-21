@@ -12,7 +12,7 @@
 #include <any>
 #include <vector>
 #include <memory>
-#include "generator.h"
+#include "../generator.h"
 
 namespace PseudoNix
 {

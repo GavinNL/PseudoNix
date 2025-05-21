@@ -5,8 +5,8 @@
 #include <archive_entry.h>
 #include <map>
 #include <vector>
-#include "FileSystemMount.h"
-#include "FileSystemHelpers.h"
+#include "../FileSystemMount.h"
+#include "../FileSystemHelpers.h"
 
 namespace PseudoNix
 {

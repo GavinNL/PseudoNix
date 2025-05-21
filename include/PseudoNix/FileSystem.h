@@ -1,7 +1,7 @@
 #ifndef PSEUDONIX_FILESYSTEM_TOP_H_
 #define PSEUDONIX_FILESYSTEM_TOP_H_
 
-#include "FileSystem2.h"
+#include "detail/FileSystem2.h"
 
 namespace PseudoNix
 {

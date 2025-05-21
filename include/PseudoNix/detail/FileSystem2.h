@@ -6,8 +6,8 @@
 #include <cassert>
 #include <filesystem>
 #include <vector>
-#include "FileSystemMount.h"
-#include "FileSystemHelpers.h"
+#include "../FileSystemMount.h"
+#include "../FileSystemHelpers.h"
 
 namespace PseudoNix
 {
