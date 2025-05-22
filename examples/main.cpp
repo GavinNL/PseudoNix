@@ -12,6 +12,7 @@ PseudoNix::System::pid_type launcher_pid = 0xFFFFFFFF;
 
 void handle_sigint(int signum)
 {
+    (void)signum;
     if(_M)
         _M->signal(launcher_pid, PseudoNix::sig_interrupt);
 };
@@ -35,6 +36,30 @@ int main(int argc, char** argv)
     M.setFunction("launcher", "Launches another process and redirects stdin/out to the process.", PseudoNix::launcher_coro);
     //=============================================================================
 
+    M.setFunction("bad", "A bad function that does not listen to signals", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
+    {
+        // Macro to define a few variables such as
+        // IN, OUT, ENV, SYSTEM, ARGS, PID
+        PSEUDONIX_PROC_START(ctrl);
+
+        PSEUDONIX_TRAP {
+            std::cerr << "BAD TRAPPED" << std::endl;
+        };
+        COUT << std::format("BAD process started. Awaiting, but not listening to signals\n");
+
+        while(true)
+        {
+            // await, but dont do anything with the
+            // return code.
+            auto y = co_await ctrl->await_yield();
+            (void)y;
+
+            auto x = co_await ctrl->await_yield_for(std::chrono::milliseconds(75));
+            (void)x;
+        }
+
+        co_return 0;
+    });
 
     // If we start our main process, "sh", then it will create its own
     // input and output streams, but we have no way write to the input stream
@@ -63,19 +88,8 @@ int main(int argc, char** argv)
     // THREADPOOL queue.
     //
     // Note:
-    auto p1 = M.spawnProcess({"bgrunner", "THREADPOOL"});
-    auto p2 = M.spawnProcess({"bgrunner", "THREADPOOL"});
-
-    // Since bgrunner is spawned without a shell
-    // there is no way for it to exit by itself
-    // so when the shell process exits, the
-    // while loop will still continue
-    // So to fix this, we'll run one instance of the
-    // taskQueueExecute to see the total number of tasks
-    // there will be without user interaction
-    auto min_tasks   =  M.taskQueueExecute("PRE_MAIN") +
-                       + M.taskQueueExecute("MAIN")
-                       + M.taskQueueExecute("POST_MAIN");
+    M.spawnProcess({"bgrunner", "THREADPOOL"});
+    M.spawnProcess({"bgrunner", "THREADPOOL"});
 
 
     // This while loop is basically your system's gameloop
@@ -83,27 +97,55 @@ int main(int argc, char** argv)
     // in somwhere
     //
     while(true)
-    {       
-        auto total_tasks =  M.taskQueueExecute("PRE_MAIN") +
-                          + M.taskQueueExecute("MAIN")
-                          + M.taskQueueExecute("POST_MAIN");
+    {
+        M.taskQueueExecute("PRE_MAIN");
+        M.taskQueueExecute("MAIN");
+        M.taskQueueExecute("POST_MAIN");
 
-        if(total_tasks == 0)
+        if(M.process_count() == 0)
             break;
 
-        // Then if the total tasks remaining is less than
-        // the min_tasks (ie: sh exited), we can signal the two bgrunners
-        // to exit
-        if(total_tasks < min_tasks)
+        if(!M.isRunning(launcher_pid))
         {
-            std::cerr << "Signaling bgrunners to exit" << std::endl;
-            M.signal(p1, PseudoNix::sig_interrupt);
-            M.signal(p2, PseudoNix::sig_interrupt);
+            // Since bgrunner is spawned without a shell
+            // there is no way for it to exit by itself
+            // so when the shell process exits, the
+            // bgrunners will still continue running.
+            //
+            // So to fix this, we'll check that launcher
+            // process is still running, since we will only
+            // have one of these running at a time, we can use
+            // this to indicate to exit the program
+            //
+            // We will use the terminateAll() to
+            // terminate all processes by sending it
+            // a sig_term signal.
+            //
+            // NOTE: The processes must be written to await
+            //       correctly, otherwise this will not work
+            //
+            // NOTE 2: terminateAll() will ask the process to
+            //         gracefully terminate itself.
+            //         Its possible that the process does not
+            //         listen to the signal
+            M.terminateAll();
+            break;
         }
         // sleep for 1 millisecond so we're not
         // doing a busy loop
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+
+    // Clean up the system by doing the following steps:
+    //
+    // 1. Send a SIG_TERM to all running processes to
+    //    gracefully exit
+    // 2. Wait for them to exit
+    // 3. Send a kill signal to the remaining processes
+    // 4. Wait for them to exit
+    // 5. Forcefully remove all left over processes
+    M.destroy();
+
     _M = nullptr;
     return 0;
 }
