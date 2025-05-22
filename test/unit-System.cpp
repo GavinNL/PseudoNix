@@ -178,7 +178,7 @@ SCENARIO("System: Run a single command manually read from input")
             if(System::stream_type::Result::SUCCESS == args.in->get(&c))
             {
                 args.out->put(c);
-                co_await control->await_yield();
+                (void)co_await control->await_yield();
             }
             else
             {
@@ -264,7 +264,7 @@ SCENARIO("Test await_yield")
         PSEUDONIX_PROC_START(control);
 
         COUT << "test: wait\n";
-        co_await control->await_yield(); // yield at this point, echo will run
+        (void)co_await control->await_yield(); // yield at this point, echo will run
         COUT << "test: resume\n";
 
         co_return 0;
@@ -302,7 +302,7 @@ SCENARIO("Test await_yield_for")
         PSEUDONIX_PROC_START(control);
 
         COUT << "test: wait\n";
-        co_await control->await_yield_for(std::chrono::seconds(1)); // yield at this point, echo will run
+        (void)co_await control->await_yield_for(std::chrono::seconds(1)); // yield at this point, echo will run
         COUT << "test: resume\n";
 
         co_return 0;
@@ -347,7 +347,7 @@ SCENARIO("Test await_finished")
         std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pid);
 
         COUT << "test: wait\n";
-        co_await control->await_finished(pid); // yield at this point, echo will run
+        (void)co_await control->await_finished(pid); // yield at this point, echo will run
         COUT << "test: resume\n";
 
         co_return 0;
@@ -395,7 +395,7 @@ SCENARIO("Test await_finished multi")
         std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pids[1]);
 
         COUT << "test: wait\n";
-        co_await control->await_finished(pids); // yield at this point, echo will run
+        (void)co_await control->await_finished(pids); // yield at this point, echo will run
         COUT << "test: resume\n";
 
         co_return 0;
@@ -447,13 +447,13 @@ SCENARIO("test await_data")
 
         char c;
         COUT << "test: wait 1\n";
-        co_await control->await_has_data(control->in);
+        (void)co_await control->await_has_data(control->in);
         COUT << "test: resume 1\n";
         REQUIRE(control->in->get(&c) == System::stream_type::Result::SUCCESS);
         REQUIRE(c == '1');
 
         COUT << "test: wait 2\n";
-        co_await control->await_has_data(control->in);
+        (void)co_await control->await_has_data(control->in);
         COUT << "test: resume 2\n";
         REQUIRE(control->in->get(&c) == System::stream_type::Result::SUCCESS);
         REQUIRE(c == '2');

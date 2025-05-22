@@ -83,7 +83,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
             {
                 c = '\n';
             }
-            std::cout.put(c);
+            std::cout.put( static_cast<char>(c) );
             *ch = static_cast<char>(c);
             
             return 1; // Successfully read one character

@@ -1441,7 +1441,7 @@ protected:
             while(!quit)
             {
                 char c;
-                co_await ctrl->await_has_data(ctrl->in);
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_has_data(ctrl->in), ctrl);
 
                 while(true)
                 {
@@ -2268,7 +2268,7 @@ protected:
                             }
                             if(file.eof())
                                 break;
-                            co_await ctrl->await_yield();
+                            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
                             T0 = std::chrono::system_clock::now();
                         }
                         co_return 0;
