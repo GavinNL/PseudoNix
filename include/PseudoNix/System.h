@@ -604,16 +604,50 @@ struct System : public PseudoNix::FileSystem2
      */
     size_t destroy()
     {
-        // tell all the running processes to
-        // kill themselves
+        // First send the kill signal to all
+        // processes that are running
+        // to gracefully quit.
+        //
+        // The next time the queues are processesd
+        // they should terminate themselves
+        terminateAll();
+
+        // run through all the queues and execute them
+        // one at a time leaving the DEFAULT_QUEUE
+        // for the final one to do clean up.
+        // Do this 5 times. This should be enough time
+        // to let the processes terminate
+        for(size_t i=0;i<5;i++)
+        {
+            // go through each of the queues and
+            // execute them
+            for(auto & [queueName, queu] : m_awaiters)
+            {
+                if(queueName != DEFAULT_QUEUE)
+                {
+                    taskQueueExecute(queueName, std::chrono::milliseconds(25), 1);
+                }
+            }
+            taskQueueExecute(DEFAULT_QUEUE , std::chrono::milliseconds(25), 1);
+
+            if(process_count() == 0)
+            {
+                break;
+            }
+        }
+
+        // at this point, any processes still running
+        // should be forcefully killed.
+        // send the KILL signal to all of them
         for(auto & [pid, P] : m_procs2)
         {
             kill(pid);
         }
-        // execute the default queue
-        // which will clean up any killed
-        // processes
-        taskQueueExecute();
+
+        // and execute the default queue once to clean up
+        // everything that was left over. All TRAPS should
+        // be executed here if they weren'
+        taskQueueExecute(DEFAULT_QUEUE);
 
         return m_procs2.size();
     }
