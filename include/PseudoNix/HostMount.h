@@ -186,6 +186,11 @@ struct FSNodeHostMount : public FSMountBase
         }
     }
 
+    virtual bool is_read_only() const override
+    {
+        return false;
+    }
+
     std::string get_info() override
     {
         return std::format("host://{}", m_path_on_host.generic_string());

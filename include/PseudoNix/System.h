@@ -1858,11 +1858,17 @@ protected:
 #define FS_PRINT_ERROR(_error) \
         switch(_error)\
         {\
-        case False:\
-        case True:\
+        case FSResult2::False:\
+        case FSResult2::True:\
             break;\
-        case UnknownError: COUT << std::format("Unknown Error");\
-            break;\
+        case FSResult2::ErrorNotEmpty: COUT << std::format("Location is not empty"); break;\
+        case FSResult2::ErrorReadOnly: COUT << std::format("Location is read-only"); break;\
+        case FSResult2::ErrorNotFile: COUT << std::format("Location is not a file"); break;\
+        case FSResult2::ErrorNotDirectory: COUT << std::format("Location is not a directory"); break;\
+        case FSResult2::ErrorDoesNotExist: COUT << std::format("File or folder does not exists"); break;\
+        case FSResult2::ErrorExists: COUT << std::format("File or folder already exists"); break;\
+        case FSResult2::ErrorParentDoesNotExist: COUT << std::format("Unknown Error"); break;\
+        case FSResult2::UnknownError: COUT << std::format("Unknown Error"); break;\
         }
 
 

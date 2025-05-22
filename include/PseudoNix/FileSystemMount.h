@@ -12,6 +12,14 @@ enum FSResult2
 {
     False,
     True,
+
+    ErrorNotDirectory,
+    ErrorNotFile,
+    ErrorNotEmpty,
+    ErrorReadOnly,
+    ErrorExists,
+    ErrorParentDoesNotExist,
+    ErrorDoesNotExist,
     UnknownError = 255,
 };
 
@@ -38,7 +46,7 @@ struct FSMountBase
     virtual result_type rm(path_type relPath) = 0;
     virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) = 0;
     virtual NodeType2 getType(path_type relPath) const = 0;
-
+    virtual bool is_read_only() const = 0;
     virtual Generator<path_type> list_dir(path_type relPath) = 0;
 
     virtual std::string get_info()

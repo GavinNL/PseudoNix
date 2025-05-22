@@ -127,7 +127,7 @@ struct FSNode
     using path_type = std::filesystem::path;
     using result_type = FSResult2;
     std::string  name;
-
+    bool read_only = false;
     FSNode()
     {
     }
@@ -177,6 +177,39 @@ struct FileSystem2
     using path_type   = FSNode::path_type;
     using result_type = FSNode::result_type;
 
+    result_type is_read_only(path_type abs_path) const
+    {
+        if(abs_path == "/")
+        {
+            return m_rootNode->read_only ? result_type::True : result_type::False;
+        }
+
+        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
+        bool read_only = mnt->read_only;
+
+        // if any of the parent paths are read only.
+        // then this node is readonly
+        read_only |= is_read_only(abs_path.parent_path()) == result_type::True;
+        if(read_only)
+            return result_type::True;
+
+        if(auto d = std::dynamic_pointer_cast<FSNodeDir const>(mnt))
+        {
+            if(d->mount)
+            {
+                read_only |= d->mount->is_read_only();
+            }
+        }
+        return read_only ? result_type::True : result_type::False;
+    }
+    /**
+     * @brief exists
+     * @param abs_path
+     * @return
+     *
+     * Returns a result_type::True or result_type::False
+     * if the path exists
+     */
     result_type exists(path_type abs_path)
     {
         _clean(abs_path);
@@ -203,12 +236,23 @@ struct FileSystem2
         }
         return result_type::False;
     }
+
+    /**
+     * @brief mkdir
+     * @param abs_path
+     * @return
+     *
+     * Creates a directory and returns result_type::True
+     * if it was successful
+     */
     result_type mkdir(path_type abs_path)
     {
         _clean(abs_path);
+        if(is_read_only(abs_path))
+        {
+            return result_type::ErrorReadOnly;
+        }
         assert(abs_path.has_root_directory());
-
-        auto rel_path_to_root = abs_path.relative_path();
 
         auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
 
@@ -218,9 +262,8 @@ struct FileSystem2
         if(rem.empty())
         {
             // location already exists
-            return result_type::False;
+            return result_type::ErrorExists;
         }
-
 
         auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt);
         if(d)
@@ -234,7 +277,7 @@ struct FileSystem2
                 if( !rem.parent_path().empty() )
                 {
                     // parent directory doesn't exist
-                    return result_type::False;
+                    return result_type::ErrorParentDoesNotExist;
                 }
                 d->nodes[rem.generic_string()] = std::make_shared<FSNodeDir>(rem.generic_string());
                 return result_type::True;
@@ -243,14 +286,27 @@ struct FileSystem2
         return result_type::False;
     }
 
+    /**
+     * @brief mkfile
+     * @param abs_path
+     * @return
+     *
+     * Creates an empty file and returns result_type::True
+     * if successful
+     */
     result_type mkfile(path_type abs_path)
     {
         _clean(abs_path);
+        if(is_read_only(abs_path))
+        {
+            return result_type::ErrorReadOnly;
+        }
+
         assert(abs_path.has_root_directory());
 
         auto rel_path_to_root = abs_path.relative_path();
 
-        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
+        auto [mnt, rem] = find_last_valid_virtual_node(abs_path);
 
         if(!mnt)
             return result_type::UnknownError;
@@ -258,7 +314,7 @@ struct FileSystem2
         if(rem.empty())
         {
             // location already exists
-            return result_type::False;
+            return result_type::ErrorExists;
         }
 
         auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt);
@@ -273,28 +329,40 @@ struct FileSystem2
                 if( !rem.parent_path().empty() )
                 {
                     // parent directory doesn't exist
-                    return result_type::False;
+                    return result_type::ErrorParentDoesNotExist;
                 }
 
                 d->nodes[rem.generic_string()] = std::make_shared<FSNodeFile>(rem.generic_string());
                 return result_type::True;
             }
         }
-        return result_type::False;
+        return result_type::UnknownError;
     }
 
+    /**
+     * @brief rm
+     * @param abs_path
+     * @return
+     *
+     * Removes a file and returns result_type::True if successful
+     */
     result_type rm(path_type abs_path)
     {
         _clean(abs_path);
         assert(abs_path.has_root_directory());
 
-        auto rel_path_to_root = abs_path.relative_path();
+        if(is_read_only(abs_path))
+        {
+            return result_type::ErrorReadOnly;
+        }
 
         auto [mnt, rem] = find_last_valid_virtual_node(abs_path.parent_path());
 
         auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt);
         if(d)
         {
+            if(d->read_only)
+                return result_type::ErrorReadOnly;
             if(d->mount)
             {
                 return d->mount->rm(rem / abs_path.filename());
@@ -307,9 +375,9 @@ struct FileSystem2
                     if(auto cp = std::dynamic_pointer_cast<FSNodeDir>(it->second) )
                     {
                         if(!cp->nodes.empty())
-                            return result_type::False;
+                            return result_type::ErrorNotEmpty;
                         if(cp->mount)
-                            return result_type::False;
+                            return result_type::ErrorReadOnly;
                         d->nodes.erase(it);
                         return result_type::True;
                     }
@@ -321,10 +389,10 @@ struct FileSystem2
                     return result_type::True;
                 }
                 // doens't exist
-                return result_type::False;
+                return result_type::ErrorDoesNotExist;
             }
         }
-        return result_type::False;
+        return result_type::UnknownError;
     }
 
     result_type unmount(path_type abs_path_in_vfs)
@@ -337,7 +405,7 @@ struct FileSystem2
             if(!dir)
             {
                 // not a directory
-                return result_type::False;
+                return result_type::ErrorNotDirectory;
             }
 
             // nothing mounted
@@ -347,13 +415,25 @@ struct FileSystem2
             dir->mount = {};
             return result_type::True;
         }
-        return result_type::False;
+        return result_type::UnknownError;
     }
 
+    /**
+     * @brief mount
+     * @param abs_path_in_vfs
+     * @param __args
+     * @return
+     *
+     * Mounts a virtual file system inside the virtual filesystem
+     *
+     * A simple example:
+     *
+     * // Mounts the user's home directory on /mnt
+     * mount<HostMount>("/mnt", "/home/user");
+     */
     template<typename _Tp, typename... _Args>
     result_type mount(path_type abs_path_in_vfs, _Args&&... __args)
     {
-
         auto [mnt, rem ] = find_last_valid_virtual_node(abs_path_in_vfs);
 
         if( mnt && rem.empty())
@@ -434,17 +514,25 @@ struct FileSystem2
         }
     }
 
+    /**
+     * @brief move
+     * @param srcAbsPath
+     * @param dstAbsPath
+     * @return
+     *
+     * Moves a file/folder from one location to another
+     */
     result_type move(path_type srcAbsPath, path_type dstAbsPath)
     {
         if(!exists(srcAbsPath))
         {
             // src file doesn't exist
-            return result_type::False;
+            return result_type::ErrorDoesNotExist;
         }
         if(!exists(dstAbsPath.parent_path()))
         {
             // parent folder of dst doesnt exist
-            return result_type::False;
+            return result_type::ErrorParentDoesNotExist;
         }
 
         auto tSrc = getType(srcAbsPath);
@@ -503,12 +591,20 @@ struct FileSystem2
         return result_type::False;
     }
 
+    /**
+     * @brief copy
+     * @param srcAbsPath
+     * @param dstAbsPath
+     * @return
+     *
+     * Copy a file from one location to another
+     */
     result_type copy(path_type  srcAbsPath, path_type  dstAbsPath)
     {
         if(!exists(srcAbsPath))
         {
             // src file doesn't exist
-            return result_type::False;
+            return result_type::ErrorDoesNotExist;
         }
 
         auto dType = getType(dstAbsPath);
@@ -517,19 +613,39 @@ struct FileSystem2
             dstAbsPath = dstAbsPath / srcAbsPath.filename();
         }
 
+        // need to check that dstAbsPath.parent is a folder
+        // and is writable
+        {
+            auto parentType = getType(dstAbsPath.parent_path());
+            if(parentType == NodeType2::MemDir)
+            {
+                auto [pN,rem2] = find_last_valid_virtual_node(dstAbsPath);
+                assert(pN);
+                if(pN->read_only)
+                    return result_type::ErrorReadOnly;
+            }
+            if(parentType == NodeType2::MountDir)
+            {
+                auto [pN,rem2] = find_last_valid_virtual_node(dstAbsPath);
+                assert(pN);
+                if(pN->read_only || std::dynamic_pointer_cast<FSNodeDir>(pN)->mount->is_read_only())
+                    return result_type::ErrorReadOnly;
+            }
+        }
         if(!exists(dstAbsPath))
         {
             auto v = mkfile(dstAbsPath);
             if(v != result_type::True)
                 return result_type::False; // cannot create dst file
         }
+
         auto Fout = this->openWrite(dstAbsPath, false);
         auto Fin  = this->openRead(srcAbsPath);
 
         if(!Fout.good() )
-            return result_type::False;
+            return result_type::UnknownError;
         if(!Fin.good() )
-            return result_type::False;
+            return result_type::UnknownError;
 
         std::vector<char> _buff(1024 * 1024);
 
@@ -552,6 +668,7 @@ struct FileSystem2
             openMode |= std::ios::app;
         return open_t<oFileStream>(abs_path, openMode);
     }
+
     iFileStream openRead(path_type abs_path)
     {
         return open_t<iFileStream>(abs_path, std::ios::in);

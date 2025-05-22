@@ -186,6 +186,11 @@ struct ArchiveNodeMount2 : public FSMountBase
         } while(true);
     }
 
+    virtual bool is_read_only() const override
+    {
+        return true;
+    }
+
     std::string get_info() override
     {
         return _info;
@@ -201,12 +206,12 @@ struct ArchiveNodeMount2 : public FSMountBase
 
     virtual result_type mkdir(path_type relPath) override
     {
-        return result_type::False;
+        return result_type::ErrorReadOnly;
         (void)relPath;
     }
     virtual result_type mkfile(path_type relPath) override
     {
-        return result_type::False;
+        return result_type::ErrorReadOnly;
         (void)relPath;
     }
 
@@ -224,7 +229,7 @@ struct ArchiveNodeMount2 : public FSMountBase
 
     virtual result_type rm(path_type relPath) override
     {
-        return result_type::False;
+        return result_type::ErrorReadOnly;
         (void)relPath;
     }
 

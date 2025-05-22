@@ -99,7 +99,7 @@ SCENARIO("mkdir")
         }
         THEN("We cannot create mulitple directories")
         {
-            REQUIRE(F.mkdir("/hello/world") == FSResult2::False);
+            REQUIRE(F.mkdir("/hello/world") == FSResult2::ErrorParentDoesNotExist);
         }
         THEN("We can create a directory")
         {
@@ -132,7 +132,7 @@ SCENARIO("mkfile")
 
             THEN("We cannot create the file again")
             {
-                REQUIRE(F.mkfile("/hello") == FSResult2::False);
+                REQUIRE(F.mkfile("/hello") == FSResult2::ErrorExists);
             }
             THEN("We can create a file in a subfolder")
             {
@@ -165,7 +165,7 @@ SCENARIO("rm")
         {
             REQUIRE(F.mkdir("/etc"));
             REQUIRE(F.mkfile("/etc/profile.txt"));
-            REQUIRE(F.rm("/etc") == FSResult2::False);
+            REQUIRE(F.rm("/etc") == FSResult2::ErrorNotEmpty);
 
             WHEN("We make the folder empty")
             {
@@ -321,7 +321,7 @@ SCENARIO("Remove files/directories")
 
 
         // not empty
-        REQUIRE(F.rm("/folder") == FSResult2::False);
+        REQUIRE(F.rm("/folder") == FSResult2::ErrorNotEmpty);
         REQUIRE(F.rm("/folder/A") == FSResult2::True);
         REQUIRE(F.exists("/folder/A") == FSResult2::False);
 
@@ -333,7 +333,7 @@ SCENARIO("Remove files/directories")
         REQUIRE(F.exists("/C") == FSResult2::False);
         REQUIRE(F.exists("/D") == FSResult2::False);
 
-        REQUIRE(F.rm("/C/does/not/exist") == FSResult2::False);
+        REQUIRE(F.rm("/C/does/not/exist") == FSResult2::ErrorDoesNotExist);
     }
 }
 
@@ -365,7 +365,7 @@ SCENARIO("Remove files/directories on host")
 
 
         // not empty
-        REQUIRE(F.rm("/folder") == FSResult2::False);
+        REQUIRE(F.rm("/folder") == FSResult2::ErrorReadOnly);
         REQUIRE(F.rm("/folder/A") == FSResult2::True);
         REQUIRE(F.exists("/folder/A") == FSResult2::False);
 
@@ -377,7 +377,7 @@ SCENARIO("Remove files/directories on host")
         REQUIRE(F.exists("/C") == FSResult2::False);
         REQUIRE(F.exists("/D") == FSResult2::False);
 
-        REQUIRE(F.rm("/C/does/not/exist") == FSResult2::False);
+        REQUIRE(F.rm("/C/does/not/exist") == FSResult2::ErrorDoesNotExist);
     }
 }
 
@@ -671,3 +671,21 @@ SCENARIO("Test helpers")
     }
 }
 
+
+SCENARIO("Test Read-Only")
+{
+    GIVEN("A filesystem with some directories and files")
+    {
+        FileSystem2 F;
+        REQUIRE(F.mount<FSNodeHostMount>("/", CMAKE_BINARY_DIR)== FSResult::True);
+
+        REQUIRE(F.mkfile("/file.txt") == FSResult::True);
+
+        F.m_rootNode->read_only = true;
+
+        REQUIRE(F.is_read_only("/file.txt") == FSResult::True);
+        REQUIRE(F.copy("/file.txt", "/file2.txt") == FSResult::ErrorReadOnly);
+        REQUIRE(F.move("/file.txt", "/file2.txt") == FSResult::ErrorReadOnly);
+        REQUIRE(F.rm("/file.txt") == FSResult::ErrorReadOnly);
+    }
+}
