@@ -757,10 +757,13 @@ struct System : public PseudoNix::FileSystem2
 
     std::vector<pid_type> runPipeline(std::vector<Exec> E, pid_type parent = invalid_pid)
     {
-        if(!E.front().in)
-            E.front().in = make_stream();
-        if(!E.back().out)
-            E.back().out = make_stream();
+        if(E.size())
+        {
+            if(!E.front().in)
+                E.front().in = make_stream();
+            if(!E.back().out)
+                E.back().out = make_stream();
+        }
 
         for(size_t i=0;i<E.size()-1;i++)
         {

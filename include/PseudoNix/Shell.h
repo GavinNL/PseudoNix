@@ -283,8 +283,11 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
 
     //std::cout << std::format("Executing: {}", join(tokens)) << std::endl;
     auto E = System::genPipeline(list_of_args);
-    E.front().in = in;
-    E.back().out = out;
+    if(E.size())
+    {
+        E.front().in = in;
+        E.back().out = out;
+    }
 
     for(auto & e : E)
     {
