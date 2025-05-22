@@ -5,8 +5,8 @@
 //#include <PseudoNix/Shell.h>
 #include <array>
 
-#include <PseudoNix/detail/FileSystem2.h>
-#include <PseudoNix/detail/ArchiveMount2.h>
+#include <PseudoNix/FileSystem.h>
+#include <PseudoNix/ArchiveMount.h>
 #include <PseudoNix/sample_archive.h>
 #include <zlib.h>
 
@@ -127,9 +127,9 @@ SCENARIO("Mounting From File")
             REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
             REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);
 
-            REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
-            REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);
-            REQUIRE(F.getType("/tar/folder/another_file.txt") == NodeType2::MountFile);
+            REQUIRE(F.getType("/tar/folder") == NodeType::MountDir);
+            REQUIRE(F.getType("/tar/file.txt") == NodeType::MountFile);
+            REQUIRE(F.getType("/tar/folder/another_file.txt") == NodeType::MountFile);
 
             REQUIRE(file_to_string(F,"/tar/file.txt") == "Hello world\n");
             REQUIRE(file_to_string(F,"/tar/folder/another_file.txt") == "goodbye world\n");
@@ -146,9 +146,9 @@ SCENARIO("Mounting From File")
             REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
             REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);
 
-            REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
-            REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);
-            REQUIRE(F.getType("/tar/folder/another_file.txt") == NodeType2::MountFile);
+            REQUIRE(F.getType("/tar/folder") == NodeType::MountDir);
+            REQUIRE(F.getType("/tar/file.txt") == NodeType::MountFile);
+            REQUIRE(F.getType("/tar/folder/another_file.txt") == NodeType::MountFile);
 
             REQUIRE(file_to_string(F,"/tar/file.txt") == "Hello world\n");
             REQUIRE(file_to_string(F,"/tar/folder/another_file.txt") == "goodbye world\n");
@@ -178,9 +178,9 @@ SCENARIO("Mounting From Memory")
             REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
             REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);
 
-            REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
-            REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);
-            REQUIRE(F.getType("/tar/folder/another_file.txt") == NodeType2::MountFile);
+            REQUIRE(F.getType("/tar/folder") == NodeType::MountDir);
+            REQUIRE(F.getType("/tar/file.txt") == NodeType::MountFile);
+            REQUIRE(F.getType("/tar/folder/another_file.txt") == NodeType::MountFile);
 
             REQUIRE(file_to_string(F,"/tar/file.txt") == "Hello world\n");
             REQUIRE(file_to_string(F,"/tar/folder/another_file.txt") == "goodbye world\n");
@@ -198,9 +198,9 @@ SCENARIO("Mounting From Memory")
             REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
             REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);
 
-            REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
-            REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);
-            REQUIRE(F.getType("/tar/folder/another_file.txt") == NodeType2::MountFile);
+            REQUIRE(F.getType("/tar/folder") == NodeType::MountDir);
+            REQUIRE(F.getType("/tar/file.txt") == NodeType::MountFile);
+            REQUIRE(F.getType("/tar/folder/another_file.txt") == NodeType::MountFile);
 
             REQUIRE(file_to_string(F,"/tar/file.txt") == "Hello world\n");
             REQUIRE(file_to_string(F,"/tar/folder/another_file.txt") == "goodbye world\n");

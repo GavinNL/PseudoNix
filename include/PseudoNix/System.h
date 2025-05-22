@@ -2186,15 +2186,15 @@ protected:
                 {
                     // note: 0 == true and 1 == false in
                     // a shell
-                    co_return _cmp(t == NodeType2::MemFile || t == NodeType2::MountFile);
+                    co_return _cmp(t == NodeType::MemFile || t == NodeType::MountFile);
                 }
                 else if(flag == "-d")
                 {
-                    co_return _cmp(t == NodeType2::MemDir || t == NodeType2::MountDir);
+                    co_return _cmp(t == NodeType::MemDir || t == NodeType::MountDir);
                 }
                 else if (flag == "-e")
                 {
-                    co_return _cmp(t != NodeType2::NoExist);
+                    co_return _cmp(t != NodeType::NoExist);
                 }
             }
             else if (_args.size() == 4)
@@ -2252,8 +2252,8 @@ protected:
 
                 switch(SYSTEM.getType(path))
                 {
-                    case NodeType2::MemFile:
-                    case NodeType2::MountFile:
+                    case NodeType::MemFile:
+                    case NodeType::MountFile:
                     {
                         auto file = SYSTEM.openRead(path);
                         if (!file) {

@@ -126,17 +126,17 @@ struct FSNodeHostMount : public FSMountBase
     {
     }
 
-    virtual NodeType2 getType(path_type relPath) const override
+    virtual NodeType getType(path_type relPath) const override
     {
         if( std::filesystem::is_directory(m_path_on_host / relPath) )
         {
-            return NodeType2::MountDir;
+            return NodeType::MountDir;
         }
         if( std::filesystem::is_regular_file(m_path_on_host / relPath) )
         {
-            return NodeType2::MountFile;
+            return NodeType::MountFile;
         }
-        return NodeType2::NoExist;
+        return NodeType::NoExist;
     }
 
     virtual result_type exists(path_type relPath) const override

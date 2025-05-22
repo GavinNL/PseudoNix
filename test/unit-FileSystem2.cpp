@@ -1,6 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
-#include <PseudoNix/detail/FileSystem2.h>
+#include <PseudoNix/FileSystem.h>
 #include <PseudoNix/HostMount.h>
 
 using namespace PseudoNix;
@@ -193,7 +193,7 @@ SCENARIO("mount")
         {
             REQUIRE(F.exists("/") == FSResult::True);
             REQUIRE(F.mkdir("/src") == FSResult::True);
-            REQUIRE( NodeType2::MemDir == F.getType("/src"));
+            REQUIRE( NodeType::MemDir == F.getType("/src"));
             REQUIRE( FSResult::True == F.mount<FSNodeHostMount>("/src", CMAKE_SOURCE_DIR));
 
             REQUIRE(F.exists("/src/conanfile.py") == FSResult::True);
@@ -206,13 +206,13 @@ SCENARIO("mount")
 
             THEN("We can check the types")
             {
-                REQUIRE( NodeType2::MemDir == F.getType("/"));
-                REQUIRE( NodeType2::MemFile == F.getType("/hello.txt"));
-                REQUIRE( NodeType2::MountDir == F.getType("/src"));
-                REQUIRE( NodeType2::MountFile == F.getType("/src/conanfile.py"));
-                REQUIRE( NodeType2::MountDir == F.getType("/src/test"));
-                REQUIRE( NodeType2::NoExist == F.getType("/src/test/fasdfasdf"));
-                REQUIRE( NodeType2::NoExist == F.getType("/bye.txt"));
+                REQUIRE( NodeType::MemDir == F.getType("/"));
+                REQUIRE( NodeType::MemFile == F.getType("/hello.txt"));
+                REQUIRE( NodeType::MountDir == F.getType("/src"));
+                REQUIRE( NodeType::MountFile == F.getType("/src/conanfile.py"));
+                REQUIRE( NodeType::MountDir == F.getType("/src/test"));
+                REQUIRE( NodeType::NoExist == F.getType("/src/test/fasdfasdf"));
+                REQUIRE( NodeType::NoExist == F.getType("/bye.txt"));
             }
             THEN("We can unmount a directory")
             {
@@ -608,24 +608,24 @@ SCENARIO("Moving Folders from Mem->Mem")
         REQUIRE(F.mkdir("/src/C") == FSResult::True);
 
 
-        REQUIRE(F.getType("/src")   == NodeType2::MemDir);
-        REQUIRE(F.getType("/src/A") == NodeType2::MemDir);
-        REQUIRE(F.getType("/src/B") == NodeType2::MemDir);
-        REQUIRE(F.getType("/src/C") == NodeType2::MemDir);
+        REQUIRE(F.getType("/src")   == NodeType::MemDir);
+        REQUIRE(F.getType("/src/A") == NodeType::MemDir);
+        REQUIRE(F.getType("/src/B") == NodeType::MemDir);
+        REQUIRE(F.getType("/src/C") == NodeType::MemDir);
 
         THEN("We can move the folder")
         {
             REQUIRE(FSResult::True == F.move("/src", "/dst") );
 
-            REQUIRE(F.getType("/dst")   == NodeType2::MemDir);
-            REQUIRE(F.getType("/dst/A") == NodeType2::MemDir);
-            REQUIRE(F.getType("/dst/B") == NodeType2::MemDir);
-            REQUIRE(F.getType("/dst/C") == NodeType2::MemDir);
+            REQUIRE(F.getType("/dst")   == NodeType::MemDir);
+            REQUIRE(F.getType("/dst/A") == NodeType::MemDir);
+            REQUIRE(F.getType("/dst/B") == NodeType::MemDir);
+            REQUIRE(F.getType("/dst/C") == NodeType::MemDir);
 
-            REQUIRE(F.getType("/src")   == NodeType2::NoExist);
-            REQUIRE(F.getType("/src/A") == NodeType2::NoExist);
-            REQUIRE(F.getType("/src/B") == NodeType2::NoExist);
-            REQUIRE(F.getType("/src/C") == NodeType2::NoExist);
+            REQUIRE(F.getType("/src")   == NodeType::NoExist);
+            REQUIRE(F.getType("/src/A") == NodeType::NoExist);
+            REQUIRE(F.getType("/src/B") == NodeType::NoExist);
+            REQUIRE(F.getType("/src/C") == NodeType::NoExist);
         }
     }
 }

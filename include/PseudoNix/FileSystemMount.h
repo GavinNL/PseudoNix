@@ -24,7 +24,7 @@ enum FSResult
     UnknownError = 255,
 };
 
-enum class NodeType2 {
+enum class NodeType {
     Unknown,
     MemFile,   // virtual file exists in memory only
     MemDir,    // virtual directory, exists in memory only
@@ -46,7 +46,7 @@ struct FSMountBase
     virtual result_type mkfile(path_type relPath) = 0;
     virtual result_type remove(path_type relPath) = 0;
     virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) = 0;
-    virtual NodeType2 getType(path_type relPath) const = 0;
+    virtual NodeType getType(path_type relPath) const = 0;
     virtual bool is_read_only() const = 0;
     virtual Generator<path_type> list_dir(path_type relPath) = 0;
 

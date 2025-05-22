@@ -6,8 +6,8 @@
 #include <cassert>
 #include <filesystem>
 #include <vector>
-#include "../FileSystemMount.h"
-#include "../FileSystemHelpers.h"
+#include "FileSystemMount.h"
+#include "FileSystemHelpers.h"
 #include <format>
 
 namespace PseudoNix
@@ -549,12 +549,12 @@ struct FileSystem
         auto tSrc = getType(srcAbsPath);
         auto tDst = getType(dstAbsPath);
 
-        if( tDst == NodeType2::MemDir || tDst == NodeType2::MountDir)
+        if( tDst == NodeType::MemDir || tDst == NodeType::MountDir)
             dstAbsPath = dstAbsPath / srcAbsPath.filename();
 
         auto tDstFolder = getType(dstAbsPath.parent_path());
 
-        if(tSrc == NodeType2::MemFile && tDstFolder == NodeType2::MemDir )
+        if(tSrc == NodeType::MemFile && tDstFolder == NodeType::MemDir )
         {
             auto [srcMnt, srcRem ] = find_last_valid_virtual_node(srcAbsPath);
             auto [dstMnt, dstRem ] = find_last_valid_virtual_node(dstAbsPath.parent_path());
@@ -568,7 +568,7 @@ struct FileSystem
 
             return result_type::True;
         }
-        else if(tSrc == NodeType2::MemDir && tDstFolder == NodeType2::MemDir )
+        else if(tSrc == NodeType::MemDir && tDstFolder == NodeType::MemDir )
         {
             auto [srcMnt, srcRem ] = find_last_valid_virtual_node(srcAbsPath);
             auto [dstMnt, dstRem ] = find_last_valid_virtual_node(dstAbsPath.parent_path());
@@ -619,7 +619,7 @@ struct FileSystem
         }
 
         auto dType = getType(dstAbsPath);
-        if(dType == NodeType2::MemDir || dType == NodeType2::MountDir)
+        if(dType == NodeType::MemDir || dType == NodeType::MountDir)
         {
             dstAbsPath = dstAbsPath / srcAbsPath.filename();
         }
@@ -628,14 +628,14 @@ struct FileSystem
         // and is writable
         {
             auto parentType = getType(dstAbsPath.parent_path());
-            if(parentType == NodeType2::MemDir)
+            if(parentType == NodeType::MemDir)
             {
                 auto [pN,rem2] = find_last_valid_virtual_node(dstAbsPath);
                 assert(pN);
                 if(pN->read_only)
                     return result_type::ErrorReadOnly;
             }
-            if(parentType == NodeType2::MountDir)
+            if(parentType == NodeType::MountDir)
             {
                 auto [pN,rem2] = find_last_valid_virtual_node(dstAbsPath);
                 assert(pN);
@@ -685,7 +685,7 @@ struct FileSystem
         return open_t<iFileStream>(abs_path, std::ios::in);
     }
 
-    NodeType2 getType(path_type absPath) const
+    NodeType getType(path_type absPath) const
     {
         auto [mnt, rem] = find_last_valid_virtual_node(absPath);
 
@@ -695,16 +695,16 @@ struct FileSystem
             {
                 if(d->mount)
                     return d->mount->getType(rem);
-                return NodeType2::MemDir;
+                return NodeType::MemDir;
             }
-            return NodeType2::MemFile;
+            return NodeType::MemFile;
         }
         if(auto d = std::dynamic_pointer_cast<const FSNodeDir>(mnt))
         {
             if(d->mount)
                 return d->mount->getType(rem);
         }
-        return NodeType2::NoExist;
+        return NodeType::NoExist;
     }
 
     Generator<path_type> list_dir(path_type absPath)

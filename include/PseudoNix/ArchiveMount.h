@@ -6,9 +6,9 @@
 #include <map>
 #include <vector>
 #include <format>
-#include "../FileSystemMount.h"
-#include "../FileSystemHelpers.h"
-#include "../System.h"
+#include "FileSystemMount.h"
+#include "FileSystemHelpers.h"
+#include "System.h"
 
 namespace PseudoNix
 {
@@ -215,16 +215,16 @@ struct ArchiveMount : public FSMountBase
         (void)relPath;
     }
 
-    virtual NodeType2 getType(path_type relPath) const override
+    virtual NodeType getType(path_type relPath) const override
     {
         if(relPath == "." || relPath.empty())
-            return NodeType2::MountDir;
+            return NodeType::MountDir;
 
         auto it = _files.find(relPath);
         if(it == _files.end())
-            return NodeType2::NoExist;
+            return NodeType::NoExist;
 
-        return it->second.is_dir ? NodeType2::MountDir : NodeType2::MountFile;
+        return it->second.is_dir ? NodeType::MountDir : NodeType::MountFile;
     }
 
     virtual result_type remove(path_type relPath) override
