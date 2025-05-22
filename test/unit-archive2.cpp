@@ -46,7 +46,7 @@ void writeVectorToFile(const std::vector<uint8_t>& data, const std::string& file
 
 std::string file_to_string(FileSystem2 & F, FileSystem2::path_type path)
 {
-    auto in = F.open(path, std::ios::in);
+    auto in = F.openRead(path);
     std::stringstream buffer;
     buffer << in.rdbuf();        // read entire file into buffer
     return buffer.str();           // convert to string

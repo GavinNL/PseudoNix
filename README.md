@@ -50,8 +50,8 @@ If you are using the Conan Package Manager, you can add the following to your de
 Add this repo as a submodule and then add it as a subdirectory
 
 ```cmake
-find_package(readerwriterqueue)
-find_package(concurrentqueue)
+find_package(readerwriterqueue REQUIRED)
+find_package(concurrentqueue REQUIRED)
 
 add_subdirectory(third_party/PseudoNix)
 
@@ -803,7 +803,7 @@ Some common filesystem utilities are also provided for the shell:
 
 You can mount a host directory inside the virtual file system using the following:
 
-```bash
+```c++
 
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
@@ -814,9 +814,9 @@ int main()
 {
     PseudoNix::System M;
 
-    PseudoNix::enable_default_shell(M);
+    PseudoNix::enable_default_shell(M); // gives you the default shell process
+    PseudoNix::enable_host_mount(M);    // lets you mount host file systems    
     PseudoNix::enable_archive_mount(M); // lets you mount tar/tar.gz files
-    PseudoNix::enable_host_mount(M);    // lets you moung host file systems
 
     // mount the user's home folderfolder
     M.mkdir("/host");
@@ -847,6 +847,7 @@ can access the file data in a number of ways.
     M.mkfile("/path/to/file.txt");
     M.fs("/path/to/file.txt") << "Hello world";
 
+    
     // get an std::istream to read directly from
     // the data
     auto in = M.open("/path/to/file.txt", std::ios::in);

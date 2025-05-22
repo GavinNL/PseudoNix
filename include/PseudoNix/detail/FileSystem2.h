@@ -8,24 +8,57 @@
 #include <vector>
 #include "../FileSystemMount.h"
 #include "../FileSystemHelpers.h"
+#include <format>
 
 namespace PseudoNix
 {
 
 class VectorBackedStreamBuf : public std::streambuf {
 public:
-    explicit VectorBackedStreamBuf(std::vector<char>& buffer)
-        : buffer_(buffer)
+    explicit VectorBackedStreamBuf(std::vector<char>& buffer, std::ios::openmode _mode)
+        : buffer_(buffer),
+          m_mode(_mode)
     {
-        setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
-        setp(buffer_.data(), buffer_.data() + buffer_.size());
+        if( _mode & std::ios::app )
+        {
+            setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
+            setp(nullptr, nullptr);
+        }
+        else
+        {
+            setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
+            setp(buffer_.data(), buffer_.data() + buffer_.size());
+            //std::cout <<std::format("total size: {}   Write pos: {}", std::distance(pbase(), epptr()), std::distance(pbase(), pptr())) << std::endl;
+        }
     }
 
+    ~VectorBackedStreamBuf()
+    {
+        this->sync();
+    }
     // Ensure output expansion if writing past current capacity
     int_type overflow(int_type ch) override {
+        //std::cout <<std::format("writing: {},  total size: {}   Write pos: {}", static_cast<char>(ch), std::distance(pbase(), epptr()), std::distance(pbase(), pptr())) << std::endl;
+        buffer_.push_back(static_cast<char>(ch));
+        auto s = buffer_.size();
+        buffer_.resize(buffer_.size() + 5);
+        setp(buffer_.data() + s, buffer_.data() + buffer_.size());
+
+        //buffer_.resize( buffer_.size() + 10);
+        //char_type*
+        //pbase() const { return _M_out_beg; }
+        //
+        //char_type*
+        //pptr() const { return _M_out_cur; }
+        //
+        //char_type*
+        //epptr() const { return _M_out_end; }
+        return ch;
         if (ch == traits_type::eof()) {
             return traits_type::not_eof(ch);
         }
+
+
 
         std::ptrdiff_t write_pos = pptr() - pbase();
         buffer_.push_back(static_cast<char>(ch));
@@ -46,6 +79,15 @@ public:
 
     // Sync not needed in memory buffer, but we can update get area
     int sync() override {
+        if( m_mode & std::ios::in )
+            return 0;
+        auto shortenBy = std::distance(pbase(), epptr()) - std::distance(pbase(), pptr());
+        //std::cout << shortenBy << std::endl;
+        //std::cout <<std::format("total size: {}   Write pos: {}", std::distance(pbase(), epptr()), std::distance(pbase(), pptr())) << std::endl;
+        buffer_.resize(buffer_.size()-static_cast<size_t>(shortenBy));
+        setp(nullptr, nullptr);
+        //std::cout << "Sync" << std::endl;
+        return 0;
         std::ptrdiff_t size = pptr() - pbase();
         buffer_.resize(static_cast<size_t>(size));
         setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
@@ -54,6 +96,7 @@ public:
 
 private:
     std::vector<char>& buffer_;
+    std::ios::openmode m_mode;
 };
 
 class FileStream : public std::iostream {
@@ -62,10 +105,37 @@ public:
     {
     }
 
-    explicit FileStream(std::unique_ptr<std::streambuf> && stream_buff) : std::iostream(nullptr)
+    explicit FileStream(std::unique_ptr<std::streambuf> && stream_buff) : std::iostream(stream_buff.get()),
+        _streamBuf(std::move(stream_buff))
     {
-        this->rdbuf(stream_buff.get());
-        _streamBuf = std::move(stream_buff);
+    }
+private:
+    std::unique_ptr<std::streambuf> _streamBuf;
+};
+
+class oFileStream : public std::ostream {
+public:
+    oFileStream() : std::ostream(nullptr)
+    {
+    }
+
+    explicit oFileStream(std::unique_ptr<std::streambuf> && stream_buff) : std::ostream(stream_buff.get()),
+        _streamBuf(std::move(stream_buff))
+    {
+    }
+private:
+    std::unique_ptr<std::streambuf> _streamBuf;
+};
+
+class iFileStream : public std::istream {
+public:
+    iFileStream() : std::istream(nullptr)
+    {
+    }
+
+    explicit iFileStream(std::unique_ptr<std::streambuf> && stream_buff) : std::istream(stream_buff.get()),
+        _streamBuf(std::move(stream_buff))
+    {
     }
 private:
     std::unique_ptr<std::streambuf> _streamBuf;
@@ -472,8 +542,8 @@ struct FileSystem2
             if(v != result_type::True)
                 return result_type::False; // cannot create dst file
         }
-        auto Fout = this->open(dstAbsPath, std::ios::out | std::ios::binary);
-        auto Fin  = this->open(srcAbsPath, std::ios::in | std::ios::binary);
+        auto Fout = this->openWrite(dstAbsPath, false);
+        auto Fin  = this->openRead(srcAbsPath);
 
         if(!Fout.good() )
             return result_type::False;
@@ -495,7 +565,8 @@ struct FileSystem2
     }
 
 
-    FileStream open(path_type abs_path,  std::ios::openmode openmode)
+    template<typename T>
+    T open_t(path_type abs_path,  std::ios::openmode openmode)
     {
         _clean(abs_path);
         assert(abs_path.has_root_directory());
@@ -507,7 +578,51 @@ struct FileSystem2
         {
             if(auto f = std::dynamic_pointer_cast<FSNodeFile>(mnt))
             {
-                auto bff = std::make_unique<VectorBackedStreamBuf>(f->data);
+                auto bff = std::make_unique<VectorBackedStreamBuf>(f->data, openmode);
+                return T(std::move(bff));
+            }
+            // an empty folder cannot open
+            return T();
+        }
+        else
+        {
+            if(auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt))
+            {
+                if(d->mount)
+                {
+                    auto bff = d->mount->open(rem, openmode);
+                    return T(std::move(bff));
+                }
+            }
+        }
+        return {};
+    }
+
+    oFileStream openWrite(path_type abs_path, bool append)
+    {
+        auto openMode = std::ios::out;
+        if(append)
+            openMode |= std::ios::app;
+        return open_t<oFileStream>(abs_path, openMode);
+    }
+    iFileStream openRead(path_type abs_path)
+    {
+        return open_t<iFileStream>(abs_path, std::ios::in);
+    }
+
+    FileStream open1(path_type abs_path,  std::ios::openmode openmode)
+    {
+        _clean(abs_path);
+        assert(abs_path.has_root_directory());
+        auto rel_path_to_root = abs_path.relative_path();
+
+        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
+
+        if(rem.empty())
+        {
+            if(auto f = std::dynamic_pointer_cast<FSNodeFile>(mnt))
+            {
+                auto bff = std::make_unique<VectorBackedStreamBuf>(f->data, openmode);
                 return FileStream(std::move(bff));
             }
             // an empty folder cannot open
@@ -632,7 +747,7 @@ struct FileSystem2
 
 PseudoNix::NodeRef::operator std::string() const
 {
-    auto out = fs->open(absPath, std::ios::in);
+    auto out = fs->openRead(absPath);
     if(!out.good())
         return {};
 
@@ -643,6 +758,23 @@ PseudoNix::NodeRef::operator std::string() const
 
 }
 
+//
+// Read from a filesystem node and append to a string:
+//
+//  std::string;
+//  fs("/path/to/file") >> mystring;
+//
+void operator >> (PseudoNix::NodeRef  nodeleft, std::string & right)
+{
+    auto in = nodeleft.fs->openRead(nodeleft.absPath);
+    if(!in.good())
+        return;
+
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    right += buffer.str();
+}
+
 void operator << (PseudoNix::NodeRef left, std::string_view right)
 {
     //
@@ -651,7 +783,7 @@ void operator << (PseudoNix::NodeRef left, std::string_view right)
 
     (void)left;
     (void)right;
-    auto out = left.fs->open(left.absPath, std::ios::out);
+    auto out = left.fs->openWrite(left.absPath, true);
     if(!out.good())
         return;
     out << right;
@@ -665,7 +797,7 @@ void operator << (PseudoNix::NodeRef left, std::vector<uint8_t> const &right)
 
     (void)left;
     (void)right;
-    auto out = left.fs->open(left.absPath, std::ios::out);
+    auto out = left.fs->openWrite(left.absPath, true);
     if(!out.good())
         return;
     out.write( static_cast<char const*>(static_cast<void const*>(right.data())), static_cast<std::streamsize>(right.size()));

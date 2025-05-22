@@ -268,15 +268,34 @@ SCENARIO("write to files")
         REQUIRE(F.mkfile("/folder/file.txt") == FSResult2::True);
 
         {
-            auto out = F.open("/folder/file.txt", std::ios::out);
+            auto out = F.openWrite("/folder/file.txt", false);
             out << "Hello";
         }
 
         {
             std::string str;
-            auto in = F.open("/folder/file.txt", std::ios::in);
+            auto in = F.openRead("/folder/file.txt");
             in >> str;
             REQUIRE(str == "Hello");
+        }
+
+        {
+            std::string str;
+            auto in = F.openRead("/folder/file.txt");
+            in >> str;
+            REQUIRE(str == "Hello");
+        }
+
+        {
+            auto out = F.openWrite("/folder/file.txt", true);
+            out << " World";
+        }
+
+        {
+            std::string str;
+            auto in = F.openRead("/folder/file.txt");
+            std::getline(in, str);
+            REQUIRE(str == "Hello World");
         }
     }
 }
@@ -372,7 +391,7 @@ SCENARIO("Copying file from Mem->Mem")
         REQUIRE(F.mkfile("/file.txt") == FSResult2::True);
         REQUIRE(F.mkdir("/folder") == FSResult2::True);
         {
-            auto out = F.open("/file.txt", std::ios::out);
+            auto out = F.openWrite("/file.txt", false);
             out << "Hello";
         }
         REQUIRE(FSResult2::True == F.exists("/file.txt") );
@@ -384,9 +403,7 @@ SCENARIO("Copying file from Mem->Mem")
             REQUIRE(FSResult2::True == F.exists("/file.txt") );
 
             {
-                std::string str;
-                auto in = F.open("/dst.txt", std::ios::in);
-                in >> str;
+                std::string str = F.fs("/dst.txt");//.openRead("/dst.txt");
                 REQUIRE(str == "Hello");
             }
         }
@@ -398,7 +415,7 @@ SCENARIO("Copying file from Mem->Mem")
 
             {
                 std::string str;
-                auto in = F.open("/folder/file.txt", std::ios::in);
+                auto in = F.openRead("/folder/file.txt");
                 in >> str;
                 REQUIRE(str == "Hello");
             }
@@ -433,7 +450,7 @@ SCENARIO("Copying file from Mount->Mem->Mount")
             REQUIRE(FSResult2::True  == F.exists("/dst.txt") );
 
             {
-                auto in = F.open("/dst.txt", std::ios::in);
+                auto in = F.openRead("/dst.txt");
                 auto str = StreamToString(in);
                 REQUIRE(str == ACTUAL_DATA);
             }
@@ -447,7 +464,7 @@ SCENARIO("Copying file from Mount->Mem->Mount")
                 REQUIRE(FSResult2::True  == F.exists("/dst/dst.txt") );
 
                 {
-                    auto in = F.open("/dst/dst.txt", std::ios::in);
+                    auto in = F.openRead("/dst/dst.txt");
                     auto str = StreamToString(in);
                     REQUIRE(str == ACTUAL_DATA);
                 }
@@ -461,7 +478,7 @@ SCENARIO("Copying file from Mount->Mem->Mount")
                     REQUIRE(FSResult2::True  == F.exists("/dst/dst.txt") );
 
                     {
-                        auto in = F.open("/dst2.txt", std::ios::in);
+                        auto in = F.openRead("/dst2.txt");
                         auto str = StreamToString(in);
                         REQUIRE(str == ACTUAL_DATA);
                     }
@@ -480,7 +497,7 @@ SCENARIO("Moving file from Mem->Mem")
         REQUIRE(F.mkfile("/file.txt") == FSResult2::True);
         REQUIRE(F.mkdir("/folder") == FSResult2::True);
         {
-            auto out = F.open("/file.txt", std::ios::out);
+            auto out = F.openWrite("/file.txt", false);
             out << "Hello";
         }
         REQUIRE(FSResult2::True == F.exists("/file.txt") );
@@ -493,7 +510,7 @@ SCENARIO("Moving file from Mem->Mem")
 
             {
                 std::string str;
-                auto in = F.open("/dst.txt", std::ios::in);
+                auto in = F.openRead("/dst.txt");
                 in >> str;
                 REQUIRE(str == "Hello");
             }
@@ -506,7 +523,7 @@ SCENARIO("Moving file from Mem->Mem")
 
             {
                 std::string str;
-                auto in = F.open("/folder/file.txt", std::ios::in);
+                auto in = F.openRead("/folder/file.txt");
                 in >> str;
                 REQUIRE(str == "Hello");
             }
@@ -540,7 +557,7 @@ SCENARIO("Moving file from Mount->Mem->Mount")
             REQUIRE(FSResult2::False == F.exists("/dst/A.txt") );
 
             {
-                auto in = F.open("/dst/B.txt", std::ios::in);
+                auto in = F.openRead("/dst/B.txt");
                 auto str = StreamToString(in);
                 REQUIRE(str == ACTUAL_DATA);
             }
@@ -554,7 +571,7 @@ SCENARIO("Moving file from Mount->Mem->Mount")
                 REQUIRE(FSResult2::True == F.exists("/C.txt") );
 
                 {
-                    auto in = F.open("/C.txt", std::ios::in);
+                    auto in = F.openRead("/C.txt");
                     auto str = StreamToString(in);
                     REQUIRE(str == ACTUAL_DATA);
                 }
@@ -569,7 +586,7 @@ SCENARIO("Moving file from Mount->Mem->Mount")
                     REQUIRE(FSResult2::True == F.exists("/dst/D.txt") );
 
                     {
-                        auto in = F.open("/dst/D.txt", std::ios::in);
+                        auto in = F.openRead("/dst/D.txt");
                         auto str = StreamToString(in);
                         REQUIRE(str == ACTUAL_DATA);
                     }

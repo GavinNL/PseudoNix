@@ -2162,7 +2162,7 @@ protected:
                     case NodeType2::MemFile:
                     case NodeType2::MountFile:
                     {
-                        auto file = SYSTEM.open(path, std::ios::in);
+                        auto file = SYSTEM.openRead(path);
                         if (!file) {
                             co_return 1;
                         }
