@@ -196,7 +196,7 @@ struct System : public PseudoNix::FileSystem2
             m_result = r;
         }
 
-        AwaiterResult await_resume() const noexcept {
+        [[ nodiscard ]] AwaiterResult await_resume() const noexcept {
             return m_result;
         }
 
