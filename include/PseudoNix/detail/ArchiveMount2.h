@@ -115,7 +115,7 @@ protected:
 
 };
 
-struct ArchiveNodeMount : public FSMountBase
+struct ArchiveMount : public FSMountBase
 {
     path_type host_path;
     void const * _data = nullptr;
@@ -128,7 +128,7 @@ struct ArchiveNodeMount : public FSMountBase
 
     std::map<path_type, EntryInfo> _files;
 
-    ArchiveNodeMount(path_type const & hostPath) : host_path(hostPath)
+    ArchiveMount(path_type const & hostPath) : host_path(hostPath)
     {
         ArchiveEntryStreamBuf buf;
         if(!buf.open_archive(hostPath))
@@ -153,13 +153,13 @@ struct ArchiveNodeMount : public FSMountBase
 
     }
 
-    ArchiveNodeMount(void const* data, size_t length)
-        :ArchiveNodeMount(data, length, std::format("{}", data))
+    ArchiveMount(void const* data, size_t length)
+        :ArchiveMount(data, length, std::format("{}", data))
     {
 
     }
 
-    ArchiveNodeMount(void const* data, size_t length, std::string info)
+    ArchiveMount(void const* data, size_t length, std::string info)
     {
         _data = data;
         _length = length;
@@ -288,7 +288,7 @@ inline void enable_archive_mount(System & sys)
                     auto p = SYSTEM.getVirtualFileData(SRC);
                     if(p)
                     {
-                        auto er = SYSTEM.mount<PseudoNix::ArchiveNodeMount>(DST, p->data(), p->size(), SRC.generic_string());
+                        auto er = SYSTEM.mount<PseudoNix::ArchiveMount>(DST, p->data(), p->size(), SRC.generic_string());
 
                         co_return er == PseudoNix::FSResult::True;
                     }

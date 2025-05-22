@@ -102,7 +102,7 @@ SCENARIO("Uncompress")
 
     std::vector<uint8_t> randomData(1024);
 
-    auto p = std::make_shared<ArchiveNodeMount>(randomData.data(), randomData.size());
+    auto p = std::make_shared<ArchiveMount>(randomData.data(), randomData.size());
     for(auto d : p->_files)
     {
         std::cout << d.first << std::endl;
@@ -122,7 +122,7 @@ SCENARIO("Mounting From File")
 
         WHEN("We mount a uncompressed tar")
         {
-            REQUIRE(F.mount<ArchiveNodeMount>("/tar", ARCHIVE_TAR_PATH) == FSResult::True);
+            REQUIRE(F.mount<ArchiveMount>("/tar", ARCHIVE_TAR_PATH) == FSResult::True);
 
             REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
             REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);
@@ -141,7 +141,7 @@ SCENARIO("Mounting From File")
         }
         WHEN("We mount a compressed tar")
         {
-            REQUIRE(F.mount<ArchiveNodeMount>("/tar", ARCHIVE_TAR_GZ_PATH) == FSResult::True);
+            REQUIRE(F.mount<ArchiveMount>("/tar", ARCHIVE_TAR_GZ_PATH) == FSResult::True);
 
             REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
             REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);
@@ -173,7 +173,7 @@ SCENARIO("Mounting From Memory")
         WHEN("We mount a uncompressed tar")
         {
             auto raw_data = loadFile(ARCHIVE_TAR_PATH);
-            REQUIRE(F.mount<ArchiveNodeMount>("/tar", raw_data.data(), raw_data.size()) == FSResult::True);
+            REQUIRE(F.mount<ArchiveMount>("/tar", raw_data.data(), raw_data.size()) == FSResult::True);
 
             REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
             REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);
@@ -193,7 +193,7 @@ SCENARIO("Mounting From Memory")
         WHEN("We mount a compressed tar")
         {
             auto raw_data = loadFile(ARCHIVE_TAR_GZ_PATH);
-            REQUIRE(F.mount<ArchiveNodeMount>("/tar", raw_data.data(), raw_data.size()) == FSResult::True);
+            REQUIRE(F.mount<ArchiveMount>("/tar", raw_data.data(), raw_data.size()) == FSResult::True);
 
             REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
             REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);

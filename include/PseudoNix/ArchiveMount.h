@@ -5,6 +5,5 @@
 
 namespace PseudoNix
 {
-    using ArchiveMount = PseudoNix::ArchiveNodeMount;
 }
 #endif
