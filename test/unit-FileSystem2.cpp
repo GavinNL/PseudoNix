@@ -655,3 +655,19 @@ SCENARIO("List Dir")
         }
     }
 }
+
+
+SCENARIO("Test helpers")
+{
+    GIVEN("A filesystem with some directories and files")
+    {
+        FileSystem2 F;
+        F.mkfile("/file.txt");
+        F.fs("/file.txt") << std::string("hello");
+
+        std::string h;
+        F.fs("/file.txt") >> h;
+        REQUIRE(h == "hello");
+    }
+}
+

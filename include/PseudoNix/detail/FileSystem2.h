@@ -694,7 +694,7 @@ protected:
     }
 };
 
-PseudoNix::NodeRef::operator std::string() const
+inline PseudoNix::NodeRef::operator std::string() const
 {
     auto out = fs->openRead(absPath);
     if(!out.good())
@@ -713,7 +713,7 @@ PseudoNix::NodeRef::operator std::string() const
 //  std::string;
 //  fs("/path/to/file") >> mystring;
 //
-void operator >> (PseudoNix::NodeRef  nodeleft, std::string & right)
+inline void operator >> (PseudoNix::NodeRef  nodeleft, std::string & right)
 {
     auto in = nodeleft.fs->openRead(nodeleft.absPath);
     if(!in.good())
@@ -724,7 +724,7 @@ void operator >> (PseudoNix::NodeRef  nodeleft, std::string & right)
     right += buffer.str();
 }
 
-void operator << (PseudoNix::NodeRef left, std::string_view right)
+inline void operator << (PseudoNix::NodeRef left, std::string_view right)
 {
     //
     // F.fs("/path/to/my/file.txt") << "hello world";
@@ -738,7 +738,7 @@ void operator << (PseudoNix::NodeRef left, std::string_view right)
     out << right;
 }
 
-void operator << (PseudoNix::NodeRef left, std::vector<uint8_t> const &right)
+inline void operator << (PseudoNix::NodeRef left, std::vector<uint8_t> const &right)
 {
     //
     // F.fs("/path/to/my/file.txt") << "hello world";

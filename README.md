@@ -847,10 +847,13 @@ can access the file data in a number of ways.
     M.mkfile("/path/to/file.txt");
     M.fs("/path/to/file.txt") << "Hello world";
 
-    
+    // write the data to a string
+    std::string read;
+    M.fs("/path/to/file.txt") >> read;
+
     // get an std::istream to read directly from
     // the data
-    auto in = M.open("/path/to/file.txt", std::ios::in);
+    auto in = M.openRead("/path/to/file.txt");
     while(in.eof())
     {
         std::string word;
