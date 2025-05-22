@@ -54,21 +54,6 @@ public:
         //char_type*
         //epptr() const { return _M_out_end; }
         return ch;
-        if (ch == traits_type::eof()) {
-            return traits_type::not_eof(ch);
-        }
-
-
-
-        std::ptrdiff_t write_pos = pptr() - pbase();
-        buffer_.push_back(static_cast<char>(ch));
-        buffer_.resize(buffer_.size()); // Ensure capacity is correct
-
-        char* base = buffer_.data();
-        setp(base, base + buffer_.size());
-        pbump(static_cast<int>(write_pos + 1));
-
-        return ch;
     }
 
     // Called when input buffer is exhausted
@@ -87,10 +72,6 @@ public:
         buffer_.resize(buffer_.size()-static_cast<size_t>(shortenBy));
         setp(nullptr, nullptr);
         //std::cout << "Sync" << std::endl;
-        return 0;
-        std::ptrdiff_t size = pptr() - pbase();
-        buffer_.resize(static_cast<size_t>(size));
-        setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
         return 0;
     }
 

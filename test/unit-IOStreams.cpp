@@ -184,7 +184,7 @@ SCENARIO("asdf")
         auto s = std::string_view(data.data(), data.size());
         std::cout << s << std::endl;
     }
-        return;
+
     {
         auto p = std::make_unique<VectorBackedStreamBuf>(data, std::ios::out | std::ios::app );
         FileStream out( std::move(p) );
