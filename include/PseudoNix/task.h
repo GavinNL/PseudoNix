@@ -112,11 +112,14 @@ struct Task_t
     Task_t(Task_t<T, initial_suspend_t, final_suspend_t> const &handle_) = delete;
     Task_t & operator=(Task_t<T, initial_suspend_t, final_suspend_t> const & V) = delete;
 
-    void destroy()
+    bool destroy()
     {
-        if(handle)
-            handle.destroy();
+        if(!handle)
+            return false;
+
+        handle.destroy();
         handle = nullptr;
+        return true;
     }
     void resume()
     {
