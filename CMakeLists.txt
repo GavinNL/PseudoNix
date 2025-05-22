@@ -125,22 +125,22 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
         set_target_properties( terminal PROPERTIES SUFFIX ".html")
     else()
         add_executable(main examples/main.cpp)
-        target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
+        target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
         target_include_directories(main PUBLIC
                                             ${CMAKE_BINARY_DIR}/archive
                                   )
 
         add_executable(example1 examples/example1.cpp)
-        target_link_libraries(example1 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
+        target_link_libraries(example1 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
 
         add_executable(example2 examples/example2.cpp)
-        target_link_libraries(example2 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
+        target_link_libraries(example2 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
 
         add_executable(example3 examples/example3.cpp)
-        target_link_libraries(example3 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
+        target_link_libraries(example3 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
 
         add_executable(example4 examples/example4.cpp)
-        target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
+        target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
 
     endif()
 
