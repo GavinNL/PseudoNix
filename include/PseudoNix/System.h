@@ -166,18 +166,35 @@ struct System : public PseudoNix::FileSystem2
         }
 
         // called to check if
+        bool _firstRun = true;
         bool await_ready()  noexcept {
             // Indicate that the awaiter is ready to be
             // resumed if we have internally set the
             // result to be a non-success
-            switch(*m_signal)
-            {
-                case sig_interrupt: m_result = AwaiterResult::SIGNAL_INTERRUPT; return true; break;
-                case sig_terminate: m_result = AwaiterResult::SIGNAL_TERMINATE; return true; break;
-                default:
-                break;
-            }
 
+            // Check if the signal has been triggered
+            // If it has, we should stop waiting on
+            // the awaiter. But only check
+            // the signal if this is NOT the first run
+            // of the awaiter check. ie:
+            // if the signal had already been set for the
+            // process, then when it calls
+            //
+            //  co_await ctrl->yield( )
+            //
+            // It wont yield to the next process
+            //
+            if(m_signal && !_firstRun)
+            {
+                switch(*m_signal)
+                {
+                case sig_interrupt: m_result = AwaiterResult::SIGNAL_INTERRUPT; m_signal = {}; return true; break;
+                case sig_terminate: m_result = AwaiterResult::SIGNAL_TERMINATE; m_signal = {}; return true; break;
+                default:
+                    break;
+                }
+            }
+            _firstRun = false;
             auto b = m_pred(this);
             return b;
         }
