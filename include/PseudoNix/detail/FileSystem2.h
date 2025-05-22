@@ -564,40 +564,6 @@ struct FileSystem2
         return result_type::True;
     }
 
-
-    template<typename T>
-    T open_t(path_type abs_path,  std::ios::openmode openmode)
-    {
-        _clean(abs_path);
-        assert(abs_path.has_root_directory());
-        auto rel_path_to_root = abs_path.relative_path();
-
-        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
-
-        if(rem.empty())
-        {
-            if(auto f = std::dynamic_pointer_cast<FSNodeFile>(mnt))
-            {
-                auto bff = std::make_unique<VectorBackedStreamBuf>(f->data, openmode);
-                return T(std::move(bff));
-            }
-            // an empty folder cannot open
-            return T();
-        }
-        else
-        {
-            if(auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt))
-            {
-                if(d->mount)
-                {
-                    auto bff = d->mount->open(rem, openmode);
-                    return T(std::move(bff));
-                }
-            }
-        }
-        return {};
-    }
-
     oFileStream openWrite(path_type abs_path, bool append)
     {
         auto openMode = std::ios::out;
@@ -608,38 +574,6 @@ struct FileSystem2
     iFileStream openRead(path_type abs_path)
     {
         return open_t<iFileStream>(abs_path, std::ios::in);
-    }
-
-    FileStream open1(path_type abs_path,  std::ios::openmode openmode)
-    {
-        _clean(abs_path);
-        assert(abs_path.has_root_directory());
-        auto rel_path_to_root = abs_path.relative_path();
-
-        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
-
-        if(rem.empty())
-        {
-            if(auto f = std::dynamic_pointer_cast<FSNodeFile>(mnt))
-            {
-                auto bff = std::make_unique<VectorBackedStreamBuf>(f->data, openmode);
-                return FileStream(std::move(bff));
-            }
-            // an empty folder cannot open
-            return FileStream();
-        }
-        else
-        {
-            if(auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt))
-            {
-                if(d->mount)
-                {
-                    auto bff = d->mount->open(rem, openmode);
-                    return FileStream(std::move(bff));
-                }
-            }
-        }
-        return {};
     }
 
     NodeType2 getType(path_type absPath) const
@@ -743,6 +677,40 @@ struct FileSystem2
     }
 
     std::shared_ptr<FSNodeDir> m_rootNode = std::make_shared<FSNodeDir>("/");
+
+protected:
+    template<typename T>
+    T open_t(path_type abs_path,  std::ios::openmode openmode)
+    {
+        _clean(abs_path);
+        assert(abs_path.has_root_directory());
+        auto rel_path_to_root = abs_path.relative_path();
+
+        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
+
+        if(rem.empty())
+        {
+            if(auto f = std::dynamic_pointer_cast<FSNodeFile>(mnt))
+            {
+                auto bff = std::make_unique<VectorBackedStreamBuf>(f->data, openmode);
+                return T(std::move(bff));
+            }
+            // an empty folder cannot open
+            return T();
+        }
+        else
+        {
+            if(auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt))
+            {
+                if(d->mount)
+                {
+                    auto bff = d->mount->open(rem, openmode);
+                    return T(std::move(bff));
+                }
+            }
+        }
+        return {};
+    }
 };
 
 PseudoNix::NodeRef::operator std::string() const
