@@ -26,10 +26,10 @@ enum FSResult2
 
 enum class NodeType2 {
     Unknown,
-    MemFile,
-    MemDir,
-    MountFile,
-    MountDir,
+    MemFile,   // virtual file exists in memory only
+    MemDir,    // virtual directory, exists in memory only
+    MountFile, // file belongs to a mount
+    MountDir,  // folder belongs to a mount
     NoExist
 };
 
