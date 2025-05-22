@@ -130,7 +130,7 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
     if(SYSTEM.isRunning(sh_pid))
     {
         SYSTEM.kill(sh_pid);
-        co_await ctrl->await_finished(sh_pid);
+        HANDLE_AWAIT_INT_TERM(co_await ctrl->await_finished(sh_pid), ctrl);
     }
 
     co_return 0;
