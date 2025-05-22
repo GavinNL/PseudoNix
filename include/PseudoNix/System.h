@@ -583,16 +583,39 @@ struct System : public PseudoNix::FileSystem2
      * @brief terminateAll
      *
      * Terminate all running processes by sending a
-     * SIG_KILL signal to all currently running processes
+     * SIG_TERM to all currently running processes.
      */
-    void terminateAll(std::string queue_name)
-    {
+    void terminateAll(std::string queue_name = {})
+    {       
         for(auto & [pid, P] : m_procs2)
         {
-            if(P->control->queue_name == queue_name)
+            if(P->control->queue_name == queue_name || queue_name.empty())
                 signal(pid, sig_terminate);
         }
-        while(taskQueueExecute(queue_name, std::chrono::milliseconds(1), 15));
+    }
+
+    /**
+     * @brief destroy
+     * @return
+     *
+     * Destroy the System by sending a kill signal
+     * too all running processes. Then
+     * manually destroying them.
+     */
+    size_t destroy()
+    {
+        // tell all the running processes to
+        // kill themselves
+        for(auto & [pid, P] : m_procs2)
+        {
+            kill(pid);
+        }
+        // execute the default queue
+        // which will clean up any killed
+        // processes
+        taskQueueExecute();
+
+        return m_procs2.size();
     }
 
     /**
@@ -875,6 +898,10 @@ struct System : public PseudoNix::FileSystem2
         return {};
     }
 
+    size_t process_count() const
+    {
+        return m_procs2.size();
+    }
     /**
      * @brief taskQueueExecute
      * @param queue_name
@@ -967,6 +994,11 @@ struct System : public PseudoNix::FileSystem2
     bool taskQueueExists(std::string const & name) const
     {
         return m_awaiters.count(name) == 1;
+    }
+    size_t taskQueueSize(std::string const & name) const
+    {
+        return m_awaiters.at(name).m_Q1.size_approx()
+               + m_awaiters.at(name).m_Q2.size_approx();
     }
 
     /**
@@ -2270,7 +2302,10 @@ protected:
         coro.control->queue_name = DEFAULT_QUEUE;
         if( coro.task.valid() )
         {
-            coro.task.destroy();
+            if(coro.task.destroy())
+            {
+                DEBUG_TRACE("Coroutine frame destroyed: {}", join(coro.control->args));
+            }
         }
         // the output stream should have its
         // EOF set so that any processes

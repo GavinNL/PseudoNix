@@ -28,7 +28,7 @@ inline void setup_functions(PseudoNix::System & sys)
                       PSEUDONIX_PROC_START(ctrl);
 
                       std::string input;
-                      uint32_t random_number = std::rand() % 100 + 1;
+                      uint32_t random_number = static_cast<uint32_t>(std::rand() % 100) + 1u;
                       COUT << std::format("I have chosen a number between 1-100. Can you guess what it is?\n");
 
                       while(true)
