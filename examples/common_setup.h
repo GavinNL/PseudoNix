@@ -167,7 +167,7 @@ R"foo(
         // mount the raw data directly at /mnt/ar_app
         //
         sys.mkdir("/mnt/ar_app");
-        if(PseudoNix::FSResult2::True != sys.mount<PseudoNix::ArchiveMount>("/mnt/ar_app",
+        if(PseudoNix::FSResult::True != sys.mount<PseudoNix::ArchiveMount>("/mnt/ar_app",
                                                                              static_cast<void*>(PseudoNix::archive_tar_gz.data()),
                                                                              static_cast<size_t>(PseudoNix::archive_tar_gz.size())))
         {

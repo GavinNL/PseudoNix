@@ -8,7 +8,7 @@
 namespace PseudoNix
 {
 
-enum FSResult2
+enum FSResult
 {
     False,
     True,
@@ -36,7 +36,7 @@ enum class NodeType2 {
 struct FSMountBase
 {
     using path_type = std::filesystem::path;
-    using result_type = FSResult2;
+    using result_type = FSResult;
     virtual ~FSMountBase()
     {
 

@@ -51,9 +51,9 @@ SCENARIO("split_first")
 
 SCENARIO("find_last_valid_virtual_node")
 {
-    FileSystem2 F;
+    FileSystem F;
 
-    REQUIRE(F.exists("/") == FSResult2::True);
+    REQUIRE(F.exists("/") == FSResult::True);
 
     {
         auto [node, rem] = F.find_last_valid_virtual_node("/hello");
@@ -74,43 +74,43 @@ SCENARIO("find_last_valid_virtual_node")
         REQUIRE( rem == "world");
     }
 
-    REQUIRE(F.exists("/hello") == FSResult2::True);
-    REQUIRE(F.exists("/hello2") == FSResult2::False);
+    REQUIRE(F.exists("/hello") == FSResult::True);
+    REQUIRE(F.exists("/hello2") == FSResult::False);
 }
 
 SCENARIO("Exists")
 {
-    FileSystem2 F;
+    FileSystem F;
 
-    REQUIRE(F.exists("/") == FSResult2::True);
-    REQUIRE(F.exists("/hello") == FSResult2::False);
+    REQUIRE(F.exists("/") == FSResult::True);
+    REQUIRE(F.exists("/hello") == FSResult::False);
 }
 
 SCENARIO("mkdir")
 {
     GIVEN("A an empty filesystem")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/") == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/") == FSResult::True);
 
         THEN("We can check if folders dont exist")
         {
-            REQUIRE(F.exists("/bye") == FSResult2::False);
+            REQUIRE(F.exists("/bye") == FSResult::False);
         }
         THEN("We cannot create mulitple directories")
         {
-            REQUIRE(F.mkdir("/hello/world") == FSResult2::ErrorParentDoesNotExist);
+            REQUIRE(F.mkdir("/hello/world") == FSResult::ErrorParentDoesNotExist);
         }
         THEN("We can create a directory")
         {
-            REQUIRE(F.exists("/hello") == FSResult2::False);
-            REQUIRE(F.mkdir("/hello") == FSResult2::True);
-            REQUIRE(F.exists("/hello") == FSResult2::True);
+            REQUIRE(F.exists("/hello") == FSResult::False);
+            REQUIRE(F.mkdir("/hello") == FSResult::True);
+            REQUIRE(F.exists("/hello") == FSResult::True);
 
             THEN("We can create a sub directory")
             {
-                REQUIRE(F.mkdir("/hello/world") == FSResult2::True);
-                REQUIRE(F.exists("/hello/world") == FSResult2::True);
+                REQUIRE(F.mkdir("/hello/world") == FSResult::True);
+                REQUIRE(F.exists("/hello/world") == FSResult::True);
             }
         }
     }
@@ -121,27 +121,27 @@ SCENARIO("mkfile")
 {
     GIVEN("A an empty filesystem")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/") == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/") == FSResult::True);
 
         THEN("We can create a file in the root folder")
         {
-            REQUIRE(F.exists("/hello") == FSResult2::False);
-            REQUIRE(F.mkfile("/hello") == FSResult2::True);
-            REQUIRE(F.exists("/hello") == FSResult2::True);
+            REQUIRE(F.exists("/hello") == FSResult::False);
+            REQUIRE(F.mkfile("/hello") == FSResult::True);
+            REQUIRE(F.exists("/hello") == FSResult::True);
 
             THEN("We cannot create the file again")
             {
-                REQUIRE(F.mkfile("/hello") == FSResult2::ErrorExists);
+                REQUIRE(F.mkfile("/hello") == FSResult::ErrorExists);
             }
             THEN("We can create a file in a subfolder")
             {
-                REQUIRE(F.mkdir("/hello2") == FSResult2::True);
-                REQUIRE(F.mkdir("/hello2/world") == FSResult2::True);
+                REQUIRE(F.mkdir("/hello2") == FSResult::True);
+                REQUIRE(F.mkdir("/hello2/world") == FSResult::True);
 
-                REQUIRE(F.mkfile("/hello2/world/file") == FSResult2::True);
+                REQUIRE(F.mkfile("/hello2/world/file") == FSResult::True);
 
-                REQUIRE(F.exists("/hello2/world/file") == FSResult2::True);
+                REQUIRE(F.exists("/hello2/world/file") == FSResult::True);
             }
         }
     }
@@ -151,31 +151,31 @@ SCENARIO("rm")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/") == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/") == FSResult::True);
 
         THEN("We can remove a single directory")
         {
             REQUIRE(F.mkdir("/bin"));
-            REQUIRE(F.remove("/bin") == FSResult2::True);
-            REQUIRE(F.exists("/bin") == FSResult2::False);
+            REQUIRE(F.remove("/bin") == FSResult::True);
+            REQUIRE(F.exists("/bin") == FSResult::False);
         }
 
         THEN("We cannot delete non-empty folders")
         {
             REQUIRE(F.mkdir("/etc"));
             REQUIRE(F.mkfile("/etc/profile.txt"));
-            REQUIRE(F.remove("/etc") == FSResult2::ErrorNotEmpty);
+            REQUIRE(F.remove("/etc") == FSResult::ErrorNotEmpty);
 
             WHEN("We make the folder empty")
             {
-                REQUIRE(F.remove("/etc/profile.txt") == FSResult2::True);
-                REQUIRE(F.exists("/etc/profile.txt") == FSResult2::False);
+                REQUIRE(F.remove("/etc/profile.txt") == FSResult::True);
+                REQUIRE(F.exists("/etc/profile.txt") == FSResult::False);
 
                 THEN("We can delete the folder")
                 {
-                    REQUIRE(F.remove("/etc") == FSResult2::True);
-                    REQUIRE(F.exists("/etc") == FSResult2::False);
+                    REQUIRE(F.remove("/etc") == FSResult::True);
+                    REQUIRE(F.exists("/etc") == FSResult::False);
                 }
             }
         }
@@ -187,22 +187,22 @@ SCENARIO("mount")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
+        FileSystem F;
 
         THEN("We can mount a directory")
         {
-            REQUIRE(F.exists("/") == FSResult2::True);
-            REQUIRE(F.mkdir("/src") == FSResult2::True);
+            REQUIRE(F.exists("/") == FSResult::True);
+            REQUIRE(F.mkdir("/src") == FSResult::True);
             REQUIRE( NodeType2::MemDir == F.getType("/src"));
-            REQUIRE( FSResult2::True == F.mount<FSNodeHostMount>("/src", CMAKE_SOURCE_DIR));
+            REQUIRE( FSResult::True == F.mount<FSNodeHostMount>("/src", CMAKE_SOURCE_DIR));
 
-            REQUIRE(F.exists("/src/conanfile.py") == FSResult2::True);
-            REQUIRE(F.exists("/src/noexist.py") == FSResult2::False);
+            REQUIRE(F.exists("/src/conanfile.py") == FSResult::True);
+            REQUIRE(F.exists("/src/noexist.py") == FSResult::False);
 
-            REQUIRE(F.exists("/src/test") == FSResult2::True);
-            REQUIRE(F.exists("/src/test/CMakeLists.txt") == FSResult2::True);
+            REQUIRE(F.exists("/src/test") == FSResult::True);
+            REQUIRE(F.exists("/src/test/CMakeLists.txt") == FSResult::True);
 
-            REQUIRE(FSResult2::True == F.mkfile("/hello.txt"));
+            REQUIRE(FSResult::True == F.mkfile("/hello.txt"));
 
             THEN("We can check the types")
             {
@@ -216,13 +216,13 @@ SCENARIO("mount")
             }
             THEN("We can unmount a directory")
             {
-                REQUIRE( FSResult2::True == F.unmount("/src"));
+                REQUIRE( FSResult::True == F.unmount("/src"));
 
-                REQUIRE(F.exists("/src/conanfile.py") == FSResult2::False);
-                REQUIRE(F.exists("/src/noexist.py")   == FSResult2::False);
+                REQUIRE(F.exists("/src/conanfile.py") == FSResult::False);
+                REQUIRE(F.exists("/src/noexist.py")   == FSResult::False);
 
-                REQUIRE(F.exists("/src/test") == FSResult2::False);
-                REQUIRE(F.exists("/src/test/CMakeLists.txt") == FSResult2::False);
+                REQUIRE(F.exists("/src/test") == FSResult::False);
+                REQUIRE(F.exists("/src/test/CMakeLists.txt") == FSResult::False);
             }
         }
     }
@@ -232,26 +232,26 @@ SCENARIO("mount with file manipulation")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
+        FileSystem F;
 
-        REQUIRE(F.exists("/") == FSResult2::True);
-        REQUIRE(F.mkdir("/build") == FSResult2::True);
-        REQUIRE( FSResult2::True == F.mount<FSNodeHostMount>("/build", CMAKE_BINARY_DIR));
-        REQUIRE(F.exists("/build/CMakeCache.txt") == FSResult2::True);
+        REQUIRE(F.exists("/") == FSResult::True);
+        REQUIRE(F.mkdir("/build") == FSResult::True);
+        REQUIRE( FSResult::True == F.mount<FSNodeHostMount>("/build", CMAKE_BINARY_DIR));
+        REQUIRE(F.exists("/build/CMakeCache.txt") == FSResult::True);
 
         std::filesystem::remove_all(CMAKE_BINARY_DIR "/test-folder");
 
         THEN("Create a directory on the host through the VFS mount")
         {
-            REQUIRE(FSResult2::True == F.mkdir("/build/test-folder"));
+            REQUIRE(FSResult::True == F.mkdir("/build/test-folder"));
             REQUIRE(std::filesystem::exists(CMAKE_BINARY_DIR "/test-folder"));
-            REQUIRE(FSResult2::True == F.exists("/build/test-folder"));
+            REQUIRE(FSResult::True == F.exists("/build/test-folder"));
 
             THEN("Create a file on the host through the VFS mount")
             {
-                REQUIRE(FSResult2::True == F.mkfile("/build/test-folder/test.file"));
+                REQUIRE(FSResult::True == F.mkfile("/build/test-folder/test.file"));
                 REQUIRE(std::filesystem::exists(CMAKE_BINARY_DIR "/test-folder/test.file"));
-                REQUIRE(FSResult2::True == F.exists("/build/test-folder/test.file"));
+                REQUIRE(FSResult::True == F.exists("/build/test-folder/test.file"));
             }
         }
         std::filesystem::remove_all(CMAKE_BINARY_DIR "/test-folder");
@@ -262,10 +262,10 @@ SCENARIO("write to files")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/") == FSResult2::True);
-        REQUIRE(F.mkdir("/folder") == FSResult2::True);
-        REQUIRE(F.mkfile("/folder/file.txt") == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/") == FSResult::True);
+        REQUIRE(F.mkdir("/folder") == FSResult::True);
+        REQUIRE(F.mkfile("/folder/file.txt") == FSResult::True);
 
         {
             auto out = F.openWrite("/folder/file.txt", false);
@@ -305,35 +305,35 @@ SCENARIO("Remove files/directories")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/") == FSResult2::True);
-        REQUIRE(F.mkdir("/folder") == FSResult2::True);
-        REQUIRE(F.mkdir("/folder/A") == FSResult2::True);
-        REQUIRE(F.mkfile("/folder/B") == FSResult2::True);
-        REQUIRE(F.mkfile("/C") == FSResult2::True);
-        REQUIRE(F.mkdir("/D") == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/") == FSResult::True);
+        REQUIRE(F.mkdir("/folder") == FSResult::True);
+        REQUIRE(F.mkdir("/folder/A") == FSResult::True);
+        REQUIRE(F.mkfile("/folder/B") == FSResult::True);
+        REQUIRE(F.mkfile("/C") == FSResult::True);
+        REQUIRE(F.mkdir("/D") == FSResult::True);
 
-        REQUIRE(F.exists("/folder") == FSResult2::True);
-        REQUIRE(F.exists("/folder/A") == FSResult2::True);
-        REQUIRE(F.exists("/folder/B") == FSResult2::True);
-        REQUIRE(F.exists("/C") == FSResult2::True);
-        REQUIRE(F.exists("/D") == FSResult2::True);
+        REQUIRE(F.exists("/folder") == FSResult::True);
+        REQUIRE(F.exists("/folder/A") == FSResult::True);
+        REQUIRE(F.exists("/folder/B") == FSResult::True);
+        REQUIRE(F.exists("/C") == FSResult::True);
+        REQUIRE(F.exists("/D") == FSResult::True);
 
 
         // not empty
-        REQUIRE(F.remove("/folder") == FSResult2::ErrorNotEmpty);
-        REQUIRE(F.remove("/folder/A") == FSResult2::True);
-        REQUIRE(F.exists("/folder/A") == FSResult2::False);
+        REQUIRE(F.remove("/folder") == FSResult::ErrorNotEmpty);
+        REQUIRE(F.remove("/folder/A") == FSResult::True);
+        REQUIRE(F.exists("/folder/A") == FSResult::False);
 
-        REQUIRE(F.remove("/folder/B") == FSResult2::True);
-        REQUIRE(F.exists("/folder/B") == FSResult2::False);
+        REQUIRE(F.remove("/folder/B") == FSResult::True);
+        REQUIRE(F.exists("/folder/B") == FSResult::False);
 
-        REQUIRE(F.remove("/C") == FSResult2::True);
-        REQUIRE(F.remove("/D") == FSResult2::True);
-        REQUIRE(F.exists("/C") == FSResult2::False);
-        REQUIRE(F.exists("/D") == FSResult2::False);
+        REQUIRE(F.remove("/C") == FSResult::True);
+        REQUIRE(F.remove("/D") == FSResult::True);
+        REQUIRE(F.exists("/C") == FSResult::False);
+        REQUIRE(F.exists("/D") == FSResult::False);
 
-        REQUIRE(F.remove("/C/does/not/exist") == FSResult2::ErrorDoesNotExist);
+        REQUIRE(F.remove("/C/does/not/exist") == FSResult::ErrorDoesNotExist);
     }
 }
 
@@ -343,41 +343,41 @@ SCENARIO("Remove files/directories on host")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/") == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/") == FSResult::True);
 
         std::filesystem::remove_all(CMAKE_BINARY_DIR "/folder");
         std::filesystem::create_directories(CMAKE_BINARY_DIR "/folder");
 
-        REQUIRE(F.mkdir("/folder") == FSResult2::True);
-        REQUIRE( FSResult2::True == F.mount<FSNodeHostMount>("/folder", CMAKE_BINARY_DIR "/folder"));
+        REQUIRE(F.mkdir("/folder") == FSResult::True);
+        REQUIRE( FSResult::True == F.mount<FSNodeHostMount>("/folder", CMAKE_BINARY_DIR "/folder"));
 
-        REQUIRE(F.mkdir("/folder/A") == FSResult2::True);
-        REQUIRE(F.mkfile("/folder/B") == FSResult2::True);
-        REQUIRE(F.mkfile("/C") == FSResult2::True);
-        REQUIRE(F.mkdir("/D") == FSResult2::True);
+        REQUIRE(F.mkdir("/folder/A") == FSResult::True);
+        REQUIRE(F.mkfile("/folder/B") == FSResult::True);
+        REQUIRE(F.mkfile("/C") == FSResult::True);
+        REQUIRE(F.mkdir("/D") == FSResult::True);
 
-        REQUIRE(F.exists("/folder") == FSResult2::True);
-        REQUIRE(F.exists("/folder/A") == FSResult2::True);
-        REQUIRE(F.exists("/folder/B") == FSResult2::True);
-        REQUIRE(F.exists("/C") == FSResult2::True);
-        REQUIRE(F.exists("/D") == FSResult2::True);
+        REQUIRE(F.exists("/folder") == FSResult::True);
+        REQUIRE(F.exists("/folder/A") == FSResult::True);
+        REQUIRE(F.exists("/folder/B") == FSResult::True);
+        REQUIRE(F.exists("/C") == FSResult::True);
+        REQUIRE(F.exists("/D") == FSResult::True);
 
 
         // not empty
-        REQUIRE(F.remove("/folder") == FSResult2::ErrorReadOnly);
-        REQUIRE(F.remove("/folder/A") == FSResult2::True);
-        REQUIRE(F.exists("/folder/A") == FSResult2::False);
+        REQUIRE(F.remove("/folder") == FSResult::ErrorReadOnly);
+        REQUIRE(F.remove("/folder/A") == FSResult::True);
+        REQUIRE(F.exists("/folder/A") == FSResult::False);
 
-        REQUIRE(F.remove("/folder/B") == FSResult2::True);
-        REQUIRE(F.exists("/folder/B") == FSResult2::False);
+        REQUIRE(F.remove("/folder/B") == FSResult::True);
+        REQUIRE(F.exists("/folder/B") == FSResult::False);
 
-        REQUIRE(F.remove("/C") == FSResult2::True);
-        REQUIRE(F.remove("/D") == FSResult2::True);
-        REQUIRE(F.exists("/C") == FSResult2::False);
-        REQUIRE(F.exists("/D") == FSResult2::False);
+        REQUIRE(F.remove("/C") == FSResult::True);
+        REQUIRE(F.remove("/D") == FSResult::True);
+        REQUIRE(F.exists("/C") == FSResult::False);
+        REQUIRE(F.exists("/D") == FSResult::False);
 
-        REQUIRE(F.remove("/C/does/not/exist") == FSResult2::ErrorDoesNotExist);
+        REQUIRE(F.remove("/C/does/not/exist") == FSResult::ErrorDoesNotExist);
     }
 }
 
@@ -386,21 +386,21 @@ SCENARIO("Copying file from Mem->Mem")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/") == FSResult2::True);
-        REQUIRE(F.mkfile("/file.txt") == FSResult2::True);
-        REQUIRE(F.mkdir("/folder") == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/") == FSResult::True);
+        REQUIRE(F.mkfile("/file.txt") == FSResult::True);
+        REQUIRE(F.mkdir("/folder") == FSResult::True);
         {
             auto out = F.openWrite("/file.txt", false);
             out << "Hello";
         }
-        REQUIRE(FSResult2::True == F.exists("/file.txt") );
+        REQUIRE(FSResult::True == F.exists("/file.txt") );
 
         THEN("We can copy from memfile to memfile")
         {
-            REQUIRE(FSResult2::True  == F.copy("/file.txt", "/dst.txt") );
-            REQUIRE(FSResult2::True  == F.exists("/dst.txt") );
-            REQUIRE(FSResult2::True == F.exists("/file.txt") );
+            REQUIRE(FSResult::True  == F.copy("/file.txt", "/dst.txt") );
+            REQUIRE(FSResult::True  == F.exists("/dst.txt") );
+            REQUIRE(FSResult::True == F.exists("/file.txt") );
 
             {
                 std::string str = F.fs("/dst.txt");//.openRead("/dst.txt");
@@ -409,9 +409,9 @@ SCENARIO("Copying file from Mem->Mem")
         }
         THEN("We can copy from memfile to mem folder")
         {
-            REQUIRE(FSResult2::True  == F.copy("/file.txt", "/folder") );
-            REQUIRE(FSResult2::True  == F.exists("/folder/file.txt") );
-            REQUIRE(FSResult2::True  == F.exists("/file.txt") );
+            REQUIRE(FSResult::True  == F.copy("/file.txt", "/folder") );
+            REQUIRE(FSResult::True  == F.exists("/folder/file.txt") );
+            REQUIRE(FSResult::True  == F.exists("/file.txt") );
 
             {
                 std::string str;
@@ -427,27 +427,27 @@ SCENARIO("Copying file from Mount->Mem->Mount")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/") == FSResult2::True);
-        REQUIRE(F.mkdir("/src") == FSResult2::True);
-        REQUIRE(F.mkdir("/dst") == FSResult2::True);
-        REQUIRE(F.mount<FSNodeHostMount>("/src", CMAKE_SOURCE_DIR "/archive") == FSResult2::True);
-        REQUIRE(F.mount<FSNodeHostMount>("/dst", CMAKE_BINARY_DIR) == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/") == FSResult::True);
+        REQUIRE(F.mkdir("/src") == FSResult::True);
+        REQUIRE(F.mkdir("/dst") == FSResult::True);
+        REQUIRE(F.mount<FSNodeHostMount>("/src", CMAKE_SOURCE_DIR "/archive") == FSResult::True);
+        REQUIRE(F.mount<FSNodeHostMount>("/dst", CMAKE_BINARY_DIR) == FSResult::True);
 
         std::filesystem::remove_all(CMAKE_BINARY_DIR "/file.txt");
 
         auto ACTUAL_DATA = readFile(CMAKE_SOURCE_DIR "/archive/file.txt");
         REQUIRE(ACTUAL_DATA.size() > 0);
         REQUIRE(ACTUAL_DATA == "Hello world");
-        REQUIRE(FSResult2::True == F.exists("/src/file.txt") );
+        REQUIRE(FSResult::True == F.exists("/src/file.txt") );
 
         THEN("We can copy from mount file to mem file")
         {
-            REQUIRE(FSResult2::True  == F.copy("/src/file.txt", "/dst.txt") );
-            REQUIRE(FSResult2::True  == F.exists("/src/file.txt") );
+            REQUIRE(FSResult::True  == F.copy("/src/file.txt", "/dst.txt") );
+            REQUIRE(FSResult::True  == F.exists("/src/file.txt") );
             REQUIRE(std::filesystem::exists(CMAKE_SOURCE_DIR "/archive/file.txt"));
 
-            REQUIRE(FSResult2::True  == F.exists("/dst.txt") );
+            REQUIRE(FSResult::True  == F.exists("/dst.txt") );
 
             {
                 auto in = F.openRead("/dst.txt");
@@ -457,11 +457,11 @@ SCENARIO("Copying file from Mount->Mem->Mount")
 
             THEN("We can copy from mem file to mount file")
             {
-                REQUIRE(FSResult2::True  == F.copy("/dst.txt", "/dst/dst.txt") );
-                REQUIRE(FSResult2::True  == F.exists("/dst.txt") );
+                REQUIRE(FSResult::True  == F.copy("/dst.txt", "/dst/dst.txt") );
+                REQUIRE(FSResult::True  == F.exists("/dst.txt") );
                 REQUIRE(std::filesystem::exists(CMAKE_BINARY_DIR "/dst.txt"));
 
-                REQUIRE(FSResult2::True  == F.exists("/dst/dst.txt") );
+                REQUIRE(FSResult::True  == F.exists("/dst/dst.txt") );
 
                 {
                     auto in = F.openRead("/dst/dst.txt");
@@ -471,11 +471,11 @@ SCENARIO("Copying file from Mount->Mem->Mount")
 
                 THEN("We can copy from mount file to mem file")
                 {
-                    REQUIRE(FSResult2::True  == F.copy("/dst/dst.txt", "/dst2.txt") );
-                    REQUIRE(FSResult2::True  == F.exists("/dst2.txt") );
+                    REQUIRE(FSResult::True  == F.copy("/dst/dst.txt", "/dst2.txt") );
+                    REQUIRE(FSResult::True  == F.exists("/dst2.txt") );
                     REQUIRE(std::filesystem::exists(CMAKE_BINARY_DIR "/dst.txt"));
 
-                    REQUIRE(FSResult2::True  == F.exists("/dst/dst.txt") );
+                    REQUIRE(FSResult::True  == F.exists("/dst/dst.txt") );
 
                     {
                         auto in = F.openRead("/dst2.txt");
@@ -492,21 +492,21 @@ SCENARIO("Moving file from Mem->Mem")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/") == FSResult2::True);
-        REQUIRE(F.mkfile("/file.txt") == FSResult2::True);
-        REQUIRE(F.mkdir("/folder") == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/") == FSResult::True);
+        REQUIRE(F.mkfile("/file.txt") == FSResult::True);
+        REQUIRE(F.mkdir("/folder") == FSResult::True);
         {
             auto out = F.openWrite("/file.txt", false);
             out << "Hello";
         }
-        REQUIRE(FSResult2::True == F.exists("/file.txt") );
+        REQUIRE(FSResult::True == F.exists("/file.txt") );
 
         THEN("We can copy from memfile to memfile")
         {
-            REQUIRE(FSResult2::True  == F.move("/file.txt", "/dst.txt") );
-            REQUIRE(FSResult2::True  == F.exists("/dst.txt") );
-            REQUIRE(FSResult2::False == F.exists("/file.txt") );
+            REQUIRE(FSResult::True  == F.move("/file.txt", "/dst.txt") );
+            REQUIRE(FSResult::True  == F.exists("/dst.txt") );
+            REQUIRE(FSResult::False == F.exists("/file.txt") );
 
             {
                 std::string str;
@@ -517,9 +517,9 @@ SCENARIO("Moving file from Mem->Mem")
         }
         THEN("We can copy from memfile to mem folder")
         {
-            REQUIRE(FSResult2::True  == F.move("/file.txt", "/folder") );
-            REQUIRE(FSResult2::True  == F.exists("/folder/file.txt") );
-            REQUIRE(FSResult2::False == F.exists("/file.txt") );
+            REQUIRE(FSResult::True  == F.move("/file.txt", "/folder") );
+            REQUIRE(FSResult::True  == F.exists("/folder/file.txt") );
+            REQUIRE(FSResult::False == F.exists("/file.txt") );
 
             {
                 std::string str;
@@ -535,10 +535,10 @@ SCENARIO("Moving file from Mount->Mem->Mount")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/") == FSResult2::True);
-        REQUIRE(F.mkdir("/dst") == FSResult2::True);
-        REQUIRE(F.mount<FSNodeHostMount>("/dst", CMAKE_BINARY_DIR) == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/") == FSResult::True);
+        REQUIRE(F.mkdir("/dst") == FSResult::True);
+        REQUIRE(F.mount<FSNodeHostMount>("/dst", CMAKE_BINARY_DIR) == FSResult::True);
 
         std::filesystem::remove_all(CMAKE_BINARY_DIR "/A.txt");
         REQUIRE(!std::filesystem::exists(CMAKE_BINARY_DIR "/A.txt"));
@@ -550,11 +550,11 @@ SCENARIO("Moving file from Mount->Mem->Mount")
 
         THEN("We can move from Mount to Mount")
         {
-            REQUIRE(FSResult2::True  == F.move("/dst/A.txt", "/dst/B.txt") );
+            REQUIRE(FSResult::True  == F.move("/dst/A.txt", "/dst/B.txt") );
             REQUIRE(std::filesystem::exists(CMAKE_BINARY_DIR "/B.txt"));
             REQUIRE(!std::filesystem::exists(CMAKE_BINARY_DIR "/A.txt"));
-            REQUIRE(FSResult2::True  == F.exists("/dst/B.txt") );
-            REQUIRE(FSResult2::False == F.exists("/dst/A.txt") );
+            REQUIRE(FSResult::True  == F.exists("/dst/B.txt") );
+            REQUIRE(FSResult::False == F.exists("/dst/A.txt") );
 
             {
                 auto in = F.openRead("/dst/B.txt");
@@ -564,11 +564,11 @@ SCENARIO("Moving file from Mount->Mem->Mount")
 
             THEN("We can move from Mount to Mem")
             {
-                REQUIRE(FSResult2::True  == F.move("/dst/B.txt", "/C.txt") );
+                REQUIRE(FSResult::True  == F.move("/dst/B.txt", "/C.txt") );
                 REQUIRE(!std::filesystem::exists(CMAKE_BINARY_DIR "/B.txt"));
 
-                REQUIRE(FSResult2::False  == F.exists("/dst/B.txt") );
-                REQUIRE(FSResult2::True == F.exists("/C.txt") );
+                REQUIRE(FSResult::False  == F.exists("/dst/B.txt") );
+                REQUIRE(FSResult::True == F.exists("/C.txt") );
 
                 {
                     auto in = F.openRead("/C.txt");
@@ -579,11 +579,11 @@ SCENARIO("Moving file from Mount->Mem->Mount")
 
                 THEN("We can move from Mem to Mount")
                 {
-                    REQUIRE(FSResult2::True  == F.move("/C.txt", "/dst/D.txt") );
+                    REQUIRE(FSResult::True  == F.move("/C.txt", "/dst/D.txt") );
                     REQUIRE(std::filesystem::exists(CMAKE_BINARY_DIR "/D.txt"));
 
-                    REQUIRE(FSResult2::False  == F.exists("/C.txt") );
-                    REQUIRE(FSResult2::True == F.exists("/dst/D.txt") );
+                    REQUIRE(FSResult::False  == F.exists("/C.txt") );
+                    REQUIRE(FSResult::True == F.exists("/dst/D.txt") );
 
                     {
                         auto in = F.openRead("/dst/D.txt");
@@ -600,12 +600,12 @@ SCENARIO("Moving Folders from Mem->Mem")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/")     == FSResult2::True);
-        REQUIRE(F.mkdir("/src")   == FSResult2::True);
-        REQUIRE(F.mkdir("/src/A") == FSResult2::True);
-        REQUIRE(F.mkdir("/src/B") == FSResult2::True);
-        REQUIRE(F.mkdir("/src/C") == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/")     == FSResult::True);
+        REQUIRE(F.mkdir("/src")   == FSResult::True);
+        REQUIRE(F.mkdir("/src/A") == FSResult::True);
+        REQUIRE(F.mkdir("/src/B") == FSResult::True);
+        REQUIRE(F.mkdir("/src/C") == FSResult::True);
 
 
         REQUIRE(F.getType("/src")   == NodeType2::MemDir);
@@ -615,7 +615,7 @@ SCENARIO("Moving Folders from Mem->Mem")
 
         THEN("We can move the folder")
         {
-            REQUIRE(FSResult2::True == F.move("/src", "/dst") );
+            REQUIRE(FSResult::True == F.move("/src", "/dst") );
 
             REQUIRE(F.getType("/dst")   == NodeType2::MemDir);
             REQUIRE(F.getType("/dst/A") == NodeType2::MemDir);
@@ -635,15 +635,15 @@ SCENARIO("List Dir")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
-        REQUIRE(F.exists("/")     == FSResult2::True);
-        REQUIRE(F.mkdir("/src")   == FSResult2::True);
-        REQUIRE(F.mkdir("/src/A") == FSResult2::True);
-        REQUIRE(F.mkdir("/src/B") == FSResult2::True);
-        REQUIRE(F.mkdir("/src/C") == FSResult2::True);
+        FileSystem F;
+        REQUIRE(F.exists("/")     == FSResult::True);
+        REQUIRE(F.mkdir("/src")   == FSResult::True);
+        REQUIRE(F.mkdir("/src/A") == FSResult::True);
+        REQUIRE(F.mkdir("/src/B") == FSResult::True);
+        REQUIRE(F.mkdir("/src/C") == FSResult::True);
 
-        REQUIRE(F.mkdir("/build") == FSResult2::True);
-        REQUIRE(F.mount<FSNodeHostMount>("/build", CMAKE_BINARY_DIR) == FSResult2::True);
+        REQUIRE(F.mkdir("/build") == FSResult::True);
+        REQUIRE(F.mount<FSNodeHostMount>("/build", CMAKE_BINARY_DIR) == FSResult::True);
         for(auto n : F.list_dir("/src"))
         {
             std::cout << n << std::endl;
@@ -661,7 +661,7 @@ SCENARIO("Test helpers")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
+        FileSystem F;
         F.mkfile("/file.txt");
         F.fs("/file.txt") << std::string("hello");
 
@@ -676,7 +676,7 @@ SCENARIO("Test Read-Only")
 {
     GIVEN("A filesystem with some directories and files")
     {
-        FileSystem2 F;
+        FileSystem F;
         REQUIRE(F.mount<FSNodeHostMount>("/", CMAKE_BINARY_DIR)== FSResult::True);
 
         REQUIRE(F.mkfile("/file.txt") == FSResult::True);

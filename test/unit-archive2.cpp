@@ -44,7 +44,7 @@ void writeVectorToFile(const std::vector<uint8_t>& data, const std::string& file
     }
 }
 
-std::string file_to_string(FileSystem2 & F, FileSystem2::path_type path)
+std::string file_to_string(FileSystem & F, FileSystem::path_type path)
 {
     auto in = F.openRead(path);
     std::stringstream buffer;
@@ -113,19 +113,19 @@ SCENARIO("Uncompress")
 
 SCENARIO("Mounting From File")
 {
-    FileSystem2 F;
+    FileSystem F;
 
     GIVEN("A filesystem and a directory")
     {
         REQUIRE(F.exists("/"));
-        REQUIRE(F.mkdir("/tar") == FSResult2::True );
+        REQUIRE(F.mkdir("/tar") == FSResult::True );
 
         WHEN("We mount a uncompressed tar")
         {
-            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", ARCHIVE_TAR_PATH) == FSResult2::True);
+            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", ARCHIVE_TAR_PATH) == FSResult::True);
 
-            REQUIRE(F.mkfile("/tar/file") == FSResult2::ErrorReadOnly);
-            REQUIRE(F.mkdir("/tar/file")  == FSResult2::ErrorReadOnly);
+            REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
+            REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);
 
             REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
             REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);
@@ -141,10 +141,10 @@ SCENARIO("Mounting From File")
         }
         WHEN("We mount a compressed tar")
         {
-            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", ARCHIVE_TAR_GZ_PATH) == FSResult2::True);
+            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", ARCHIVE_TAR_GZ_PATH) == FSResult::True);
 
-            REQUIRE(F.mkfile("/tar/file") == FSResult2::ErrorReadOnly);
-            REQUIRE(F.mkdir("/tar/file")  == FSResult2::ErrorReadOnly);
+            REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
+            REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);
 
             REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
             REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);
@@ -163,20 +163,20 @@ SCENARIO("Mounting From File")
 
 SCENARIO("Mounting From Memory")
 {
-    FileSystem2 F;
+    FileSystem F;
 
     GIVEN("A filesystem and a directory")
     {
         REQUIRE(F.exists("/"));
-        REQUIRE(F.mkdir("/tar") == FSResult2::True );
+        REQUIRE(F.mkdir("/tar") == FSResult::True );
 
         WHEN("We mount a uncompressed tar")
         {
             auto raw_data = loadFile(ARCHIVE_TAR_PATH);
-            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", raw_data.data(), raw_data.size()) == FSResult2::True);
+            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", raw_data.data(), raw_data.size()) == FSResult::True);
 
-            REQUIRE(F.mkfile("/tar/file") == FSResult2::ErrorReadOnly);
-            REQUIRE(F.mkdir("/tar/file")  == FSResult2::ErrorReadOnly);
+            REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
+            REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);
 
             REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
             REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);
@@ -193,10 +193,10 @@ SCENARIO("Mounting From Memory")
         WHEN("We mount a compressed tar")
         {
             auto raw_data = loadFile(ARCHIVE_TAR_GZ_PATH);
-            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", raw_data.data(), raw_data.size()) == FSResult2::True);
+            REQUIRE(F.mount<ArchiveNodeMount2>("/tar", raw_data.data(), raw_data.size()) == FSResult::True);
 
-            REQUIRE(F.mkfile("/tar/file") == FSResult2::ErrorReadOnly);
-            REQUIRE(F.mkdir("/tar/file")  == FSResult2::ErrorReadOnly);
+            REQUIRE(F.mkfile("/tar/file") == FSResult::ErrorReadOnly);
+            REQUIRE(F.mkdir("/tar/file")  == FSResult::ErrorReadOnly);
 
             REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
             REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);

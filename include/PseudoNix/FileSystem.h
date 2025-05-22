@@ -5,9 +5,7 @@
 
 namespace PseudoNix
 {
-    using FileSystem = PseudoNix::FileSystem2;
     using NodeType   = PseudoNix::NodeType2;
-    using FSResult   = PseudoNix::FSResult2;
 }
 
 #endif

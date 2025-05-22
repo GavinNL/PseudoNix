@@ -96,7 +96,7 @@ enum class AwaiterResult
 };
 
 
-struct System : public PseudoNix::FileSystem2
+struct System : public PseudoNix::FileSystem
 {
     using stream_type      = ReaderWriterStream_t<char>;
     using pid_type         = uint32_t;
@@ -1944,18 +1944,18 @@ protected:
 #define FS_PRINT_ERROR(_error) \
         switch(_error)\
         {\
-        case FSResult2::False:\
-        case FSResult2::True:\
+        case FSResult::False:\
+        case FSResult::True:\
             break;\
-        case FSResult2::ErrorNotEmpty: COUT << std::format("Location is not empty"); break;\
-        case FSResult2::ErrorReadOnly: COUT << std::format("Location is read-only"); break;\
-        case FSResult2::ErrorNotFile: COUT << std::format("Location is not a file"); break;\
-        case FSResult2::ErrorNotDirectory: COUT << std::format("Location is not a directory"); break;\
-        case FSResult2::ErrorDoesNotExist: COUT << std::format("File or folder does not exists"); break;\
-        case FSResult2::ErrorExists: COUT << std::format("File or folder already exists"); break;\
-        case FSResult2::ErrorParentDoesNotExist: COUT << std::format("Unknown Error"); break;\
-        case FSResult2::ErrorIsMounted: COUT << std::format("Location is a mounted file/directory"); break;\
-        case FSResult2::UnknownError: COUT << std::format("Unknown Error"); break;\
+        case FSResult::ErrorNotEmpty: COUT << std::format("Location is not empty"); break;\
+        case FSResult::ErrorReadOnly: COUT << std::format("Location is read-only"); break;\
+        case FSResult::ErrorNotFile: COUT << std::format("Location is not a file"); break;\
+        case FSResult::ErrorNotDirectory: COUT << std::format("Location is not a directory"); break;\
+        case FSResult::ErrorDoesNotExist: COUT << std::format("File or folder does not exists"); break;\
+        case FSResult::ErrorExists: COUT << std::format("File or folder already exists"); break;\
+        case FSResult::ErrorParentDoesNotExist: COUT << std::format("Unknown Error"); break;\
+        case FSResult::ErrorIsMounted: COUT << std::format("Location is a mounted file/directory"); break;\
+        case FSResult::UnknownError: COUT << std::format("Unknown Error"); break;\
         }
 
 

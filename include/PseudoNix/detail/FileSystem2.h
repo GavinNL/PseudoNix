@@ -1,5 +1,5 @@
-#ifndef PSEUDONIX_FILESYSTEM2_H
-#define PSEUDONIX_FILESYSTEM2_H
+#ifndef PSEUDONIX_FileSystem_H
+#define PSEUDONIX_FileSystem_H
 
 #include <map>
 #include <string>
@@ -125,7 +125,7 @@ private:
 struct FSNode
 {
     using path_type = std::filesystem::path;
-    using result_type = FSResult2;
+    using result_type = FSResult;
     std::string  name;
     bool read_only = false;
     FSNode()
@@ -162,17 +162,17 @@ struct FSNodeDir : public FSNode
 };
 
 
-struct FileSystem2;
+struct FileSystem;
 struct NodeRef
 {
     FSNode::path_type absPath;
-    FileSystem2 *fs;
+    FileSystem *fs;
 
     operator std::string() const;
 };
 
 
-struct FileSystem2
+struct FileSystem
 {
     using path_type   = FSNode::path_type;
     using result_type = FSNode::result_type;
@@ -481,7 +481,7 @@ struct FileSystem2
      * return the node to the first path that contains a mount
      */
     std::pair<std::shared_ptr<const FSNode>, path_type> find_last_valid_virtual_node(path_type abs_path) const {
-        return const_cast<FileSystem2*>(this)->find_last_valid_virtual_node(abs_path);
+        return const_cast<FileSystem*>(this)->find_last_valid_virtual_node(abs_path);
     }
     std::pair<std::shared_ptr<FSNode>, path_type> find_last_valid_virtual_node(path_type abs_path)
     {
