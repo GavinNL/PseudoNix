@@ -1928,7 +1928,7 @@ protected:
                 {
                     path = ARGS[i];
                     HANDLE_PATH(CWD, path);
-                    if(!SYSTEM.rm(path))
+                    if(!SYSTEM.remove(path))
                     {
                         COUT << std::format("Error deleting file: {}", path.generic_string());
                         co_return 1;

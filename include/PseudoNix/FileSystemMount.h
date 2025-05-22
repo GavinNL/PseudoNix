@@ -44,7 +44,7 @@ struct FSMountBase
     virtual result_type exists(path_type relPath) const = 0;
     virtual result_type mkdir(path_type relPath) = 0;
     virtual result_type mkfile(path_type relPath) = 0;
-    virtual result_type rm(path_type relPath) = 0;
+    virtual result_type remove(path_type relPath) = 0;
     virtual std::unique_ptr<std::streambuf> open(path_type relPath, std::ios::openmode mode) = 0;
     virtual NodeType2 getType(path_type relPath) const = 0;
     virtual bool is_read_only() const = 0;

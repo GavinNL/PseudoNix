@@ -124,8 +124,8 @@ SCENARIO("Mounting From File")
         {
             REQUIRE(F.mount<ArchiveNodeMount2>("/tar", ARCHIVE_TAR_PATH) == FSResult2::True);
 
-            REQUIRE(F.mkfile("/tar/file") == FSResult2::False);
-            REQUIRE(F.mkdir("/tar/file")  == FSResult2::False);
+            REQUIRE(F.mkfile("/tar/file") == FSResult2::ErrorReadOnly);
+            REQUIRE(F.mkdir("/tar/file")  == FSResult2::ErrorReadOnly);
 
             REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
             REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);
@@ -143,8 +143,8 @@ SCENARIO("Mounting From File")
         {
             REQUIRE(F.mount<ArchiveNodeMount2>("/tar", ARCHIVE_TAR_GZ_PATH) == FSResult2::True);
 
-            REQUIRE(F.mkfile("/tar/file") == FSResult2::False);
-            REQUIRE(F.mkdir("/tar/file")  == FSResult2::False);
+            REQUIRE(F.mkfile("/tar/file") == FSResult2::ErrorReadOnly);
+            REQUIRE(F.mkdir("/tar/file")  == FSResult2::ErrorReadOnly);
 
             REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
             REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);
@@ -175,8 +175,8 @@ SCENARIO("Mounting From Memory")
             auto raw_data = loadFile(ARCHIVE_TAR_PATH);
             REQUIRE(F.mount<ArchiveNodeMount2>("/tar", raw_data.data(), raw_data.size()) == FSResult2::True);
 
-            REQUIRE(F.mkfile("/tar/file") == FSResult2::False);
-            REQUIRE(F.mkdir("/tar/file")  == FSResult2::False);
+            REQUIRE(F.mkfile("/tar/file") == FSResult2::ErrorReadOnly);
+            REQUIRE(F.mkdir("/tar/file")  == FSResult2::ErrorReadOnly);
 
             REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
             REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);
@@ -195,8 +195,8 @@ SCENARIO("Mounting From Memory")
             auto raw_data = loadFile(ARCHIVE_TAR_GZ_PATH);
             REQUIRE(F.mount<ArchiveNodeMount2>("/tar", raw_data.data(), raw_data.size()) == FSResult2::True);
 
-            REQUIRE(F.mkfile("/tar/file") == FSResult2::False);
-            REQUIRE(F.mkdir("/tar/file")  == FSResult2::False);
+            REQUIRE(F.mkfile("/tar/file") == FSResult2::ErrorReadOnly);
+            REQUIRE(F.mkdir("/tar/file")  == FSResult2::ErrorReadOnly);
 
             REQUIRE(F.getType("/tar/folder") == NodeType2::MountDir);
             REQUIRE(F.getType("/tar/file.txt") == NodeType2::MountFile);

@@ -157,7 +157,7 @@ SCENARIO("rm")
         THEN("We can remove a single directory")
         {
             REQUIRE(F.mkdir("/bin"));
-            REQUIRE(F.rm("/bin") == FSResult2::True);
+            REQUIRE(F.remove("/bin") == FSResult2::True);
             REQUIRE(F.exists("/bin") == FSResult2::False);
         }
 
@@ -165,16 +165,16 @@ SCENARIO("rm")
         {
             REQUIRE(F.mkdir("/etc"));
             REQUIRE(F.mkfile("/etc/profile.txt"));
-            REQUIRE(F.rm("/etc") == FSResult2::ErrorNotEmpty);
+            REQUIRE(F.remove("/etc") == FSResult2::ErrorNotEmpty);
 
             WHEN("We make the folder empty")
             {
-                REQUIRE(F.rm("/etc/profile.txt") == FSResult2::True);
+                REQUIRE(F.remove("/etc/profile.txt") == FSResult2::True);
                 REQUIRE(F.exists("/etc/profile.txt") == FSResult2::False);
 
                 THEN("We can delete the folder")
                 {
-                    REQUIRE(F.rm("/etc") == FSResult2::True);
+                    REQUIRE(F.remove("/etc") == FSResult2::True);
                     REQUIRE(F.exists("/etc") == FSResult2::False);
                 }
             }
@@ -321,19 +321,19 @@ SCENARIO("Remove files/directories")
 
 
         // not empty
-        REQUIRE(F.rm("/folder") == FSResult2::ErrorNotEmpty);
-        REQUIRE(F.rm("/folder/A") == FSResult2::True);
+        REQUIRE(F.remove("/folder") == FSResult2::ErrorNotEmpty);
+        REQUIRE(F.remove("/folder/A") == FSResult2::True);
         REQUIRE(F.exists("/folder/A") == FSResult2::False);
 
-        REQUIRE(F.rm("/folder/B") == FSResult2::True);
+        REQUIRE(F.remove("/folder/B") == FSResult2::True);
         REQUIRE(F.exists("/folder/B") == FSResult2::False);
 
-        REQUIRE(F.rm("/C") == FSResult2::True);
-        REQUIRE(F.rm("/D") == FSResult2::True);
+        REQUIRE(F.remove("/C") == FSResult2::True);
+        REQUIRE(F.remove("/D") == FSResult2::True);
         REQUIRE(F.exists("/C") == FSResult2::False);
         REQUIRE(F.exists("/D") == FSResult2::False);
 
-        REQUIRE(F.rm("/C/does/not/exist") == FSResult2::ErrorDoesNotExist);
+        REQUIRE(F.remove("/C/does/not/exist") == FSResult2::ErrorDoesNotExist);
     }
 }
 
@@ -365,19 +365,19 @@ SCENARIO("Remove files/directories on host")
 
 
         // not empty
-        REQUIRE(F.rm("/folder") == FSResult2::ErrorReadOnly);
-        REQUIRE(F.rm("/folder/A") == FSResult2::True);
+        REQUIRE(F.remove("/folder") == FSResult2::ErrorReadOnly);
+        REQUIRE(F.remove("/folder/A") == FSResult2::True);
         REQUIRE(F.exists("/folder/A") == FSResult2::False);
 
-        REQUIRE(F.rm("/folder/B") == FSResult2::True);
+        REQUIRE(F.remove("/folder/B") == FSResult2::True);
         REQUIRE(F.exists("/folder/B") == FSResult2::False);
 
-        REQUIRE(F.rm("/C") == FSResult2::True);
-        REQUIRE(F.rm("/D") == FSResult2::True);
+        REQUIRE(F.remove("/C") == FSResult2::True);
+        REQUIRE(F.remove("/D") == FSResult2::True);
         REQUIRE(F.exists("/C") == FSResult2::False);
         REQUIRE(F.exists("/D") == FSResult2::False);
 
-        REQUIRE(F.rm("/C/does/not/exist") == FSResult2::ErrorDoesNotExist);
+        REQUIRE(F.remove("/C/does/not/exist") == FSResult2::ErrorDoesNotExist);
     }
 }
 
@@ -687,7 +687,7 @@ SCENARIO("Test Read-Only")
         REQUIRE(F.is_read_only("/file.txt") == FSResult::True);
         REQUIRE(F.copy("/file.txt", "/file2.txt") == FSResult::ErrorReadOnly);
         REQUIRE(F.move("/file.txt", "/file2.txt") == FSResult::ErrorReadOnly);
-        REQUIRE(F.rm("/file.txt") == FSResult::ErrorReadOnly);
+        REQUIRE(F.remove("/file.txt") == FSResult::ErrorReadOnly);
 
         REQUIRE(FSResult::ErrorIsMounted == F.set_read_only("/file.txt", true));
     }

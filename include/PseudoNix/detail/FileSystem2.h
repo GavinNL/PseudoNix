@@ -357,7 +357,7 @@ struct FileSystem2
      *
      * Removes a file and returns result_type::True if successful
      */
-    result_type rm(path_type abs_path)
+    result_type remove(path_type abs_path)
     {
         _clean(abs_path);
         assert(abs_path.has_root_directory());
@@ -376,7 +376,7 @@ struct FileSystem2
                 return result_type::ErrorReadOnly;
             if(d->mount)
             {
-                return d->mount->rm(rem / abs_path.filename());
+                return d->mount->remove(rem / abs_path.filename());
             }
             else
             {
@@ -564,7 +564,7 @@ struct FileSystem2
 
             dstDir_p->nodes[dstAbsPath.filename().generic_string()] = srcFile_p;
 
-            rm(srcAbsPath);
+            remove(srcAbsPath);
 
             return result_type::True;
         }
@@ -594,7 +594,7 @@ struct FileSystem2
             auto ret = copy(srcAbsPath, dstAbsPath);
             if(ret != result_type::True)
                 return ret;
-            ret = rm(srcAbsPath);
+            ret = remove(srcAbsPath);
             if(ret != result_type::True)
                 return ret;
             return result_type::True;

@@ -227,7 +227,7 @@ struct ArchiveNodeMount2 : public FSMountBase
         return it->second.is_dir ? NodeType2::MountDir : NodeType2::MountFile;
     }
 
-    virtual result_type rm(path_type relPath) override
+    virtual result_type remove(path_type relPath) override
     {
         return result_type::ErrorReadOnly;
         (void)relPath;

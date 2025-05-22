@@ -145,7 +145,7 @@ struct FSNodeHostMount : public FSMountBase
         return b ? result_type::True : result_type::False;
     }
 
-    virtual result_type rm(path_type relPath) override
+    virtual result_type remove(path_type relPath) override
     {
         (void)relPath;
         return std::filesystem::remove(m_path_on_host / relPath) ? result_type::True : result_type::False;
