@@ -156,3 +156,18 @@ if( ${PROJECT_NAME}_BUILD_UNIT_TESTS)
 endif()
 
 endif()
+
+
+if(EXISTS "/mnt/Pcloud/Public Folder/PseudoNix" AND IS_DIRECTORY "/mnt/Pcloud/Public Folder/PseudoNix")
+if(EMSCRIPTEN)
+    add_custom_command(TARGET terminal POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE_DIR:terminal>/terminal.wasm"
+                "/mnt/Pcloud/Public Folder/PseudoNix/terminal.wasm"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE_DIR:terminal>/terminal.js"
+                "/mnt/Pcloud/Public Folder/PseudoNix/terminal.js"
+    )
+endif()
+endif()
+
