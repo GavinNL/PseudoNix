@@ -80,7 +80,7 @@ public:
                     }
                     ImGui::End();
                 }
-                co_await ctrl->await_yield();
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
             }
 
             // returns exit code 0 if confirmed and 1 if cancelled

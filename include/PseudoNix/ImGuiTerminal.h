@@ -50,7 +50,7 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
 
     if(SYSTEM.taskQueueExists("IMGUI"))
     {
-        co_await ctrl->await_yield("IMGUI");
+        HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield("IMGUI"), ctrl);
     }
 
     int frameCount[2] = {ImGui::GetFrameCount()-1, ImGui::GetFrameCount()-1};
