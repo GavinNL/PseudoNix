@@ -202,6 +202,17 @@ struct FileSystem2
         }
         return read_only ? result_type::True : result_type::False;
     }
+
+    result_type set_read_only(path_type abs_path, bool read_only)
+    {
+        auto [mnt, rem] = find_last_valid_virtual_node(abs_path);
+        if(rem.empty())
+        {
+            mnt->read_only = read_only;
+            return result_type::True;
+        }
+        return result_type::ErrorIsMounted;
+    }
     /**
      * @brief exists
      * @param abs_path

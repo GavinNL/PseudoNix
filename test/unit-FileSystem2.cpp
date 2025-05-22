@@ -680,12 +680,15 @@ SCENARIO("Test Read-Only")
         REQUIRE(F.mount<FSNodeHostMount>("/", CMAKE_BINARY_DIR)== FSResult::True);
 
         REQUIRE(F.mkfile("/file.txt") == FSResult::True);
-
-        F.m_rootNode->read_only = true;
+        REQUIRE(F.is_read_only("/") == FSResult::False);
+        REQUIRE(F.is_read_only("/file.txt") == FSResult::False);
+        F.set_read_only("/", true);
 
         REQUIRE(F.is_read_only("/file.txt") == FSResult::True);
         REQUIRE(F.copy("/file.txt", "/file2.txt") == FSResult::ErrorReadOnly);
         REQUIRE(F.move("/file.txt", "/file2.txt") == FSResult::ErrorReadOnly);
         REQUIRE(F.rm("/file.txt") == FSResult::ErrorReadOnly);
+
+        REQUIRE(FSResult::ErrorIsMounted == F.set_read_only("/file.txt", true));
     }
 }

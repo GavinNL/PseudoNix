@@ -1868,6 +1868,7 @@ protected:
         case FSResult2::ErrorDoesNotExist: COUT << std::format("File or folder does not exists"); break;\
         case FSResult2::ErrorExists: COUT << std::format("File or folder already exists"); break;\
         case FSResult2::ErrorParentDoesNotExist: COUT << std::format("Unknown Error"); break;\
+        case FSResult2::ErrorIsMounted: COUT << std::format("Location is a mounted file/directory"); break;\
         case FSResult2::UnknownError: COUT << std::format("Unknown Error"); break;\
         }
 

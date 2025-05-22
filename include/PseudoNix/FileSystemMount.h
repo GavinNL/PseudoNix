@@ -20,6 +20,7 @@ enum FSResult2
     ErrorExists,
     ErrorParentDoesNotExist,
     ErrorDoesNotExist,
+    ErrorIsMounted,
     UnknownError = 255,
 };
 
