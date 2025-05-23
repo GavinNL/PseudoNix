@@ -1,6 +1,8 @@
 # PseudoNix
 
-![Main GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/GavinNL/PseudoNix/.github%2Fworkflows%2Fcmake-multi-platform.yml?branch=main&style=for-the-badge&logo=github&label=main) ![Dev GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/GavinNL/PseudoNix/.github%2Fworkflows%2Fcmake-multi-platform.yml?branch=dev&style=for-the-badge&logo=github&label=dev) 
+<img src="https://img.shields.io/github/actions/workflow/status/GavinNL/PseudoNix/.github%2Fworkflows%2Fcmake-multi-platform.yml?branch=main&style=for-the-badge&logo=github&label=main" 
+href="https://github.com/GavinNL/PseudoNix/actions?query=branch%3Amain" alt="Main GitHub Actions Workflow Status"> <img src="https://img.shields.io/github/actions/workflow/status/GavinNL/PseudoNix/.github%2Fworkflows%2Fcmake-multi-platform.yml?branch=dev&style=for-the-badge&logo=github&label=dev" 
+href="https://github.com/GavinNL/PseudoNix/actions?query=branch%3Adev"  alt="Dev GitHub Actions Workflow Status">
 
 PseudoNix is an embeddable header-only, Linux-like environment you can integrate
 directly into your project to provide concurrent process like behaviour.
