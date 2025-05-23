@@ -12,6 +12,12 @@ struct MyApplication : public ImGuiApplication
 public:
     PseudoNix::System       m_mini;
 
+    ~MyApplication()
+    {
+        // Make sure all processes are shutdown
+        m_mini.destroy();
+    }
+
     MyApplication()
     {
         // set up the system
