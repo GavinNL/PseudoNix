@@ -12,6 +12,12 @@ struct MyApplication : public ImGuiApplication
 public:
     PseudoNix::System       m_mini;
 
+    ~MyApplication()
+    {
+        // Make sure all processes are shutdown
+        m_mini.destroy();
+    }
+
     MyApplication()
     {
         // set up the system
@@ -80,7 +86,7 @@ public:
                     }
                     ImGui::End();
                 }
-                co_await ctrl->await_yield();
+                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
             }
 
             // returns exit code 0 if confirmed and 1 if cancelled

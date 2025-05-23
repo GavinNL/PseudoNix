@@ -178,7 +178,7 @@ SCENARIO("System: Run a single command manually read from input")
             if(System::stream_type::Result::SUCCESS == args.in->get(&c))
             {
                 args.out->put(c);
-                co_await control->await_yield();
+                (void)co_await control->await_yield();
             }
             else
             {
@@ -264,7 +264,7 @@ SCENARIO("Test await_yield")
         PSEUDONIX_PROC_START(control);
 
         COUT << "test: wait\n";
-        co_await control->await_yield(); // yield at this point, echo will run
+        (void)co_await control->await_yield(); // yield at this point, echo will run
         COUT << "test: resume\n";
 
         co_return 0;
@@ -302,7 +302,7 @@ SCENARIO("Test await_yield_for")
         PSEUDONIX_PROC_START(control);
 
         COUT << "test: wait\n";
-        co_await control->await_yield_for(std::chrono::seconds(1)); // yield at this point, echo will run
+        (void)co_await control->await_yield_for(std::chrono::seconds(1)); // yield at this point, echo will run
         COUT << "test: resume\n";
 
         co_return 0;
@@ -347,7 +347,7 @@ SCENARIO("Test await_finished")
         std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pid);
 
         COUT << "test: wait\n";
-        co_await control->await_finished(pid); // yield at this point, echo will run
+        (void)co_await control->await_finished(pid); // yield at this point, echo will run
         COUT << "test: resume\n";
 
         co_return 0;
@@ -395,7 +395,7 @@ SCENARIO("Test await_finished multi")
         std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pids[1]);
 
         COUT << "test: wait\n";
-        co_await control->await_finished(pids); // yield at this point, echo will run
+        (void)co_await control->await_finished(pids); // yield at this point, echo will run
         COUT << "test: resume\n";
 
         co_return 0;
@@ -447,13 +447,13 @@ SCENARIO("test await_data")
 
         char c;
         COUT << "test: wait 1\n";
-        co_await control->await_has_data(control->in);
+        (void)co_await control->await_has_data(control->in);
         COUT << "test: resume 1\n";
         REQUIRE(control->in->get(&c) == System::stream_type::Result::SUCCESS);
         REQUIRE(c == '1');
 
         COUT << "test: wait 2\n";
-        co_await control->await_has_data(control->in);
+        (void)co_await control->await_has_data(control->in);
         COUT << "test: resume 2\n";
         REQUIRE(control->in->get(&c) == System::stream_type::Result::SUCCESS);
         REQUIRE(c == '2');
@@ -579,3 +579,228 @@ SCENARIO("Test kill")
 
 }
 
+
+SCENARIO("Test Destroy with processes that dont handle awaits properly")
+{
+    System M;
+
+    M.setFunction("test_good", [](System::e_type control) -> System::task_type {
+        PSEUDONIX_PROC_START(control);
+
+        PSEUDONIX_TRAP
+        {
+            COUT << std::format("test_good: onExit\n");
+        };
+
+        COUT << std::format("test_good: enter loop\n");
+        while(true)
+        {
+            // breaks the loop if await yields a non-success value
+            HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await control->await_yield(), control);
+        }
+        COUT << "test_good: Exited gracefully\n";
+        co_return 0;
+    });
+
+    M.setFunction("test_bad", [](System::e_type control) -> System::task_type {
+        PSEUDONIX_PROC_START(control);
+
+        PSEUDONIX_TRAP
+        {
+            COUT << std::format("test_bad: onExit\n");
+        };
+
+        COUT << std::format("test_bad: enter loop\n");
+        while(true)
+        {
+            // Doesn't handle the signals
+            (void)co_await control->await_yield();
+        }
+        COUT << "test_bad: Exited gracefully\n";
+        co_return 0;
+    });
+
+    GIVEN("A good and bad process")
+    {
+        auto p1 = M.spawnProcess({"test_good"});
+        REQUIRE(p1 != 0);
+        REQUIRE(p1 != 0xFFFFFFFF);
+
+        auto p2 = M.spawnProcess({"test_bad"});
+        REQUIRE(p2 != 0);
+        REQUIRE(p2 != 0xFFFFFFFF);
+
+        auto O1 = M.getIO(p1).second;
+        auto O2 = M.getIO(p2).second;
+
+        REQUIRE(2 == M.taskQueueExecute() );
+        WHEN("When we terminateAll()")
+        {
+            REQUIRE(2 == M.taskQueueExecute() );
+            REQUIRE(2 == M.taskQueueExecute() );
+            M.terminateAll();
+
+            THEN("Process 1 exits but process 2 does not")
+            {
+                REQUIRE(1 == M.taskQueueExecute() );
+                REQUIRE(M.isRunning(p1) == false);
+                REQUIRE(M.isRunning(p2) == true);
+
+                THEN("Process 1 exits gracefully and executes its trap. Process 2 is still running")
+                {
+                    // The interrupt handled
+                    REQUIRE(
+                        O1->str() == "test_good: enter loop\n"
+                                     "test_good: Exited gracefully\n"
+                                     "test_good: onExit\n"
+                        );
+                    REQUIRE(
+                        O2->str() == "test_bad: enter loop\n"
+                        );
+                }
+            }
+        }
+        WHEN("When we kill p1 and p2")
+        {
+            REQUIRE(M.kill(p1) == true);
+            REQUIRE(M.kill(p2) == true);
+            REQUIRE(0 == M.taskQueueExecute() );
+
+            THEN("Both processes stop")
+            {
+                REQUIRE(M.isRunning(p1) == false);
+                REQUIRE(M.isRunning(p2) == false);
+
+                THEN("Neither process exits gracefully. Both execute their trap")
+                {
+                    // The interrupt handled
+                    REQUIRE(
+                        O1->str() == "test_good: enter loop\n"
+                                     "test_good: onExit\n"
+                        );
+                    REQUIRE(
+                        O2->str() == "test_bad: enter loop\n"
+                                     "test_bad: onExit\n"
+                        );
+                }
+            }
+        }
+        WHEN("When we call destroy()")
+        {
+            REQUIRE(0 == M.destroy());
+
+            THEN("Both processes stop")
+            {
+                REQUIRE(M.isRunning(p1) == false);
+                REQUIRE(M.isRunning(p2) == false);
+
+                THEN("P1 executes gracefully, but P2 does not")
+                {
+                    // The interrupt handled
+                    REQUIRE(
+                        O1->str() == "test_good: enter loop\n"
+                                     "test_good: Exited gracefully\n"
+                                     "test_good: onExit\n"
+                        );
+                    REQUIRE(
+                        O2->str() == "test_bad: enter loop\n"
+                                     "test_bad: onExit\n"
+                        );
+                }
+            }
+        }
+    }
+}
+
+
+SCENARIO("Test Destroy with processes that dont handle awaits properly")
+{
+    System M;
+
+
+    M.setFunction("test_very_bad", [](System::e_type control) -> System::task_type {
+        PSEUDONIX_PROC_START(control);
+
+        PSEUDONIX_TRAP
+        {
+            COUT << std::format("test_very_bad: onExit\n");
+        };
+
+        COUT << std::format("test_very_bad: enter loop\n");
+        while(true)
+        {
+            // bad! dont do this. suspends always
+            // no way to wake up
+            co_await std::suspend_always{};
+        }
+        COUT << "test_very_bad: Exited gracefully\n";
+        co_return 0;
+    });
+
+    GIVEN("A very_bad process that co_await std::suspend_always{} ")
+    {
+        auto p1 = M.spawnProcess({"test_very_bad"});
+        REQUIRE(p1 != 0);
+        REQUIRE(p1 != 0xFFFFFFFF);
+
+        auto O1 = M.getIO(p1).second;
+
+        REQUIRE(1 == M.taskQueueExecute() );
+
+        WHEN("When we terminateAll()")
+        {
+            M.terminateAll();
+            REQUIRE(1 == M.taskQueueExecute() );
+
+            THEN("The process is still running")
+            {
+                REQUIRE(M.isRunning(p1) == true);
+
+                THEN("Process 1 exits gracefully and executes its trap. Process 2 is still running")
+                {
+                    // The interrupt handled
+                    REQUIRE(
+                        O1->str() == "test_very_bad: enter loop\n"
+                        );
+                }
+            }
+        }
+        WHEN("When we kill p1")
+        {
+            REQUIRE(M.kill(p1) == true);
+            REQUIRE(0 == M.taskQueueExecute() );
+
+            THEN("The process exits")
+            {
+                REQUIRE(M.isRunning(p1) == false);
+
+                THEN("Process does not exit gracefully. Executes trap")
+                {
+                    // The interrupt handled
+                    REQUIRE(
+                        O1->str() == "test_very_bad: enter loop\n"
+                                     "test_very_bad: onExit\n"
+                        );
+                }
+            }
+        }
+        WHEN("When we call destroy()")
+        {
+            REQUIRE(0 == M.destroy());
+
+            THEN("Process exits")
+            {
+                REQUIRE(M.isRunning(p1) == false);
+
+                THEN("P1 executes trap")
+                {
+                    // The interrupt handled
+                    REQUIRE(
+                        O1->str() == "test_very_bad: enter loop\n"
+                                     "test_very_bad: onExit\n"
+                        );
+                }
+            }
+        }
+    }
+}

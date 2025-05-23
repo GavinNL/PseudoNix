@@ -21,7 +21,7 @@ PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
         // The output stream is not connected to anything
         COUT << std::format("[{}] Counter: {}\n", ARGS[1], i);
 
-        co_await ctrl->await_yield_for(sleep_time);
+        (void)co_await ctrl->await_yield_for(sleep_time);
     }
     co_return 0;
 }

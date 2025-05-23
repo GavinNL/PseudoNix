@@ -1,47 +1,58 @@
-#ifndef PSEUDONIX_FILESYSTEM_H
-#define PSEUDONIX_FILESYSTEM_H
+#ifndef PSEUDONIX_FileSystem_H
+#define PSEUDONIX_FileSystem_H
 
-#include <format>
 #include <map>
 #include <string>
-#include <typeindex>
-#include <variant>
 #include <cassert>
 #include <filesystem>
-#include <fstream>
-#include <any>
 #include <vector>
-#include "generator.h"
+#include "FileSystemMount.h"
+#include "FileSystemHelpers.h"
+#include <format>
 
 namespace PseudoNix
 {
 
-template<typename T>
-using generator = Generator<T>;
-
-class vector_backed_streambuf : public std::streambuf {
+class VectorBackedStreamBuf : public std::streambuf {
 public:
-    explicit vector_backed_streambuf(std::vector<char>& buffer)
-        : buffer_(buffer)
+    explicit VectorBackedStreamBuf(std::vector<char>& buffer, std::ios::openmode _mode)
+        : buffer_(buffer),
+          m_mode(_mode)
     {
-        setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
-        setp(buffer_.data(), buffer_.data() + buffer_.size());
+        if( _mode & std::ios::app )
+        {
+            setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
+            setp(nullptr, nullptr);
+        }
+        else
+        {
+            setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
+            setp(buffer_.data(), buffer_.data() + buffer_.size());
+            //std::cout <<std::format("total size: {}   Write pos: {}", std::distance(pbase(), epptr()), std::distance(pbase(), pptr())) << std::endl;
+        }
     }
 
+    ~VectorBackedStreamBuf()
+    {
+        this->sync();
+    }
     // Ensure output expansion if writing past current capacity
     int_type overflow(int_type ch) override {
-        if (ch == traits_type::eof()) {
-            return traits_type::not_eof(ch);
-        }
-
-        std::ptrdiff_t write_pos = pptr() - pbase();
+        //std::cout <<std::format("writing: {},  total size: {}   Write pos: {}", static_cast<char>(ch), std::distance(pbase(), epptr()), std::distance(pbase(), pptr())) << std::endl;
         buffer_.push_back(static_cast<char>(ch));
-        buffer_.resize(buffer_.size()); // Ensure capacity is correct
+        auto s = buffer_.size();
+        buffer_.resize(buffer_.size() + 5);
+        setp(buffer_.data() + s, buffer_.data() + buffer_.size());
 
-        char* base = buffer_.data();
-        setp(base, base + buffer_.size());
-        pbump(static_cast<int>(write_pos + 1));
-
+        //buffer_.resize( buffer_.size() + 10);
+        //char_type*
+        //pbase() const { return _M_out_beg; }
+        //
+        //char_type*
+        //pptr() const { return _M_out_cur; }
+        //
+        //char_type*
+        //epptr() const { return _M_out_end; }
         return ch;
     }
 
@@ -53,26 +64,20 @@ public:
 
     // Sync not needed in memory buffer, but we can update get area
     int sync() override {
-        std::ptrdiff_t size = pptr() - pbase();
-        buffer_.resize(static_cast<size_t>(size));
-        setg(buffer_.data(), buffer_.data(), buffer_.data() + buffer_.size());
+        if( m_mode & std::ios::in )
+            return 0;
+        auto shortenBy = std::distance(pbase(), epptr()) - std::distance(pbase(), pptr());
+        //std::cout << shortenBy << std::endl;
+        //std::cout <<std::format("total size: {}   Write pos: {}", std::distance(pbase(), epptr()), std::distance(pbase(), pptr())) << std::endl;
+        buffer_.resize(buffer_.size()-static_cast<size_t>(shortenBy));
+        setp(nullptr, nullptr);
+        //std::cout << "Sync" << std::endl;
         return 0;
     }
 
 private:
     std::vector<char>& buffer_;
-};
-
-class string_backed_iostream : public std::iostream {
-public:
-    explicit string_backed_iostream(std::vector<char> & backing)
-        : std::iostream(nullptr), buf(backing)
-    {
-        rdbuf(&buf);
-    }
-
-private:
-    vector_backed_streambuf buf;
+    std::ios::openmode m_mode;
 };
 
 class FileStream : public std::iostream {
@@ -81,951 +86,800 @@ public:
     {
     }
 
-    // String-based constructor (backed by stringstream)
-    explicit FileStream(std::vector<char> &initialContent)
-        : std::iostream(nullptr)
+    explicit FileStream(std::unique_ptr<std::streambuf> && stream_buff) : std::iostream(stream_buff.get()),
+        _streamBuf(std::move(stream_buff))
     {
-        backing = std::make_unique<string_backed_iostream>(initialContent);
-        this->rdbuf(std::get<0>(backing)->rdbuf());
-    }
-
-    // File-based constructor (backed by fstream)
-    explicit FileStream(const std::filesystem::path& filePath, std::ios::openmode mode)
-        : std::iostream(nullptr), backing(std::fstream(filePath, mode)) {
-        this->rdbuf(std::get<std::fstream>(backing).rdbuf());
     }
 private:
-    std::variant<std::unique_ptr<string_backed_iostream>, std::fstream> backing;
+    std::unique_ptr<std::streambuf> _streamBuf;
 };
 
-enum class FSResult
-{
-    Success,
-    True,
-    False,
-    PathExists,
-    DoesNotExist,
-    NotEmpty,
-    NotValidMount,
-    NotValidPath,
-    NotADirectory,
-    ReadOnlyFileSystem,
-    HostDoesNotExist,
-    CannotCreate,
-    InvalidFileName,
-    UnknownError
-};
-
-enum class Type
-{
-    DOES_NOT_EXIST,
-    MEM_FILE,
-    MEM_DIR,
-    MOUNT,
-    HOST_FILE,
-    HOST_DIR,
-    CUSTOM,
-    UNKNOWN
-};
-
-struct NodeFile
-{
-    std::vector<char> filedata;
-};
-
-struct NodeCustom
-{
-    // use for storing any type of data
-    std::any data;
-
-    template<typename T>
-    T& as()
+class oFileStream : public std::ostream {
+public:
+    oFileStream() : std::ostream(nullptr)
     {
-        return std::any_cast<T&>(data);
     }
-    template<typename T>
-    T const& as() const
+
+    explicit oFileStream(std::unique_ptr<std::streambuf> && stream_buff) : std::ostream(stream_buff.get()),
+        _streamBuf(std::move(stream_buff))
     {
-        return std::any_cast<T const&>(data);
     }
-    template<typename T>
-    bool is() const
-    {
-        return data.type() == std::type_index(typeid(T));
-    }
+private:
+    std::unique_ptr<std::streambuf> _streamBuf;
 };
 
-struct NodeDir
-{
+class iFileStream : public std::istream {
+public:
+    iFileStream() : std::istream(nullptr)
+    {
+    }
 
+    explicit iFileStream(std::unique_ptr<std::streambuf> && stream_buff) : std::istream(stream_buff.get()),
+        _streamBuf(std::move(stream_buff))
+    {
+    }
+private:
+    std::unique_ptr<std::streambuf> _streamBuf;
 };
 
-struct NodeMount
+struct FSNode
 {
-    std::filesystem::path host_path;
+    using path_type = std::filesystem::path;
+    using result_type = FSResult;
+    std::string  name;
     bool read_only = false;
-
-    bool exists(std::filesystem::path const & path) const
+    FSNode()
     {
-        assert(!path.has_root_directory());
-        return std::filesystem::exists(host_path / path);
     }
-    template<typename T>
-    bool _is(std::filesystem::path const &p) const
+    FSNode(std::string _name)
     {
-        if constexpr( std::is_same_v<T, NodeDir> )
-        {
-            return is_dir(p);
-        }
-        if constexpr( std::is_same_v<T, NodeFile> )
-        {
-            return is_file(p);
-        }
-        if constexpr( std::is_same_v<T, NodeCustom> )
-        {
-            return false;
-        }
+        name = _name;
     }
-    template<typename T>
-    FSResult _mk(std::filesystem::path const &p)
+    virtual ~FSNode()
     {
-        if constexpr( std::is_same_v<T, NodeDir> )
-        {
-            return mkdir(p);
-        }
-        if constexpr( std::is_same_v<T, NodeFile> )
-        {
-            return touch(p);
-        }
-        if constexpr( std::is_same_v<T, NodeCustom> )
-        {
-            return FSResult::CannotCreate;
-        }
-    }
-    bool remove(std::filesystem::path const & path) const
-    {
-        assert(!path.has_root_directory());
-        return std::filesystem::remove(host_path / path);
-    }
-    bool is_dir(std::filesystem::path const & path) const
-    {
-        assert(!path.has_root_directory());
-        return std::filesystem::is_directory(host_path / path);
-    }
-    bool is_file(std::filesystem::path const & path) const
-    {
-        assert(!path.has_root_directory());
-        return std::filesystem::is_regular_file(host_path / path);
-    }
-    FSResult mkdir(std::filesystem::path const & path)
-    {
-        assert(!path.has_root_directory());
-        if(read_only)
-            return FSResult::ReadOnlyFileSystem;
-        if(std::filesystem::create_directories(host_path / path))
-        {
-            return FSResult::Success;
-        }
-        return FSResult::CannotCreate;
-    }
-    FSResult touch(std::filesystem::path const & path)
-    {
-        assert(!path.has_root_directory());
-
-        if(read_only)
-            return FSResult::ReadOnlyFileSystem;;
-        std::ofstream out(host_path/path);
-        out.close();
-        return FSResult::Success;
-    }
-    bool is_empty(std::filesystem::path const & path) const
-    {
-        namespace fs = std::filesystem;
-        auto abs_path = host_path / path;
-        return fs::is_empty(abs_path);
-    }
-    generator<std::filesystem::path> list_dir(std::filesystem::path path) const
-    {
-        namespace fs = std::filesystem;
-        auto abs_path = host_path / path;
-        for (const auto& entry : fs::directory_iterator(abs_path)) {
-            co_yield entry.path().lexically_proximate(abs_path);
-        }
     }
 };
-using Node = std::variant<NodeDir, NodeFile, NodeCustom, NodeMount>;
 
-inline void _clean(std::filesystem::path & P1)
+struct FSNodeFile : public FSNode
 {
-    auto& p = P1;
+    std::vector<char> data;
 
-    auto str = P1.generic_string();
-    for (auto& s : str)
+    FSNodeFile(std::string _name) : FSNode(_name)
     {
-        if (s == '\\') s = '/';
     }
-    P1 = std::filesystem::path(str);
+};
 
-    if(p.has_root_directory())
+struct FSNodeDir : public FSNode
+{
+    std::map<std::string, std::shared_ptr<FSNode> > nodes;
+
+    // a mount node
+    std::shared_ptr<FSMountBase> mount;
+
+    FSNodeDir(std::string _name) : FSNode(_name)
     {
-        P1 = std::filesystem::path("/") / p.lexically_normal().relative_path();
     }
-    else
-    {
-        P1 = p.lexically_normal().relative_path();
-    }
+};
 
 
-    if (P1.filename().empty())
-    {
-        P1 = p.parent_path();
-    }
-}
-
+struct FileSystem;
 struct NodeRef
 {
-    Node * n;
-    std::filesystem::path path;
+    FSNode::path_type absPath;
+    FileSystem *fs;
+
+    operator std::string() const;
 };
+
 
 struct FileSystem
 {
-    using node_type = Node;
-    using path_type = std::filesystem::path;
+    using path_type   = FSNode::path_type;
+    using result_type = FSNode::result_type;
 
-    std::map<path_type, node_type> m_nodes;
-
-    FileSystem()
+    result_type is_read_only(path_type abs_path) const
     {
-        m_nodes["/"] = NodeDir{ };
+        if(abs_path == "/")
+        {
+            return m_rootNode->read_only ? result_type::True : result_type::False;
+        }
+
+        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
+        bool read_only = mnt->read_only;
+
+        // if any of the parent paths are read only.
+        // then this node is readonly
+        read_only |= is_read_only(abs_path.parent_path()) == result_type::True;
+        if(read_only)
+            return result_type::True;
+
+        if(auto d = std::dynamic_pointer_cast<FSNodeDir const>(mnt))
+        {
+            if(d->mount)
+            {
+                read_only |= d->mount->is_read_only();
+            }
+        }
+        return read_only ? result_type::True : result_type::False;
     }
 
-    auto find_node(path_type path)
+    result_type set_read_only(path_type abs_path, bool read_only)
     {
-        _clean(path);
-        return m_nodes.find(path);
-    }
-    auto find_node(path_type path) const
-    {
-        _clean(path);
-        return m_nodes.find(path);
+        auto [mnt, rem] = find_last_valid_virtual_node(abs_path);
+        if(rem.empty())
+        {
+            mnt->read_only = read_only;
+            return result_type::True;
+        }
+        return result_type::ErrorIsMounted;
     }
     /**
      * @brief exists
-     * @param path
+     * @param abs_path
      * @return
      *
-     * Checks if a path exists
+     * Returns a result_type::True or result_type::False
+     * if the path exists
      */
-    bool exists(path_type path) const
+    result_type exists(path_type abs_path)
     {
-        path = path.lexically_normal();
-        _clean(path);
-        assert(path.has_root_directory());
+        _clean(abs_path);
+        assert(abs_path.has_root_directory());
 
-        path_type root;
-        for(auto const & p : path)
+        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
+        if(mnt && rem.empty())
         {
-            root /= p;
-            auto it = find_node(root);
-            if(it != m_nodes.end())
-            {
-                // found
-                if(std::holds_alternative<NodeMount>(it->second))
-                {
-                    return std::get<NodeMount>(it->second).exists(path.lexically_relative(root));
-                }
-            }
-            else
-            {
-                return false;
-            }
+            return result_type::True;
         }
-        return true;
-    }
 
-
-    template<typename T>
-    bool _is(path_type p)
-    {
-        _clean(p);
-        auto [it, sub] = find_parent_mount_split_it(p);
-        if (it != m_nodes.end())
+        auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt);
+        if(d)
         {
-            if (std::holds_alternative<NodeMount>(it->second))
-                return std::get<NodeMount>(it->second)._is<T>(sub);
-            return std::holds_alternative<T>(it->second);
+            if(d->mount)
+            {
+                return d->mount->exists(rem);
+            }
+            return result_type::False;
         }
-        return false;
-    }
-
-    bool is_dir(path_type p)
-    {
-        return _is<NodeDir>(p);
-    }
-
-    bool is_file(path_type p)
-    {
-        return _is<NodeFile>(p);
-    }
-
-    bool is_custom_file(path_type p)
-    {
-        return _is<NodeCustom>(p);
-    }
-
-    /**
-     * @brief list_dir
-     * @param path
-     * @return
-     *
-     * Returns a generator which lists all files/directores
-     * in the given paths
-     */
-    generator<path_type> list_dir(path_type path) const
-    {
-        _clean(path);
-        auto [it, sub] = find_parent_mount_split_it(path);
-
-        //auto it = find_node(path);
-        if(it != m_nodes.end())
+        else
         {
-            if(std::holds_alternative<NodeDir>(it->second))
-            {
-                auto it2 = std::next(it);
-                while(it2 != m_nodes.end())
-                {
-                    if(path.lexically_relative(it2->first) == "..")
-                    {
-                        co_yield it2->first;
-                    }
-                    ++it2;
-                }
-                co_return;
-            }
-            if( std::holds_alternative<NodeMount>(it->second) && !sub.empty())
-            {
-                auto ll = std::get<NodeMount>(it->second).list_dir( sub );
-                for(auto D : ll)
-                {
-                    co_yield it->first / D;
-                }
-
-            }
+            // its a file for some reason?
         }
-        co_return;
+        return result_type::False;
     }
 
     /**
      * @brief mkdir
-     * @param path
+     * @param abs_path
      * @return
      *
-     * Creates a directory
+     * Creates a directory and returns result_type::True
+     * if it was successful
      */
-    FSResult mkdir(path_type path)
+    result_type mkdir(path_type abs_path)
     {
-        return _mk<NodeDir>(path, true);
-    }
-
-    /**
-     * @brief mkcustom
-     * @param path
-     * @return
-     *
-     * Creates a custom file
-     */
-    FSResult mkcustom(path_type path)
-    {
-        return _mk<NodeCustom>(path, false);
-    }
-
-    /**
-     * @brief touch
-     * @param path
-     * @return
-     *
-     * Creates an empty file
-     */
-    FSResult touch(path_type path)
-    {
-        return _mk<NodeFile>(path, false);
-    }
-
-    /**
-     * @brief is_empty
-     * @param path
-     * @return
-     *
-     * Check if a directory is empty
-     */
-    FSResult is_empty(path_type path) const
-    {
-        _clean(path);
-        auto [it, sub] = find_parent_mount_split_it(path);
-
-        if(!sub.empty())
+        _clean(abs_path);
+        if(is_read_only(abs_path))
         {
-            if(std::get<NodeMount>(it->second).is_empty( sub ))
-                return FSResult::True;
-            return FSResult::False;
+            return result_type::ErrorReadOnly;
         }
-        else
-        {
-            if(it != m_nodes.end())
-            {
-                auto next = std::next(it);
-                if(next == m_nodes.end())
-                    return FSResult::True;
+        assert(abs_path.has_root_directory());
 
-                if(!std::holds_alternative<NodeDir>(it->second))
-                {
-                    return FSResult::NotADirectory;
-                }
-                if(it->first.lexically_relative(next->first) == "..")
-                {
-                    return FSResult::False;
-                }
-                return FSResult::True;
+        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
+
+        if(!mnt)
+            return result_type::UnknownError;
+
+        if(rem.empty())
+        {
+            // location already exists
+            return result_type::ErrorExists;
+        }
+
+        auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt);
+        if(d)
+        {
+            if(d->mount)
+            {
+                return d->mount->mkdir(rem);
             }
             else
             {
-                return FSResult::DoesNotExist;
+                if( !rem.parent_path().empty() )
+                {
+                    // parent directory doesn't exist
+                    return result_type::ErrorParentDoesNotExist;
+                }
+                d->nodes[rem.generic_string()] = std::make_shared<FSNodeDir>(rem.generic_string());
+                return result_type::True;
             }
         }
-        return FSResult::UnknownError;
+        return result_type::False;
     }
 
     /**
-     * @brief mount
-     * @param host_path
-     * @param path
+     * @brief mkfile
+     * @param abs_path
      * @return
      *
-     * Mounts a host directory into the virtual filesystem
+     * Creates an empty file and returns result_type::True
+     * if successful
      */
-    FSResult mount( path_type host_path, path_type path)
+    result_type mkfile(path_type abs_path)
     {
-        if( !std::filesystem::is_directory(host_path))
+        _clean(abs_path);
+        if(is_read_only(abs_path))
         {
-            return FSResult::HostDoesNotExist;
+            return result_type::ErrorReadOnly;
         }
-        _clean(path);
 
-        auto [it, sub] = find_parent_mount_split_it(path);
+        assert(abs_path.has_root_directory());
 
-        // that path already exists inside
-        // a mount point
-        if(!sub.empty())
-            return FSResult::NotValidMount;
+        auto rel_path_to_root = abs_path.relative_path();
 
-        if(is_empty(path) != FSResult::True)
-            return FSResult::NotEmpty;
+        auto [mnt, rem] = find_last_valid_virtual_node(abs_path);
 
-        if( std::holds_alternative<NodeDir>(it->second))
+        if(!mnt)
+            return result_type::UnknownError;
+
+        if(rem.empty())
         {
-            it->second = NodeMount{host_path};
-            return FSResult::Success;
+            // location already exists
+            return result_type::ErrorExists;
         }
-        return FSResult::NotValidMount;
-    }
 
-    /**
-     * @brief umount
-     * @param path
-     * @return
-     *
-     * Unmounts the host directory
-     */
-    FSResult umount(path_type path)
-    {
-        auto [it, sub] = find_parent_mount_split_it(path);
-        //auto mnt = find_parent_mount(path);
-        if(it != m_nodes.end() && sub.empty())
+        auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt);
+        if(d)
         {
-            if(std::holds_alternative<NodeMount>(it->second))
+            if(d->mount)
             {
-                it->second = NodeDir{};
-                return FSResult::Success;
+                return d->mount->mkfile(rem);
             }
-        }
-
-        return FSResult::NotValidMount;
-    }
-
-    /**
-     * @brief cp
-     * @param src
-     * @param dst
-     * @return
-     *
-     * Copies a single FILE to a destination.
-     * the src file must exist
-     *
-     * dst can be a file or a directory
-     */
-    FSResult cp(path_type src, path_type dst)
-    {
-        _clean(src);
-        _clean(dst);
-        auto dst_type = get_type(dst);
-
-        if(dst_type == Type::MEM_DIR || dst_type == Type::HOST_DIR)
-        {
-            touch(dst / src.filename());
-            return copy(src, dst / src.filename());
-        }
-        else if(dst_type == Type::HOST_FILE || dst_type == Type::MEM_FILE)
-        {
-            return copy(src, dst);
-        }
-        else if(dst_type == Type::UNKNOWN)
-        {
-            if(exists(dst.parent_path()))
+            else
             {
-                touch(dst);
-                return copy(src, dst);
+                if( !rem.parent_path().empty() )
+                {
+                    // parent directory doesn't exist
+                    return result_type::ErrorParentDoesNotExist;
+                }
+
+                d->nodes[rem.generic_string()] = std::make_shared<FSNodeFile>(rem.generic_string());
+                return result_type::True;
             }
-            return FSResult::NotValidPath;
         }
-
-        return FSResult::UnknownError;
-    }
-
-    /**
-     * @brief mv
-     * @param src
-     * @param dst
-     * @return
-     *
-     * Moves a single FILE from src to dst. src MUST exist
-     *
-     * Dst can be a file or a directory
-     */
-    FSResult mv(path_type const & src, path_type const & dst)
-    {
-        auto dst_type = get_type(dst);
-
-        if(dst_type == Type::MEM_DIR || dst_type == Type::HOST_DIR)
-        {
-            touch(dst / src.filename());
-            return move(src, dst / src.filename());
-        }
-        else if(dst_type == Type::HOST_FILE || dst_type == Type::MEM_FILE)
-        {
-            return move(src, dst);
-        }
-        else if(dst_type == Type::UNKNOWN)
-        {
-            if(exists(dst.parent_path()))
-            {
-                touch(dst);
-                return move(src, dst);
-            }
-            return FSResult::NotValidPath;
-        }
-        return FSResult::UnknownError;
+        return result_type::UnknownError;
     }
 
     /**
      * @brief rm
-     * @param src
+     * @param abs_path
      * @return
      *
-     * Removes a file from the virtual filesystem
-     * If src points to file on the host, that file will be deleted
+     * Removes a file and returns result_type::True if successful
      */
-    bool rm(path_type src)
+    result_type remove(path_type abs_path)
     {
-        _clean(src);
-        auto src_type = get_type(src);
-        if(src_type == Type::MEM_FILE )
+        _clean(abs_path);
+        assert(abs_path.has_root_directory());
+
+        if(is_read_only(abs_path))
         {
-            m_nodes.erase(src);
-            return true;
+            return result_type::ErrorReadOnly;
         }
-        else if(src_type == Type::HOST_FILE)
+
+        auto [mnt, rem] = find_last_valid_virtual_node(abs_path.parent_path());
+
+        auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt);
+        if(d)
         {
-            auto [it, sub] = find_parent_mount_split_it(src);
-            return std::get<NodeMount>(it->second).remove(sub);
-        }
-        else if(src_type == Type::MEM_DIR)
-        {
-            if(is_empty(src) == FSResult::True)
+            if(d->read_only)
+                return result_type::ErrorReadOnly;
+            if(d->mount)
             {
-                m_nodes.erase(src);
-                return true;
+                return d->mount->remove(rem / abs_path.filename());
+            }
+            else
+            {
+                auto it = d->nodes.find(abs_path.filename().generic_string());
+                if(it != d->nodes.end())
+                {
+                    if(auto cp = std::dynamic_pointer_cast<FSNodeDir>(it->second) )
+                    {
+                        if(!cp->nodes.empty())
+                            return result_type::ErrorNotEmpty;
+                        if(cp->mount)
+                            return result_type::ErrorReadOnly;
+                        d->nodes.erase(it);
+                        return result_type::True;
+                    }
+                    else
+                    {
+                        d->nodes.erase(it);
+                        return result_type::True;
+                    }
+                    return result_type::True;
+                }
+                // doens't exist
+                return result_type::ErrorDoesNotExist;
             }
         }
-        return false;
+        return result_type::UnknownError;
+    }
+
+    result_type unmount(path_type abs_path_in_vfs)
+    {
+        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path_in_vfs);
+
+        if( mnt && rem.empty())
+        {
+            auto dir = std::dynamic_pointer_cast<FSNodeDir>(mnt);
+            if(!dir)
+            {
+                // not a directory
+                return result_type::ErrorNotDirectory;
+            }
+
+            // nothing mounted
+            if(!dir->mount)
+                return result_type::False;
+
+            dir->mount = {};
+            return result_type::True;
+        }
+        return result_type::UnknownError;
     }
 
     /**
-     * @brief copy
-     * @param src
-     * @param dst
+     * @brief mount
+     * @param abs_path_in_vfs
+     * @param __args
      * @return
      *
-     * Copy a file from one path to another. Both src and dst
-     * must exist and must be either  HOST_FILE or a MEM_FILE.
+     * Mounts a virtual file system inside the virtual filesystem
      *
-     * Dont use this: use "cp"
+     * A simple example:
+     *
+     * // Mounts the user's home directory on /mnt
+     * mount<HostMount>("/mnt", "/home/user");
      */
-    FSResult copy(path_type const & src, path_type const & dst)
+    template<typename _Tp, typename... _Args>
+    result_type mount(path_type abs_path_in_vfs, _Args&&... __args)
     {
-        assert(get_type(src) == Type::MEM_FILE || get_type(src) == Type::HOST_FILE);
-        assert(get_type(dst) == Type::MEM_FILE || get_type(dst) == Type::HOST_FILE);
+        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path_in_vfs);
 
+        if( mnt && rem.empty())
         {
-
-            auto Fout = this->open(dst, std::ios::out);
-            auto Fin  = this->open(src, std::ios::in);
-            std::vector<char> _buff(1024 * 1024);
-
-            while(!Fin.eof())
+            auto dir = std::dynamic_pointer_cast<FSNodeDir>(mnt);
+            if(!dir)
             {
-                Fin.read(&_buff[0], 1024*1024 - 1);
-                auto s = Fin.gcount();
-                if(s==0)
-                    break;
-                Fout.write(&_buff[0], s);
+                // not a directory
+                return result_type::False;
             }
-            //Fout << Fin.rdbuf();
-            return FSResult::Success;
+
+            // not empty
+            if(dir->nodes.size() > 0)
+                return result_type::False;
+
+            // already mounted
+            if(dir->mount)
+                return result_type::False;
+
+            dir->mount = std::make_shared<_Tp>(std::forward<_Args>(__args)...);
+            return result_type::True;
+        }
+        return result_type::False;
+    }
+
+
+    /**
+     * @brief find_last_valid_virtual_dir
+     * @param abs_path
+     * @return
+     *
+     * Given a path: /path/to/some/file
+     *
+     * return the node to the first path that contains a mount
+     */
+    std::pair<std::shared_ptr<const FSNode>, path_type> find_last_valid_virtual_node(path_type abs_path) const {
+        return const_cast<FileSystem*>(this)->find_last_valid_virtual_node(abs_path);
+    }
+    std::pair<std::shared_ptr<FSNode>, path_type> find_last_valid_virtual_node(path_type abs_path)
+    {
+        _clean(abs_path);
+        assert(abs_path.has_root_directory());
+
+        auto rel_path_to_root = abs_path.relative_path();
+        auto r = m_rootNode;
+
+        //path_type rem = rel_path_to_root;
+
+        while(true)
+        {
+            auto [first, rem] = split_first(rel_path_to_root);
+
+            auto it = r->nodes.find(first.generic_string());
+            if(it == r->nodes.end())
+            {
+                if(rem.empty())
+                    return {r,first};
+                return {r, first/rem};
+            }
+            auto first_dir = std::dynamic_pointer_cast<FSNodeDir>(it->second);
+            if(first_dir)
+            {
+                if(first_dir->mount)
+                {
+                    return {first_dir, rem};
+                }
+                else
+                {
+                    r = first_dir;
+                    rel_path_to_root = rem;
+                }
+            }
+            else
+            {
+                // its a file
+                return {it->second, rem};
+            }
         }
     }
 
     /**
      * @brief move
-     * @param src
-     * @param dst
+     * @param srcAbsPath
+     * @param dstAbsPath
      * @return
      *
-     * Movies a file from one path to another. Both src and dst must
-     * exist and must be either a HOST_FILE or a MEM_FILE.
-     *
-     * Don't use this: use "mv"
+     * Moves a file/folder from one location to another
      */
-    FSResult move(path_type const & src, path_type const & dst)
+    result_type move(path_type srcAbsPath, path_type dstAbsPath)
     {
-        // requirements:
-        //   src must exist and must be a hostfile or a memfile
-        //   dst must exist and must be a hostfile or a memfile (can be empty)
-
-        auto src_type = get_type(src);
-        auto dst_type = get_type(dst);
-
-        assert(src_type == Type::MEM_FILE || src_type == Type::HOST_FILE);
-        assert(dst_type == Type::MEM_FILE || dst_type == Type::HOST_FILE);
-
-        if(src_type == Type::HOST_FILE && dst_type == Type::MEM_FILE)
+        if(!exists(srcAbsPath))
         {
-            // file exists on the host, so we'll have to
-            // copy the file into memory and delete the old
-            cp(src, dst);
-
-            // todo: delete src
-            return FSResult::Success;
+            // src file doesn't exist
+            return result_type::ErrorDoesNotExist;
         }
-        else if(src_type == Type::HOST_FILE && dst_type == Type::HOST_FILE)
+        if(!exists(dstAbsPath.parent_path()))
         {
-            std::filesystem::rename(host_path(src), host_path(dst));
-            return FSResult::Success;
-        }
-        else if(src_type == Type::MEM_FILE && dst_type == Type::MEM_FILE)
-        {
-            auto & sn = get<NodeFile>(src);
-            auto & sd = get<NodeFile>(dst);
-            sd.filedata = std::move(sn.filedata);
-            m_nodes.erase(src);
-            return FSResult::Success;
-        }
-        else if(src_type == Type::MEM_FILE && dst_type == Type::HOST_FILE)
-        {
-            cp(src, dst);
-            m_nodes.erase(src);
-            return FSResult::Success;
+            // parent folder of dst doesnt exist
+            return result_type::ErrorParentDoesNotExist;
         }
 
-        return FSResult::UnknownError;
-    }
+        auto tSrc = getType(srcAbsPath);
+        auto tDst = getType(dstAbsPath);
 
-    /**
-     * @brief fs
-     * @param path
-     * @return
-     *
-     * Gets a reference to a file in the system
-     */
-    NodeRef fs(path_type path)
-    {
-        return getNode(path);
-    }
-    NodeRef getNode(path_type path)
-    {
-        _clean(path);
-        auto [it, sub] = find_parent_mount_split_it(path);
-        if(!sub.empty())
+        if( tDst == NodeType::MemDir || tDst == NodeType::MountDir)
+            dstAbsPath = dstAbsPath / srcAbsPath.filename();
+
+        auto tDstFolder = getType(dstAbsPath.parent_path());
+
+        if(tSrc == NodeType::MemFile && tDstFolder == NodeType::MemDir )
         {
-            return NodeRef {
-                &it->second, sub
-            };
+            auto [srcMnt, srcRem ] = find_last_valid_virtual_node(srcAbsPath);
+            auto [dstMnt, dstRem ] = find_last_valid_virtual_node(dstAbsPath.parent_path());
+
+            auto srcFile_p = std::dynamic_pointer_cast<FSNodeFile>(srcMnt);
+            auto dstDir_p  = std::dynamic_pointer_cast<FSNodeDir>(dstMnt);
+
+            dstDir_p->nodes[dstAbsPath.filename().generic_string()] = srcFile_p;
+
+            remove(srcAbsPath);
+
+            return result_type::True;
         }
-
-        if(it != m_nodes.end())
+        else if(tSrc == NodeType::MemDir && tDstFolder == NodeType::MemDir )
         {
-            return NodeRef {
-                &it->second,
-                {}
-            };
-        }
-        throw std::out_of_range(std::format("{} does not exist", path.string()));
-    }
+            auto [srcMnt, srcRem ] = find_last_valid_virtual_node(srcAbsPath);
+            auto [dstMnt, dstRem ] = find_last_valid_virtual_node(dstAbsPath.parent_path());
 
+            auto srcDir_p = std::dynamic_pointer_cast<FSNodeDir>(srcMnt);
+            auto dstDir_p  = std::dynamic_pointer_cast<FSNodeDir>(dstMnt);
 
-    template<typename T>
-    T& get(path_type path)
-    {
-        _clean(path);
-        auto it = find_node(path);
-        if(it != m_nodes.end())
-        {
-            if(std::holds_alternative<T>(it->second))
+            dstDir_p->nodes[dstAbsPath.filename().generic_string()] = srcDir_p;
+
             {
-                return std::get<T>(it->second);
+                auto [srcParent, srcParentRem ] = find_last_valid_virtual_node(srcAbsPath.parent_path());
+                assert(srcParentRem.empty());
+                auto srcParent_p = std::dynamic_pointer_cast<FSNodeDir>(srcParent);
+                assert(srcParent_p);
+                srcParent_p->nodes.erase(srcAbsPath.filename().generic_string());
             }
-            throw std::out_of_range(std::format("{} is not a custom file", path.string()));
+
+            return result_type::True;
         }
-        throw std::out_of_range(std::format("{} does not exist", path.string()));
+        else
+        {
+            // do the long way around, copy+delete
+            auto ret = copy(srcAbsPath, dstAbsPath);
+            if(ret != result_type::True)
+                return ret;
+            ret = remove(srcAbsPath);
+            if(ret != result_type::True)
+                return ret;
+            return result_type::True;
+        }
+        return result_type::False;
     }
 
-    template<typename T>
-    T const & get(path_type path) const
+    /**
+     * @brief copy
+     * @param srcAbsPath
+     * @param dstAbsPath
+     * @return
+     *
+     * Copy a file from one location to another
+     */
+    result_type copy(path_type  srcAbsPath, path_type  dstAbsPath)
     {
-        _clean(path);
-        auto it = find_node(path);
-        if(it != m_nodes.end())
+        if(!exists(srcAbsPath))
         {
-            if(std::holds_alternative<T>(it->second))
+            // src file doesn't exist
+            return result_type::ErrorDoesNotExist;
+        }
+
+        auto dType = getType(dstAbsPath);
+        if(dType == NodeType::MemDir || dType == NodeType::MountDir)
+        {
+            dstAbsPath = dstAbsPath / srcAbsPath.filename();
+        }
+
+        // need to check that dstAbsPath.parent is a folder
+        // and is writable
+        {
+            auto parentType = getType(dstAbsPath.parent_path());
+            if(parentType == NodeType::MemDir)
             {
-                return std::get<T>(it->second);
+                auto [pN,rem2] = find_last_valid_virtual_node(dstAbsPath);
+                assert(pN);
+                if(pN->read_only)
+                    return result_type::ErrorReadOnly;
             }
-            throw std::out_of_range(std::format("{} is not a custom file", path.string()));
+            if(parentType == NodeType::MountDir)
+            {
+                auto [pN,rem2] = find_last_valid_virtual_node(dstAbsPath);
+                assert(pN);
+                if(pN->read_only || std::dynamic_pointer_cast<FSNodeDir>(pN)->mount->is_read_only())
+                    return result_type::ErrorReadOnly;
+            }
         }
-        throw std::out_of_range(std::format("{} does not exist", path.string()));
+        if(!exists(dstAbsPath))
+        {
+            auto v = mkfile(dstAbsPath);
+            if(v != result_type::True)
+                return result_type::False; // cannot create dst file
+        }
+
+        auto Fout = this->openWrite(dstAbsPath, false);
+        auto Fin  = this->openRead(srcAbsPath);
+
+        if(!Fout.good() )
+            return result_type::UnknownError;
+        if(!Fin.good() )
+            return result_type::UnknownError;
+
+        std::vector<char> _buff(1024 * 1024);
+
+        while(!Fin.eof())
+        {
+            Fin.read(&_buff[0], 1024*1024 - 1);
+            auto s = Fin.gcount();
+            if(s==0)
+                break;
+            Fout.write(&_buff[0], s);
+        }
+
+        return result_type::True;
+    }
+
+    oFileStream openWrite(path_type abs_path, bool append)
+    {
+        auto openMode = std::ios::out;
+        if(append)
+            openMode |= std::ios::app;
+        return open_t<oFileStream>(abs_path, openMode);
+    }
+
+    iFileStream openRead(path_type abs_path)
+    {
+        return open_t<iFileStream>(abs_path, std::ios::in);
+    }
+
+    NodeType getType(path_type absPath) const
+    {
+        auto [mnt, rem] = find_last_valid_virtual_node(absPath);
+
+        if(rem.empty())
+        {
+            if(auto d = std::dynamic_pointer_cast<const FSNodeDir>(mnt))
+            {
+                if(d->mount)
+                    return d->mount->getType(rem);
+                return NodeType::MemDir;
+            }
+            return NodeType::MemFile;
+        }
+        if(auto d = std::dynamic_pointer_cast<const FSNodeDir>(mnt))
+        {
+            if(d->mount)
+                return d->mount->getType(rem);
+        }
+        return NodeType::NoExist;
+    }
+
+    Generator<path_type> list_dir(path_type absPath)
+    {
+        auto [mnt, rem] = find_last_valid_virtual_node(absPath);
+
+        if(auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt))
+        {
+            if(d->mount)
+            {
+                auto gen = d->mount->list_dir(rem);
+                for(auto n : gen)
+                {
+                    co_yield n;
+                }
+            }
+            else
+            {
+                for(auto & [name, n] : d->nodes)
+                {
+                    co_yield name;
+                }
+            }
+        }
     }
 
     /**
-     * @brief host_path
-     * @param path
+     * @brief list_nodes_recursive
+     * @param absPath
      * @return
      *
-     * Returns the path on the host file system the file exists
+     * Return a generator that gernates a list of all virtual filessystem
+     * nodes. Mounted files/folders are not returned
      */
-    path_type host_path(path_type path) const
+    Generator<path_type> list_nodes_recursive(path_type absPath) const
     {
-        auto [it, sub] = find_parent_mount_split_it(path);
-        if(sub.empty())
-            return {};
+        auto [mnt, rem] = find_last_valid_virtual_node(absPath);
+        if(!rem.empty())
+            co_return;
 
-        return std::get<NodeMount>(it->second).host_path / path.lexically_relative(it->first);
+        if(auto d = std::dynamic_pointer_cast<FSNodeDir const>(mnt))
+        {
+            for(auto & n : d->nodes)
+            {
+                co_yield absPath / n.first;
+                for(auto cc : list_nodes_recursive(absPath / n.first))
+                {
+                    co_yield cc;
+                }
+            }
+        }
+
+    }
+
+    NodeRef fs(path_type absPath)
+    {
+        _clean(absPath);
+        return NodeRef{absPath, this};
     }
 
     /**
-     * @brief open
-     * @param path
-     * @param openmode
+     * @brief getVirtualFileData
+     * @param absPath
      * @return
      *
-     * Opens a file for reading/writing
+     * Returns a pointer to the vector of data for the virtual
+     * file, if it exists. If it doesn't. nullptr is returned
      */
-    FileStream open(path_type path,  std::ios::openmode openmode)
+    std::vector<char>* getVirtualFileData(path_type absPath)
     {
-        assert(path.has_root_directory());
-
-        auto [it, sub] = find_parent_mount_split_it(path);
-        if(it == m_nodes.end())
-        {
+        auto [mnt, rem] = find_last_valid_virtual_node(absPath);
+        if(!rem.empty())
             return {};
-        }
-        if(!sub.empty())
-        {
-            // host file
-            return FileStream( std::get<NodeMount>(it->second).host_path / sub, openmode);
-        }
-        if( std::holds_alternative<NodeFile>(it->second) )
-        {
-            return FileStream(std::get<NodeFile>(it->second).filedata);
-        }
-
-        return {};
-    }
-
-    /**
-     * @brief get_type
-     * @param path
-     * @return
-     *
-     * Returns the type of the file
-     */
-    Type get_type(path_type path) const
-    {
-        _clean(path);
-        assert(path.has_root_directory());
-
-        auto [it, sub] = find_parent_mount_split_it(path);
-        //auto it = find_node(path);
-        if(!sub.empty())
-        {
-            auto & MNT = std::get<NodeMount>(it->second);
-            if( MNT.is_dir(sub) ) return Type::HOST_DIR;
-            if( MNT.is_file(sub) ) return Type::HOST_FILE;
-            return Type::UNKNOWN;
-        }
-
-        if(it!=m_nodes.end())
-        {
-            return std::visit([](auto &&v) {
-                        using value_type = std::decay_t<decltype(v)>;
-                            if constexpr (std::is_same_v<value_type, NodeFile>) return Type::MEM_FILE;
-                            if constexpr (std::is_same_v<value_type, NodeDir >)  return Type::MEM_DIR;
-                            if constexpr (std::is_same_v<value_type, NodeMount>) return Type::MOUNT;
-                            if constexpr (std::is_same_v<value_type, NodeCustom>) return Type::CUSTOM;
-                        },
-                       it->second);
-        }
-
-        return Type::UNKNOWN;
-    }
-
-    std::string file_to_string(path_type path)
-    {
-        auto in = this->open(path, std::ios::in);
-        if(!in)
+        auto f = std::dynamic_pointer_cast<FSNodeFile>(mnt);
+        if(!f)
             return {};
 
-        return std::string((std::istreambuf_iterator<char>(in)),
-                           std::istreambuf_iterator<char>());
+        return &f->data;
     }
+
+    std::shared_ptr<FSNodeDir> m_rootNode = std::make_shared<FSNodeDir>("/");
 
 protected:
-
-
     template<typename T>
-    FSResult _mk(path_type path, bool make_parent_dirs)
+    T open_t(path_type abs_path,  std::ios::openmode openmode)
     {
-        _clean(path);
-        auto fn = path.filename().string();
-        if(fn.end() != std::find_if(fn.begin(), fn.end(), [](auto & f)
-        {
-            if( std::isalnum(f) || f=='.' || f=='-' || f=='_' )
-                return false;
-            return true;
-        }))
-        {
-            return FSResult::InvalidFileName;
-        }
+        _clean(abs_path);
+        assert(abs_path.has_root_directory());
+        auto rel_path_to_root = abs_path.relative_path();
 
-        assert(path.has_root_directory());
-        if(exists(path))
-            return FSResult::PathExists;
+        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
 
-        auto [it, sub] = find_parent_mount_split_it(path);
-        if(!sub.empty())
+        if(rem.empty())
         {
-            return std::get<NodeMount>(it->second)._mk<T>(sub);
-        }
-        else if (it != m_nodes.end())
-        {
-            // path exists
-            return FSResult::PathExists;
-        }
-
-        // path doesn't exist
-        if(make_parent_dirs && !exists(path.parent_path()))
-        {
-            mkdir(path.parent_path());
-        }
-
-        if(!is_dir(path.parent_path()))
-        {
-            return FSResult::NotValidPath;
-        }
-
-        m_nodes[path] = T{};
-        return FSResult::Success;
-    }
-
-    std::pair<decltype(m_nodes)::const_iterator, path_type> find_parent_mount_split_it(path_type path) const
-    {
-        _clean(path);
-        path = path.lexically_normal();
-        assert(path.has_root_directory());
-
-        path_type root;
-        auto it = m_nodes.end();
-        for(auto const & p : path)
-        {
-            root /= p;
-            it = find_node(root);
-            if(it != m_nodes.end())
+            if(auto f = std::dynamic_pointer_cast<FSNodeFile>(mnt))
             {
-                // found
-                if(std::holds_alternative<NodeMount>(it->second))
+                auto bff = std::make_unique<VectorBackedStreamBuf>(f->data, openmode);
+                return T(std::move(bff));
+            }
+            // an empty folder cannot open
+            return T();
+        }
+        else
+        {
+            if(auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt))
+            {
+                if(d->mount)
                 {
-                    auto outpath =path.lexically_relative(root);
-                    _clean(outpath);
-                    return {it, outpath};
+                    auto bff = d->mount->open(rem, openmode);
+                    return T(std::move(bff));
                 }
             }
-            else
-            {
-                return {it, {}};
-            }
         }
-        return {it, {}};
-    }
-    std::pair<decltype(m_nodes)::iterator, path_type> find_parent_mount_split_it(path_type path)
-    {
-        _clean(path);
-        path = path.lexically_normal();
-        assert(path.has_root_directory());
-
-        path_type root;
-        auto it = m_nodes.end();
-        for(auto const & p : path)
-        {
-            root /= p;
-            it = find_node(root);
-            if(it != m_nodes.end())
-            {
-                // found
-                if(std::holds_alternative<NodeMount>(it->second))
-                {
-                    return {it, path.lexically_relative(root)};
-                }
-            }
-            else
-            {
-                return {it, {}};
-            }
-        }
-        return {it, {}};
+        return {};
     }
 };
 
+inline PseudoNix::NodeRef::operator std::string() const
+{
+    auto out = fs->openRead(absPath);
+    if(!out.good())
+        return {};
+
+    std::stringstream buffer;
+    buffer << out.rdbuf();
+    return buffer.str();
 }
 
-void operator << (PseudoNix::NodeRef left, std::string_view right)
+}
+
+//
+// Read from a filesystem node and append to a string:
+//
+//  std::string;
+//  fs("/path/to/file") >> mystring;
+//
+inline void operator >> (PseudoNix::NodeRef  nodeleft, std::string & right)
 {
+    auto in = nodeleft.fs->openRead(nodeleft.absPath);
+    if(!in.good())
+        return;
+
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    right += buffer.str();
+}
+
+inline void operator << (PseudoNix::NodeRef left, std::string_view right)
+{
+    //
+    // F.fs("/path/to/my/file.txt") << "hello world";
+    //
+
     (void)left;
     (void)right;
-    if(std::holds_alternative<PseudoNix::NodeFile>(*left.n))
-    {
-        auto & F = std::get<PseudoNix::NodeFile>(*left.n);
-        for(auto &r:right)
-            F.filedata.push_back(r);
-    }
+    auto out = left.fs->openWrite(left.absPath, true);
+    if(!out.good())
+        return;
+    out << right;
 }
+
+inline void operator << (PseudoNix::NodeRef left, std::vector<uint8_t> const &right)
+{
+    //
+    // F.fs("/path/to/my/file.txt") << "hello world";
+    //
+
+    (void)left;
+    (void)right;
+    auto out = left.fs->openWrite(left.absPath, true);
+    if(!out.good())
+        return;
+    out.write( static_cast<char const*>(static_cast<void const*>(right.data())), static_cast<std::streamsize>(right.size()));
+}
+
+
 
 #endif

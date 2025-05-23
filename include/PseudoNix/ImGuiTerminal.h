@@ -4,6 +4,9 @@
 #include "System.h"
 #include "ImGuiConsoleWidget.h"
 #include <imgui.h>
+#include <imgui_internal.h>
+
+extern IMGUI_API ImGuiContext* GImGui;
 
 namespace PseudoNix
 {
@@ -45,17 +48,23 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
     bool exit_if_subprocess_exits = !(ENV.count("NO_AUTO_CLOSE") == 1);
     //bool exit_if_subprocess_exits = true;
 
+    if(SYSTEM.taskQueueExists("IMGUI"))
+    {
+        HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield("IMGUI"), ctrl);
+    }
 
     int frameCount[2] = {ImGui::GetFrameCount()-1, ImGui::GetFrameCount()-1};
     while(open)
     {
+        auto g = ImGui::GetCurrentContext();
+
         frameCount[0] = frameCount[1];
         frameCount[1] = ImGui::GetFrameCount();
         // its possible we could execute the
         // coroutines multiple times per ImGui frame
         // We dont want to draw the wiget multiple times
         // so only do this if the frames are different
-        if(frameCount[0] != frameCount[1])
+        if(g->WithinFrameScope && frameCount[0] != frameCount[1])
         {
             //--------------------------------------------------------------
             // The ImGui Draw section. Do not co_await
@@ -102,7 +111,7 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
 
         if(exit_if_subprocess_exits && !SYSTEM.isRunning(sh_pid)) break;
 
-        auto returned_signal = co_await ctrl->await_yield();
+        auto returned_signal = co_await ctrl->await_yield(QUEUE);
 
         switch(returned_signal)
         {
@@ -121,7 +130,7 @@ inline System::task_type terminalWindow_coro(System::e_type ctrl)
     if(SYSTEM.isRunning(sh_pid))
     {
         SYSTEM.kill(sh_pid);
-        co_await ctrl->await_finished(sh_pid);
+        HANDLE_AWAIT_INT_TERM(co_await ctrl->await_finished(sh_pid), ctrl);
     }
 
     co_return 0;

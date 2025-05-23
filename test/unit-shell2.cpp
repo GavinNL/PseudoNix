@@ -15,7 +15,7 @@ std::pair<std::string, System::exit_code_type> testS1(std::string script, bool f
     M.taskQueueCreate("PRE_MAIN");
     M.setFunction("sh", shell_coro);
 
-    M.touch("/script.sh");
+    M.mkfile("/script.sh");
     M.fs("/script.sh") << script;
 
     auto E1 = [&]()

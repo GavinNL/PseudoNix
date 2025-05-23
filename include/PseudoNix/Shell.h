@@ -6,6 +6,7 @@
 #include "System.h"
 #include "defer.h"
 #include <ranges>
+#include <variant>
 
 namespace PseudoNix
 {
@@ -282,8 +283,11 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
 
     //std::cout << std::format("Executing: {}", join(tokens)) << std::endl;
     auto E = System::genPipeline(list_of_args);
-    E.front().in = in;
-    E.back().out = out;
+    if(E.size())
+    {
+        E.front().in = in;
+        E.back().out = out;
+    }
 
     for(auto & e : E)
     {
@@ -921,7 +925,7 @@ System::task_type shell_coro(System::e_type ctrl)
         }
         if(load_etc_profile && SYSTEM.exists("/etc/profile"))
         {
-            profile_script += SYSTEM.file_to_string("/etc/profile");
+            SYSTEM.fs("/etc/profile") >> profile_script;
         }
         if(_args.size() > 1)
         {
@@ -930,7 +934,8 @@ System::task_type shell_coro(System::e_type ctrl)
                 script_to_load_path = CWD / script_to_load_path;
             if(SYSTEM.exists(script_to_load_path))
             {
-                profile_script = SYSTEM.file_to_string(script_to_load_path);
+                SYSTEM.fs(script_to_load_path) >> profile_script;
+
                 // add the exit command just in case
                 // so that the shell command will return the last
                 // exit code
@@ -1012,6 +1017,11 @@ System::task_type shell_coro(System::e_type ctrl)
         co_return 0;
     }
     co_return std::move(ret_value);
+}
+
+inline void enable_default_shell(System & sys)
+{
+    sys.setFunction("sh", "Default Shell", PseudoNix::shell_coro);
 }
 
 

@@ -45,14 +45,39 @@ target_compile_features( ${PROJECT_NAME}
 
 target_compile_definitions( ${PROJECT_NAME}
                               INTERFACE
-                                CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-                                CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
+#                                CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+#                                CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
                                 )
 
 target_include_directories(${PROJECT_NAME} INTERFACE include)
 target_link_libraries( ${PROJECT_NAME}  INTERFACE  ${PublicLinkedTargets})
 
 ################################################################################
+
+
+## Create an tar archive from the src/archive folder
+# and store it in the build directory. Additionally
+# convert the tar file into a raw c source code
+# if(NOT WIN32)
+#     add_custom_target(archive
+#         COMMAND rm -rf ${CMAKE_BINARY_DIR}/archive
+#         COMMAND mkdir -p ${CMAKE_BINARY_DIR}/archive
+#         COMMAND rm -rf archive.tar archive.c archive_zip.c
+#         COMMAND tar -cf archive.tar *
+#         COMMAND xxd -i archive.tar > ${CMAKE_BINARY_DIR}/archive/archive.c
+#         COMMAND mv archive.tar ${CMAKE_BINARY_DIR}
+#
+#         COMMAND tar -czf archive.tar.gz *
+#         COMMAND xxd -i archive.tar.gz > ${CMAKE_BINARY_DIR}/archive/archive_zip.c
+#         COMMAND mv archive.tar.gz ${CMAKE_BINARY_DIR}
+#
+#         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/archive
+#     )
+# else()
+#     add_custom_target(archive)
+# endif()
+
+
 
 
 if( ${PROJECT_NAME}_BUILD_EXAMPLES)
@@ -74,10 +99,12 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
     ################################################################################
 
 
-    find_package(readerwriterqueue)
-    find_package(concurrentqueue)
+    find_package(readerwriterqueue REQUIRED)
+    find_package(concurrentqueue   REQUIRED)
+    find_package(LibArchive        REQUIRED)
+    find_package(ZLIB              REQUIRED)
 
-    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue )
+    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue LibArchive::LibArchive ZLIB::ZLIB )
 
     add_executable(terminal examples/terminal.cpp)
     target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET}  ${third_party_libs})
@@ -89,6 +116,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
                                         ${CMAKE_BINARY_DIR}/imgui_src/res/bindings
                                         ${CMAKE_BINARY_DIR}/imgui_src/res
                                         ${CMAKE_BINARY_DIR}/imgui_src/res/misc/cpp
+                                        ${CMAKE_BINARY_DIR}/archive
                               )
 
     if(EMSCRIPTEN)
@@ -97,21 +125,24 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
         set_target_properties( terminal PROPERTIES SUFFIX ".html")
     else()
         add_executable(main examples/main.cpp)
-        target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
+        target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
+        target_include_directories(main PUBLIC
+                                            ${CMAKE_BINARY_DIR}/archive
+                                  )
 
         add_executable(example1 examples/example1.cpp)
-        target_link_libraries(example1 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
+        target_link_libraries(example1 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
 
         add_executable(example2 examples/example2.cpp)
-        target_link_libraries(example2 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
+        target_link_libraries(example2 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
 
         add_executable(example3 examples/example3.cpp)
-        target_link_libraries(example3 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
+        target_link_libraries(example3 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
 
         add_executable(example4 examples/example4.cpp)
-        target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs})
-    endif()
+        target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
 
+    endif()
 
 endif()
 
@@ -125,3 +156,18 @@ if( ${PROJECT_NAME}_BUILD_UNIT_TESTS)
 endif()
 
 endif()
+
+
+if(EXISTS "/mnt/Pcloud/Public Folder/PseudoNix" AND IS_DIRECTORY "/mnt/Pcloud/Public Folder/PseudoNix")
+if(EMSCRIPTEN)
+    add_custom_command(TARGET terminal POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE_DIR:terminal>/terminal.wasm"
+                "/mnt/Pcloud/Public Folder/PseudoNix/terminal.wasm"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE_DIR:terminal>/terminal.js"
+                "/mnt/Pcloud/Public Folder/PseudoNix/terminal.js"
+    )
+endif()
+endif()
+

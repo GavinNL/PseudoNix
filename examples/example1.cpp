@@ -13,7 +13,7 @@ PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
 
         // yield some time back to the scheduler
         // so that other processes can execute
-        co_await ctrl->await_yield_for(sleep_time);
+        (void)co_await ctrl->await_yield_for(sleep_time);
     }
     co_return 0;
 }

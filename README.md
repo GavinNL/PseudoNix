@@ -5,13 +5,16 @@
 PseudoNix is an embeddable header-only, Linux-like environment you can integrate
 directly into your project to provide concurrent process like behaviour.
 
-[Live Demo Using ImGui](https://filedn.eu/l0rnKqYfU3SSI61WTa9844f/mini/index.html)
+[Live Demo Using ImGui](https://filedn.eu/l0rnKqYfU3SSI61WTa9844f/PseudoNix/index.html)
 
 ## Dependendices
 
-* C++20 Compiler
-* [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) by cameron314 (available on Conan)
-* [concurrentqueue](https://github.com/cameron314/concurrentqueue) by cameron314 (available on Conan)
+* **Required**
+  * C++20 Compiler
+  * [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) by cameron314 (available on Conan)
+  * [concurrentqueue](https://github.com/cameron314/concurrentqueue) by cameron314 (available on Conan)
+* **Optional**
+  * [libarchive](https://github.com/libarchive/libarchive) (available on Conan) - required to mount tar/tar.gz files
 
 ## Compiling the Examples
 
@@ -35,13 +38,20 @@ If you are using the Conan Package Manager, you can add the following to your de
 ```python
     self.requires("readerwriterqueue/1.0.6")
     self.requires("concurrentqueue/1.0.4")
+
+    # Optional: Allows mounting tar/tar.gz files
+    self.requires("libarchive/3.7.9")
+
+    # Optional: Provides a working GUI terminal emulator
+    #           for Imgui applications
+    self.requires("imgui/1.91.8-docking")
 ```
 
 Add this repo as a submodule and then add it as a subdirectory
 
 ```cmake
-find_package(readerwriterqueue)
-find_package(concurrentqueue)
+find_package(readerwriterqueue REQUIRED)
+find_package(concurrentqueue REQUIRED)
 
 add_subdirectory(third_party/PseudoNix)
 
@@ -84,11 +94,14 @@ features, I decided to turn it into its own library.
 ### Future Development
 
  - [x] Virtual Filesystem
+   - [x] Mounting Archives
+   - [x] Mounting Archives from Memory
  - [x] Better bash-features (if statements, loops)
    - [x] If-statements
    - [x] While-Loops
    - [x] For-Loops
    - [x] breaks/continue
+ - [ ] Pausing processes
  - [ ] More GNU core-utils like functions
    - [ ] head/tail
    - [ ] grep
@@ -133,10 +146,8 @@ int main()
     M.spawnProcess({"mycustomfunction", "bob"});
     M.spawnProcess({"mycustomfunction", "charlie"});
 
-    // executeAllFor( ) will keep calling executeAll()
-    // until the total time elapsed is more than the
-    // given input value
-    while(M.executeAllFor(std::chrono::milliseconds(1), 10))
+    // Execute the main task queue
+    while(M.taskQueueExecute())
     {
         // sleep for 1 millisecond so we're not
         // doing a busy loop
@@ -192,7 +203,8 @@ int main()
             {"to_std_cout"}
     });
 
-    while(M.executeAllFor(std::chrono::milliseconds(1), 10))
+    // Execute the main task queue
+    while(M.taskQueueExecute())
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -230,7 +242,8 @@ int main()
 
     auto launcher_pid = M.spawnProcess({"launcher", "sh"});
 
-    while(M.executeAllFor(std::chrono::milliseconds(1), 10))
+    // Execute the main task queue
+    while(M.taskQueueExecute())
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -342,7 +355,7 @@ int main()
         ...
         ImGui::BeginFrame();
 
-        system.taskQueueExecute();
+        M.taskQueueExecute();
 
         ImGui::EndFrame();
         ...
@@ -355,7 +368,7 @@ int main()
 Here's an example of creating a simple guessing game within the PsuedoNix
 system. Remember that **all process functions happen concurrently, but on a
 single thread**. So to be able to run concurrently, processes that would
-normally block at a location, should use specific co-routine awaiter provided by
+normally block at a location, should use specific co-routine awaiters provided by
 the ProcessControl object.
  
 ```c++
@@ -415,12 +428,11 @@ int main()
 }
 ```
 
-### Example 6: Multi-Task Queue
+### Example 6: Multiple Task Queues
 
 Processes in the PseudoNix System are executed on a Task Queue. There is a
-`"MAIN"` queue which is executed when you call  `system.taskQueueExecute()` or
-`system.executeAllFor(...)`. By default all tasks will be executed on that
-queue.
+`"MAIN"` queue which is executed when you call  `system.taskQueueExecute()`. 
+By default all tasks will be executed on that queue.
 
 You can create different task queues, which can be executed at different times
 in your application. For example, you can have a task queue that executes during
@@ -438,7 +450,7 @@ Additional Task Queues can be created using the
 `system.taskQueueCreate(name_str)` function.
 
 The `queueHopper` function is created by default as an example, but the code is
-shown below.
+shown below with some of the validation checks removed.
 
 ```c++
 int main()
@@ -450,38 +462,23 @@ int main()
     M.setFunction("queueHopper", [](e_type ctrl) -> task_type
     {
         PSEUDONIX_PROC_START(ctrl);
-        std::string s;
+        using namespace std::chrono_literals;
 
-        if( ARGS.size() < 2)
-        {
-            COUT << std::format("Requires a Task Queue name\n\n   queueHopper PRE_MAIN");
-            co_return 1;
-        }
-        std::string TASK_QUEUE = ARGS[1];
-
-        if(!SYSTEM.taskQueueExists(TASK_QUEUE))
-        {
-            COUT << std::format("Task queue, {}, does not exist. The Task Queue needs to be created using System::taskQueueCreate", TASK_QUEUE);
-            co_return 1;
-        }
-
-        PSEUDONIX_TRAP {
-            COUT << std::format("Trap on {} queue\n", QUEUE);
-        };
+        std::string TASK_QUEUE_NAME = ARGS[1];
 
         // the QUEUE variable defined by PSEUDONIX_PROC_START(ctrl)
         // tells you what queue this process is being executed on
         COUT << std::format("On {} queue\n", QUEUE);
 
-        for(int i=0;i<20;i++)
+        for(int i=0;i<10;i++)
         {
-            // wait for 1 second and then resume on a different Task Queue
-            // Specific task queues are executed at a specific time
-            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(1), TASK_QUEUE), ctrl);
+            // Wait 250ms then hop onto the other task queue
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(250ms, TASK_QUEUE_NAME), ctrl);
 
             COUT << std::format("On {} queue\n", QUEUE);
 
-            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(std::chrono::milliseconds(1), "MAIN"), ctrl);
+            // hop back onto the default queue
+            HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield_for(250ms, PseudoNix::System::DEFAULT_QUEUE), ctrl);
 
             COUT << std::format("On {} queue\n", QUEUE);
         }
@@ -502,7 +499,8 @@ int main()
         auto total_tasks =  M.taskQueueExecute("PRE_MAIN");
         total_tasks += M.taskQueueExecute();
         total_tasks += M.taskQueueExecute("POST_MAIN");
-        if(total_tasks == 0) break;
+        if(total_tasks == 0) 
+            break;
 
         // sleep for 1 millisecond so we're not
         // doing a busy loop
@@ -575,16 +573,35 @@ PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
 ## Process Control 
 
 The ProcessControl object is passed into your function as the input argument. 
-These are similar to any linux process.
+These are similar to any linux process. 
+
+You can use the `PSEUDONIX_PROC_START(ctrl)` macro, so define some references
+that are easy to access:
 
 ```c++
 M.setFunction("guess", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
 {
+    PSEUDONIX_PROC_START(ctrl);
 
     ctrl->args; // vector of strings, your command line arguments
     ctrl->in;  // the standard input stream
     ctrl->out; // the standard output stream
     ctrl->env; // the environment variables
+
+    // COUT - Reference to the output stream
+    // CIN  - Reference to the input stream
+    // ARGS - The command line arguments to this process
+    // ENV  - The environment variable map
+
+    // PID      - the PID number for this process
+    // EXPORTED - A map of all exported variables
+    // QUEUE    - string indicating the name of the queue that the 
+    //            process is running on
+    // CWD      - The current working directory of the process
+
+    // SYSTEM           - reference to the pseudonix system/filesystem
+    // LAST_SIGNAL      - The last signal that was received
+    // PARENT_SHELL_PID - the PID of the parent shell process
 
     co_return 0;
 });
@@ -656,7 +673,7 @@ Processes started in the PseudoNix system are always run on a single thread and
 only when the `executeTaskQueue` is called. This is so that the processes
 execute at known times within your application.
 
-You my have a process that takes an exceptionally long time to load and may not
+You may have a process that takes an exceptionally long time to load and may not
 have a convenient way of yielding, for example, loading a large asset into
 memory. You may want to load this asset in a background thread. 
 
@@ -719,7 +736,7 @@ has been created for you to spawn a background thread that processes a queue.
 
 ```c++
 PseudoNix::System M;
-M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
+PseudoNix::enable_default_shell(M);
 M.setFunction("launcher", PseudoNix::launcher_coro);
 
 M.taskQueueCreate("THREADPOOL");
@@ -764,12 +781,7 @@ PseudoNix::System M;
 M.mkdir("/bin");
 
 // create an empty file
-M.touch("/bin/hello.sh");
-
-// Mount a host directory inside the virtual
-// filesystem
-M.mkdir("/mnt");
-M.mount(path_on_host, "/mnt");
+M.mkfile("/bin/hello.sh");
 
 // List all files/folders
 for(auto u : M.list_dir(/mnt))
@@ -789,5 +801,67 @@ Some common filesystem utilities are also provided for the shell:
  * cp - single file only. No directories, no globbing
  * mv - single file only. No directories, no globbing
 
-See the [Filesystem Unit Test](/test/unit-FileSystem.cpp) for more usage.
+### Mounting Host Directories
+
+You can mount a host directory inside the virtual file system using the following:
+
+```c++
+
+#include <PseudoNix/System.h>
+#include <PseudoNix/Shell.h>
+#include <PseudoNix/HostMount.h>
+#include <PseudoNix/ArchiveMount.h> // requires libarchive
+
+int main()
+{
+    PseudoNix::System M;
+
+    PseudoNix::enable_default_shell(M); // gives you the default shell process
+    PseudoNix::enable_host_mount(M);    // lets you mount host file systems    
+    PseudoNix::enable_archive_mount(M); // lets you mount tar/tar.gz files
+
+    // mount the user's home folderfolder
+    M.mkdir("/host");
+    sys.mount<PseudoNix::HostMount>("/host", "/home/user");
+
+    // mount an uncompressed tar file
+    M.mkdir("/tar");
+    M.mount<PseudoNix::ArchiveMount>("/tar", "/path/to/archive.tar");
+    
+    // mount a compressed tar file
+    M.mkdir("/tar.gz");
+    M.mount<PseudoNix::ArchiveMount>("/tar", "/path/to/archive.tar.gz");
+
+    // mount a tar file that is in embedded memory
+    M.mkdir("/tar_embedded");
+    M.mount<PseudoNix::ArchiveMount>("/tar_embedded", data_ptr, data_size);
+}
+
+```
+
+### Accessing File Content
+
+Now that you have either created virtual files or mounted host directories. You can 
+can access the file data in a number of ways.
+
+```c++
+    // Simple append a string to an already created file
+    M.mkfile("/path/to/file.txt");
+    M.fs("/path/to/file.txt") << "Hello world";
+
+    // write the data to a string
+    std::string read;
+    M.fs("/path/to/file.txt") >> read;
+
+    // get an std::istream to read directly from
+    // the data
+    auto in = M.openRead("/path/to/file.txt");
+    while(in.eof())
+    {
+        std::string word;
+        in >> word;
+    }
+```
+
+See the [Filesystem Unit Test](/test/unit-FileSystem2.cpp) for more usage.
 

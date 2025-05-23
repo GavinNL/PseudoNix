@@ -17,12 +17,12 @@ SCENARIO("test await_yield")
 
         std::cout << "Start" << std::endl;
         std::cout << "Yielding 1" << std::endl;
-        co_await control->await_yield();
+        (void)co_await control->await_yield();
         std::cout << "Resuming 1" << std::endl;
 
 
         std::cout << "Yielding 2" << std::endl;
-        co_await control->await_yield();
+        (void)co_await control->await_yield();
         std::cout << "Resuming 2" << std::endl;
 
         std::cout << "Finished" << std::endl;
