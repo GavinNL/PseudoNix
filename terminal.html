@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Simple Terminal</title>
+  <style>
+    body {
+      background-color: #111;
+      color: #0f0;
+      font-family: monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .terminal {
+      display: flex;
+      flex-direction: column;
+      width: 1024px;
+      height: 768px;
+      border: 2px solid #0f0;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+
+    #output {
+      flex: 1;
+      background: #000;
+      color: #0f0;
+      border: none;
+      resize: none;
+      overflow-y: auto;
+      padding: 5px;
+    }
+
+    #input {
+      background: #000;
+      color: #0f0;
+      border: none;
+      padding: 5px;
+      outline: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="terminal">
+    <textarea id="output" readonly></textarea>
+    <input type="text" id="input" placeholder="Type a command..." />
+  </div>
+
+  <script>
+    var Module = {
+      onRuntimeInitialized: function () {
+        // Call init() once
+        if (Module._init) {
+          Module._init();
+        } else {
+          console.error("init() not found");
+        }
+
+        // Then call update() every 16ms
+        if (Module._update) 
+        {   
+            setInterval(() => {
+                Module._update();
+            }, 16);
+        } else {
+            console.error("update() not found");
+        }
+      }
+    };
+
+    let std_input;
+
+    var Module = {
+
+      onRuntimeInitialized: function () {
+        // Wrap the C add function
+        const init = Module.cwrap('init', null, []);
+        const update = Module.cwrap('update', 'string', ['']);
+        std_input = Module.cwrap('input', null, ['number']);
+
+        init();
+
+        setInterval(() => {
+              // Call the update function which will
+              // return the output from the shell 
+              // process
+              const message = update();
+
+              const output = document.getElementById('output');
+              output.value += message;
+              if(message.length > 0)
+                output.scrollTop = output.scrollHeight;
+            }, 1);
+
+      }
+    };
+
+  </script>
+
+  <script>
+    const output = document.getElementById('output');
+    const input = document.getElementById('input');
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        command = input.value.trim();
+        command = command + '\n';
+        if (command !== '') {
+          output.value += '> ' + command;
+          output.scrollTop = output.scrollHeight;
+          input.value = '';
+          if(std_input && command)
+          {
+              for (let i = 0; i < command.length; i++) {
+                const charCode = command.charCodeAt(i); // Get ASCII code
+                std_input(charCode);                     // Call C function
+              }
+          }
+        }
+      }
+    });
+  </script>
+
+  <script src="build-emcc-21-debug/js_terminal.js"></script>
+    
+</body>
+</html>

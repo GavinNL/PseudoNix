@@ -9,7 +9,7 @@ PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
     // Helper function to define a few
     // easy to use variables
     // such as IN and COUT streams
-    PSEUDONIX_PROC_START(ctrl);
+    PN_PROC_START(ctrl);
 
     auto sleep_time = std::chrono::milliseconds(250);
     for(int i=0;i<10;i++)

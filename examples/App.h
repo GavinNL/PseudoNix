@@ -38,8 +38,6 @@ static void em_main_loop(void *_app)
     auto & g_done = app->g_done;
     auto & g_window = app->g_window;
 
-    //auto & g_renderer = app->g_renderer;
-
     ImGuiIO& io = ImGui::GetIO();
     // Poll and handle events (inputs, window resize, etc.)
     // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
@@ -157,9 +155,9 @@ static int run(char const* window_name, uint32_t width, uint32_t height)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-
     //------------------
-    //io.FontDefault = io.Fonts->AddFontFromFileTTF("/usr/share/fonts/truetype/firacode/FiraCode-Medium.ttf", 16);
+    //io.FontDefault
+    //    = io.Fonts->AddFontFromFileTTF("/usr/share/fonts/truetype/firacode/FiraCode-Medium.ttf", 16);
 
     //------------------
     if constexpr (requires {  App.imguiInit(); }) {

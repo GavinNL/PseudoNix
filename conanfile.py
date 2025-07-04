@@ -7,12 +7,11 @@ import os
 class EBashRecipe(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     generators = "CMakeDeps", "CMakeToolchain"
-    
+
     def requirements(self):
         # only actual requirement
         self.requires("readerwriterqueue/1.0.6")
         self.requires("concurrentqueue/1.0.4")
-        self.requires("libarchive/3.7.9")
         self.requires("zlib/1.3.1")
 
         self.requires("doctest/2.4.11")
@@ -20,6 +19,7 @@ class EBashRecipe(ConanFile):
 
         # Check if a specific os or compiler
         if self.settings.os != "Emscripten":
+            self.requires("libarchive/3.7.9")
             self.requires("sdl/2.30.2")
 
     def generate(self):

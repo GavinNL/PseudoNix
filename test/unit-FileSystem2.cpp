@@ -228,6 +228,61 @@ SCENARIO("mount")
     }
 }
 
+
+
+SCENARIO("ref")
+{
+    GIVEN("A filesystem with some directories and files")
+    {
+        FileSystem F;
+
+        THEN("We can mount a directory")
+        {
+            REQUIRE(F.exists("/") == FSResult::True);
+            REQUIRE(F.mkdir("/src") == FSResult::True);
+            REQUIRE(F.mkfile("/file.txt") == FSResult::True);
+
+            REQUIRE( NodeType::MemDir == F.getType("/src"));
+            REQUIRE( FSResult::True == F.mount<FSNodeHostMount>("/src", CMAKE_SOURCE_DIR));
+
+            // check mounted file
+            REQUIRE(true  == F.fs("/src/conanfile.py").exists());
+            REQUIRE(true  == F.fs("/src/conanfile.py").is_file());
+            REQUIRE(false == F.fs("/src/conanfile.py").is_dir());
+            REQUIRE(false == F.fs("/src/conanfile.py").is_mount_point());
+            REQUIRE(true  == F.fs("/src/conanfile.py").is_mounted());
+
+            // check mounted dir
+            REQUIRE(true  == F.fs("/src/test").exists());
+            REQUIRE(false == F.fs("/src/test").is_file());
+            REQUIRE(true  == F.fs("/src/test").is_dir());
+            REQUIRE(false == F.fs("/src/test").is_mount_point());
+            REQUIRE(true  == F.fs("/src/test").is_mounted());
+
+            // check mount point
+            REQUIRE(true  == F.fs("/src").exists());
+            REQUIRE(false == F.fs("/src").is_file());
+            REQUIRE(true  == F.fs("/src").is_dir());
+            REQUIRE(true  == F.fs("/src").is_mount_point());
+            REQUIRE(true  == F.fs("/src").is_mounted());
+
+            // check virtual dir
+            REQUIRE(true  == F.fs("/").exists());
+            REQUIRE(false == F.fs("/").is_file());
+            REQUIRE(true  == F.fs("/").is_dir());
+            REQUIRE(false == F.fs("/").is_mount_point());
+            REQUIRE(false == F.fs("/").is_mounted());
+
+            // check virtual file
+            REQUIRE(true  == F.fs("/file.txt").exists());
+            REQUIRE(true  == F.fs("/file.txt").is_file());
+            REQUIRE(false == F.fs("/file.txt").is_dir());
+            REQUIRE(false == F.fs("/file.txt").is_mount_point());
+            REQUIRE(false == F.fs("/file.txt").is_mounted());
+        }
+    }
+}
+
 SCENARIO("mount with file manipulation")
 {
     GIVEN("A filesystem with some directories and files")
@@ -631,6 +686,40 @@ SCENARIO("Moving Folders from Mem->Mem")
 }
 
 
+std::set<std::filesystem::path> getAllFilePathsRecursively(const std::filesystem::path& root) {
+    std::set<std::filesystem::path> filePaths;
+    namespace fs = std::filesystem;
+    if (!fs::exists(root) || !fs::is_directory(root)) {
+        return filePaths; // Return empty set if root doesn't exist or isn't a directory
+    }
+
+    for (const auto& entry : fs::recursive_directory_iterator(root)) {
+        //if (fs::is_regular_file(entry.path())) {
+            filePaths.insert(fs::absolute(entry.path()).lexically_proximate(root));
+            //filePaths.insert(entry.path());
+        //}
+    }
+
+    return filePaths;
+}
+
+std::set<std::filesystem::path> getAllFilePaths(const std::filesystem::path& root) {
+    std::set<std::filesystem::path> filePaths;
+    namespace fs = std::filesystem;
+    if (!fs::exists(root) || !fs::is_directory(root)) {
+        return filePaths; // Return empty set if root doesn't exist or isn't a directory
+    }
+
+    for (const auto& entry : fs::directory_iterator(root)) {
+        //if (fs::is_regular_file(entry.path())) {
+        filePaths.insert(fs::absolute(entry.path()).lexically_proximate(root));
+        //filePaths.insert(entry.path());
+        //}
+    }
+
+    return filePaths;
+}
+
 SCENARIO("List Dir")
 {
     GIVEN("A filesystem with some directories and files")
@@ -641,21 +730,182 @@ SCENARIO("List Dir")
         REQUIRE(F.mkdir("/src/A") == FSResult::True);
         REQUIRE(F.mkdir("/src/B") == FSResult::True);
         REQUIRE(F.mkdir("/src/C") == FSResult::True);
+        REQUIRE(F.mkdir("/src/C/sub") == FSResult::True);
 
         REQUIRE(F.mkdir("/build") == FSResult::True);
-        REQUIRE(F.mount<FSNodeHostMount>("/build", CMAKE_BINARY_DIR) == FSResult::True);
-        for(auto n : F.list_dir("/src"))
+
+        std::filesystem::path host_dir = CMAKE_SOURCE_DIR "/archive";
+
+        REQUIRE(F.mount<FSNodeHostMount>("/build", host_dir) == FSResult::True);
+
+        std::set<FileSystem::path_type> valid_vir = {
+            "A", "B", "C"
+        };
+
+        auto valid_host = getAllFilePaths(host_dir);
+
+        std::set<FileSystem::path_type> valid_vir_rec = {
+            "A", "B", "C", "C/sub"
+        };
+
+        std::set<FileSystem::path_type> valid_host_rec = getAllFilePathsRecursively(host_dir);
+
+        std::set<FileSystem::path_type> valid_all = {"src", "build"};
+        for(auto & v : valid_vir_rec)
         {
-            std::cout << n << std::endl;
+            valid_all.insert("src" / v);
+        }
+        for(auto & v : valid_host_rec)
+        {
+            valid_all.insert("build" / v);
         }
 
-        for(auto n : F.list_dir("/build/test"))
+        THEN("We can list all files in a virtual folder")
         {
-            std::cout << n << std::endl;
+            auto & valid = valid_vir;
+            for(auto n : F.list_dir("/src"))
+            {
+                std::cout << n << std::endl;
+                REQUIRE(valid.count(n) == 1);
+                valid.erase(n);
+            }
+            REQUIRE(valid.size() == 0);
+        }
+
+        THEN("We can list all files in a mounted folder")
+        {
+            auto & valid = valid_host;
+            for(auto n : F.list_dir("/build"))
+            {
+                std::cout << n << std::endl;
+                REQUIRE(valid.count(n) == 1);
+                valid.erase(n);
+            }
+            REQUIRE(valid.size() == 0);
+        }
+
+        THEN("We can list all files in a virtual folder recursively")
+        {
+            std::cout << "----" << std::endl;
+            auto & valid = valid_vir_rec;
+            for(auto n : F.list_dir_recursive("/src"))
+            {
+                std::cout << n << std::endl;
+                REQUIRE(valid.count(n) == 1);
+                valid.erase(n);
+            }
+            REQUIRE(valid.size() == 0);
+        }
+
+        THEN("We can list all files in a mount folder recursively")
+        {
+            auto & valid = valid_host_rec;
+            std::cout << "----" << std::endl;
+
+            for(auto n : F.list_dir_recursive("/build"))
+            {
+                std::cout << n << std::endl;
+                REQUIRE(valid.count(n) == 1);
+                valid.erase(n);
+            }
+            REQUIRE(valid.size() == 0);
+        }
+
+        THEN("We can list all files in a combined vir/mount")
+        {
+            auto & valid = valid_all;
+            std::cout << "----" << std::endl;
+
+            for(auto n : F.list_dir_recursive("/"))
+            {
+                std::cout << n << std::endl;
+                REQUIRE(valid.count(n) == 1);
+                valid.erase(n);
+            }
+            REQUIRE(valid.size() == 0);
         }
     }
 }
 
+
+SCENARIO("Test ref") {
+
+    GIVEN("A path that does not exist, but its parent is a file")
+    {
+        FileSystem F;
+        F.mkdir("/folder");
+        F.mkfile("/folder/file.txt");
+
+        auto folder = F.fs("/folder");
+        auto file_txt = F.fs("/folder/file.txt");
+
+        auto ref = F.fs("/folder/file.txt/sub");
+
+        THEN("The following are valid")
+        {
+            REQUIRE(ref.is_file()        == false);
+            REQUIRE(ref.is_dir()         == false);
+            REQUIRE(ref.is_mount_point() == false);
+            REQUIRE(ref.is_mounted()     == false);
+            REQUIRE(ref.dir_node()       == nullptr);
+            REQUIRE(ref.file_node()      == file_txt.file_node());
+            REQUIRE(ref.get_type()       == NodeType::NoExist);
+            REQUIRE(ref.file_node()      == file_txt.file_node());
+            REQUIRE(ref.exists()         == false);
+        }
+    }
+    GIVEN("A path that does not exist, but its parent is a folder")
+    {
+        FileSystem F;
+        F.mkdir("/folder");
+        F.mkdir("/folder/file.txt");
+
+        auto folder = F.fs("/folder");
+        auto file_txt = F.fs("/folder/file.txt");
+
+        auto ref = F.fs("/folder/file.txt/sub");
+
+        THEN("The following are valid")
+        {
+            REQUIRE(ref.is_file()        == false);
+            REQUIRE(ref.is_dir()         == false);
+            REQUIRE(ref.is_mount_point() == false);
+            REQUIRE(ref.is_mounted()     == false);
+            REQUIRE(ref.dir_node()       == file_txt.dir_node());
+            REQUIRE(ref.file_node()      == nullptr);
+            REQUIRE(ref.get_type()       == NodeType::NoExist);
+            REQUIRE(ref.file_node()      == file_txt.file_node());
+            REQUIRE(ref.exists()         == false);
+        }
+    }
+    GIVEN("A path that does not exist, but its parent is a mount")
+    {
+        FileSystem F;
+        F.mkdir("/folder");
+        F.mkdir("/folder/file.txt");
+        REQUIRE(F.mount<FSNodeHostMount>("/folder/file.txt", CMAKE_SOURCE_DIR "/archive")== FSResult::True);
+
+        auto folder = F.fs("/folder");
+        auto file_txt = F.fs("/folder/file.txt");
+
+        auto ref = F.fs("/folder/file.txt/sub");
+
+        THEN("The following are valid")
+        {
+            REQUIRE(ref.is_mounted()     == true);
+
+            REQUIRE(ref.is_file()        == false);
+            REQUIRE(ref.is_dir()         == false);
+            REQUIRE(ref.is_mount_point() == false);
+            REQUIRE(ref.dir_node()       == file_txt.dir_node());
+            REQUIRE(ref.file_node()      == nullptr);
+            REQUIRE(ref.get_type()       == NodeType::NoExist);
+            REQUIRE(ref.file_node()      == file_txt.file_node());
+            REQUIRE(ref.exists()         == false);
+        }
+    }
+
+}
 
 SCENARIO("Test helpers")
 {
@@ -692,3 +942,79 @@ SCENARIO("Test Read-Only")
         REQUIRE(FSResult::ErrorIsMounted == F.set_read_only("/file.txt", true));
     }
 }
+
+SCENARIO("Test mkdirs")
+{
+    GIVEN("A filesystem")
+    {
+        FileSystem F;
+
+        WHEN("we call mkdirs") {
+
+            REQUIRE(FSResult::True == F.mkdirs("/path/to/folder") );
+            THEN("Expectation")
+            {
+                REQUIRE(F.exists("/path"));
+                REQUIRE(F.exists("/path/to"));
+                REQUIRE(F.exists("/path/to/folder"));
+            }
+        }
+
+        WHEN("we call mkdirs with a file that exists") {
+            REQUIRE(FSResult::True == F.mkfile("/path") );
+            REQUIRE(FSResult::False == F.mkdirs("/path/to/folder") );
+            THEN("Expectation")
+            {
+                REQUIRE(F.exists("/path"));
+                REQUIRE(!F.exists("/path/to"));
+                REQUIRE(!F.exists("/path/to/folder"));
+            }
+        }
+    }
+}
+
+
+SCENARIO("Test Emplace Custom")
+{
+    GIVEN("A filesystem")
+    {
+        FileSystem F;
+
+        struct Test
+        {
+            int x;
+            double y;
+        };
+
+        WHEN("we call emplace_custom")
+        {
+            REQUIRE(FSResult::True == F.mkcustom<Test>("/path/to/myfile", Test{3, 3.0}));
+
+            THEN("All subfolders exist")
+            {
+                REQUIRE(F.exists("/path"));
+                REQUIRE(F.exists("/path/to"));
+                REQUIRE(F.exists("/path/to/myfile"));
+                REQUIRE(F.getType("/path/to/myfile") == NodeType::Custom);
+            }
+            THEN("We can get a pointer to the data")
+            {
+                auto x = F.getCustom<Test>("/path/to/myfile");
+                REQUIRE(nullptr != x);
+                REQUIRE(x->x == 3);
+            }
+            THEN("We cannot get another type")
+            {
+                REQUIRE(nullptr == F.getCustom<int>("/path/to/myfile"));
+            }
+        }
+        WHEN("We emplace another type")
+        {
+            REQUIRE(FSResult::True == F.mkcustom<Test>("/path/to/myfile", Test{3, 3.0}));
+
+            REQUIRE(FSResult::ErrorExists == F.mkcustom<int>("/path/to/myfile"));
+        }
+    }
+}
+
+

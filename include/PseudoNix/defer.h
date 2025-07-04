@@ -52,6 +52,7 @@ Def operator << (Def::tmp, T && v)
 #define PN_CONCAT_IMPL( x, y ) x##y
 #define PN_MACRO_CONCAT( x, y ) PN_CONCAT_IMPL( x, y )
 #define PSEUDONIX_TRAP auto PN_MACRO_CONCAT( deferVar, __COUNTER__ ) = PseudoNix::Def::tmp() << [&]()
+#define PN_TRAP auto PN_MACRO_CONCAT( deferVar, __COUNTER__ ) = PseudoNix::Def::tmp() << [&]()
 
 }
 //==========================================================================

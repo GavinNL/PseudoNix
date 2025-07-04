@@ -1,6 +1,7 @@
 #ifndef PSEUDONIX_FileSystem_H
 #define PSEUDONIX_FileSystem_H
 
+#include <functional>
 #include <map>
 #include <string>
 #include <cassert>
@@ -8,6 +9,7 @@
 #include <vector>
 #include "FileSystemMount.h"
 #include "FileSystemHelpers.h"
+#include <any>
 #include <format>
 
 namespace PseudoNix
@@ -118,6 +120,21 @@ public:
         _streamBuf(std::move(stream_buff))
     {
     }
+
+    std::vector<char> to_data()
+    {
+        if(!this->good())
+            return {};
+
+        std::vector<char> data;
+        while(!eof())
+        {
+            auto c = get();
+            data.push_back( static_cast<char>(c) );
+        }
+        return data;
+    }
+
 private:
     std::unique_ptr<std::streambuf> _streamBuf;
 };
@@ -142,8 +159,9 @@ struct FSNode
 
 struct FSNodeFile : public FSNode
 {
-    std::vector<char> data;
-
+    using data_container_type = std::vector<char>;
+    data_container_type data;
+    std::any            custom;
     FSNodeFile(std::string _name) : FSNode(_name)
     {
     }
@@ -163,14 +181,254 @@ struct FSNodeDir : public FSNode
 
 
 struct FileSystem;
-struct NodeRef
+
+
+/**
+ * @brief The NodeRef class
+ *
+ * This is a reference to a node in the
+ * filesystem. It should be used for all interaction
+ * with files.
+ */
+template<bool is_const>
+struct NodeRef_t
 {
-    FSNode::path_type absPath;
-    FileSystem *fs;
+public:
+    FSNode::path_type absPath;     // the absolute path to the file
+    std::conditional_t<is_const, FileSystem const*, FileSystem*> fs;
+    std::conditional_t<is_const, std::shared_ptr<const FSNode>, std::shared_ptr<FSNode>> node;
+    FSNode::path_type remPath;     // the remaining path relative to the mount
+
+    using fs_type = decltype(fs);
+    using node_type = decltype(node);
+    using path_type = typename FSNode::path_type;
+
+public:
+    NodeRef_t(FSNode::path_type absPath_,
+              fs_type fs_,
+              node_type node_,
+              FSNode::path_type remPath_) : absPath(absPath_),
+                                          fs(fs_),
+                                          node(node_),
+                                          remPath(remPath_) {}
 
     operator std::string() const;
+
+    bool exists() const
+    {
+        if(!node)
+            return false;
+
+        auto &mnt = node;
+        auto &rem = remPath;
+        //auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
+        if(mnt && rem.empty())
+        {
+            return true;
+        }
+
+        auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt);
+        if(d)
+        {
+            if(d->mount)
+            {
+                return d->mount->exists(rem);
+            }
+            return false;
+        }
+        else
+        {
+            return false;
+            // its a file for some reason?
+        }
+        return true;
+    }
+    FileSystem* filesystem() {
+        return fs;
+    }
+    FSNode::path_type const& path() const
+    {
+        return absPath;
+    }
+    FSNodeFile::data_container_type* get_virtual_file_data()
+    {
+        if(auto f = file_node())
+        {
+            return &f->data;
+        }
+        return nullptr;
+    }
+    FSNodeFile::data_container_type* get_virtual_file_data() const
+    {
+        if(auto f = file_node())
+        {
+            return &f->data;
+        }
+        return nullptr;
+    }
+
+    bool is_file() const
+    {
+        if(auto d = file_node())
+        {
+            if(!remPath.empty())
+                return false;
+
+            return !d->custom.has_value() ? true : false;
+        }
+        if(auto d = std::dynamic_pointer_cast<FSNodeDir>(node))
+        {
+            return !d->mount ? false : (d->mount->getType(remPath)==NodeType::MountFile);
+        }
+        return false;
+    }
+    bool is_dir() const
+    {
+        if(auto f = file_node())
+        {
+            return false;
+        }
+        if(auto d = dir_node())
+        {
+            if(d->mount)
+            {
+                return d->mount->getType(remPath) == NodeType::MountDir;
+            }
+            else
+            {
+                return remPath.empty();
+            }
+            //return !d->mount ? true : (d->mount->getType(remPath)==NodeType::MountDir);
+        }
+        return false;
+    }
+
+    /**
+     * @brief is_custom
+     * @return
+     *
+     * returns true if it is a custom file. A filenode is custom
+     * if its std::any contains a value
+     */
+    bool is_custom() const
+    {
+        if(auto d = file_node())
+        {
+            return d->custom.has_value() ? true : false;
+        }
+        return false;
+    }
+
+    /**
+     * @brief is_mount
+     * @return
+     *
+     * Returns true if this specific node is a mounted
+     */
+    bool is_mount_point() const
+    {
+        if(!remPath.empty())
+            return false;
+
+        if(auto d = dir_node())
+        {
+            return d->mount ? true : false;
+        }
+        return false;
+    }
+    /**
+     * @brief is_mounted
+     * @return
+     *
+     * Returns true if the absolute path refers to a
+     * file/directory that is part of a mount
+     *
+     * This will return true if the file does not exist
+     * within the mounted location, but one of its
+     * parent folders is a mount_point
+     */
+    bool is_mounted() const
+    {
+        if(auto f = file_node())
+            return false;
+
+        //if(!remPath.empty())
+        //    return true;
+
+        if(auto d = dir_node())
+        {
+            return d->mount ? true : false;
+        }
+        return false;
+    }
+
+    auto file_node()
+    {
+        return std::dynamic_pointer_cast<FSNodeFile>(node);
+    }
+    auto file_node() const
+    {
+        return std::dynamic_pointer_cast<const FSNodeFile>(node);
+    }
+    auto dir_node()
+    {
+        return std::dynamic_pointer_cast<FSNodeDir>(node);
+    }
+    auto dir_node() const
+    {
+        return std::dynamic_pointer_cast<const FSNodeDir>(node);
+    }
+    NodeType get_type() const
+    {
+        if(remPath.empty())
+        {
+            if(auto d = dir_node())
+            {
+                if(d->mount)
+                    return d->mount->getType(remPath);
+                return NodeType::MemDir;
+            }
+            if(auto f = file_node())
+            {
+                if(f->custom.has_value())
+                    return NodeType::Custom;
+                return NodeType::MemFile;
+            }
+        }
+        if(auto d = dir_node())
+        {
+            if(d->mount)
+                return d->mount->getType(remPath);
+        }
+        return NodeType::NoExist;
+    }
+
+    Generator<FSNode::path_type> list_dir() const
+    {
+        if(auto d = dir_node())
+        {
+            if(d->mount)
+            {
+                auto gen = d->mount->list_dir(remPath);
+                for(auto n : gen)
+                {
+                    co_yield n;
+                }
+            }
+            else
+            {
+                for(auto & [name, n] : d->nodes)
+                {
+                    co_yield name;
+                }
+            }
+        }
+    }
+    friend struct FileSystem;
 };
 
+using NodeRef = NodeRef_t<false>;
+using ConstNodeRef = NodeRef_t<true>;
 
 struct FileSystem
 {
@@ -184,7 +442,13 @@ struct FileSystem
             return m_rootNode->read_only ? result_type::True : result_type::False;
         }
 
+#if 1
+        auto ref = fs(abs_path);
+        auto mnt = ref.node;
+        auto rem = ref.remPath;
+#else
         auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
+#endif
         bool read_only = mnt->read_only;
 
         // if any of the parent paths are read only.
@@ -205,10 +469,10 @@ struct FileSystem
 
     result_type set_read_only(path_type abs_path, bool read_only)
     {
-        auto [mnt, rem] = find_last_valid_virtual_node(abs_path);
-        if(rem.empty())
+        auto ref = fs(abs_path);
+        if(ref.remPath.empty())
         {
-            mnt->read_only = read_only;
+            ref.node->read_only = read_only;
             return result_type::True;
         }
         return result_type::ErrorIsMounted;
@@ -223,29 +487,8 @@ struct FileSystem
      */
     result_type exists(path_type abs_path)
     {
-        _clean(abs_path);
-        assert(abs_path.has_root_directory());
-
-        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
-        if(mnt && rem.empty())
-        {
-            return result_type::True;
-        }
-
-        auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt);
-        if(d)
-        {
-            if(d->mount)
-            {
-                return d->mount->exists(rem);
-            }
-            return result_type::False;
-        }
-        else
-        {
-            // its a file for some reason?
-        }
-        return result_type::False;
+        auto ref = fs(abs_path);
+        return ref.exists() ? result_type::True : result_type::False;
     }
 
     /**
@@ -265,7 +508,7 @@ struct FileSystem
         }
         assert(abs_path.has_root_directory());
 
-        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path);
+        auto [mnt, rem] = find_last_valid_virtual_node(abs_path);
 
         if(!mnt)
             return result_type::UnknownError;
@@ -295,6 +538,16 @@ struct FileSystem
             }
         }
         return result_type::False;
+    }
+
+    result_type mkdirs(path_type abs_path)
+    {
+        auto parent_type = getType(abs_path.parent_path());
+        if(parent_type == NodeType::NoExist)
+        {
+            mkdirs(abs_path.parent_path());
+        }
+        return mkdir(abs_path);
     }
 
     /**
@@ -350,6 +603,86 @@ struct FileSystem
         return result_type::UnknownError;
     }
 
+    template<typename _Tp, typename... _Args>
+    result_type mkcustom(path_type abs_path_in_vfs, _Args&&... __args)
+    {
+        auto p = fs(abs_path_in_vfs.parent_path());
+        if( p.is_mounted())
+            return result_type::ErrorIsMounted;
+
+        // Parent folder doesnt exist
+        // so try to recursively created it
+        if(!p.exists())
+        {
+            auto dd = mkdirs(abs_path_in_vfs.parent_path());
+            if(dd != result_type::True)
+                return dd;
+        }
+
+        auto fsucc = mkfile(abs_path_in_vfs);
+        if(fsucc != result_type::True)
+            return fsucc;
+
+        auto fref = fs(abs_path_in_vfs);
+        auto fn = fref.file_node();
+        fn->custom.emplace<_Tp>(std::forward<_Args>(__args)...);
+
+        return result_type::True;
+    }
+
+    template<typename Tp>
+    Tp* getCustom(path_type absPath)
+    {
+        auto f = fs(absPath);
+        if(f.is_mounted())
+            return nullptr;
+        if(!f.remPath.empty())
+            return nullptr;
+        if(f.is_custom())
+        {
+            auto fn = f.file_node();
+            if(fn)
+            {
+                auto ptr = std::any_cast<Tp>(&fn->custom);
+                return ptr;
+            }
+        }
+        return nullptr;
+    }
+
+
+    template<typename Tp>
+    Tp& mkcustom_or_get(path_type absPath, Tp const &defaultVal)
+    {
+        Tp* c = getCustom<Tp>(absPath);
+        if(!c)
+        {
+            auto r = mkcustom<Tp>(absPath, defaultVal);
+            if(r != result_type::True)
+                throw std::runtime_error(std::format("Error creating custom file at {}", absPath.generic_string()));
+            c = getCustom<Tp>(absPath);
+        }
+        return *c;
+    }
+
+    template<typename T>
+    result_type setCustom(path_type absPath, T const& value)
+    {
+        auto p = getCustom<T>(absPath);
+        if(!p)
+        {
+            auto r = mkcustom<T>(absPath, value);
+            if(r != result_type::True)
+            {
+                return r;
+            }
+            return r;
+        }
+        *p = value;
+        return result_type::True;
+    }
+
+    std::function<void(path_type)> m_onRemoveFile;
     /**
      * @brief rm
      * @param abs_path
@@ -389,6 +722,8 @@ struct FileSystem
                             return result_type::ErrorNotEmpty;
                         if(cp->mount)
                             return result_type::ErrorReadOnly;
+                        if(m_onRemoveFile)
+                            m_onRemoveFile(abs_path);
                         d->nodes.erase(it);
                         return result_type::True;
                     }
@@ -408,25 +743,23 @@ struct FileSystem
 
     result_type unmount(path_type abs_path_in_vfs)
     {
-        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path_in_vfs);
+        auto ref = fs(abs_path_in_vfs);
 
-        if( mnt && rem.empty())
+        if(!ref.is_mount_point())
         {
-            auto dir = std::dynamic_pointer_cast<FSNodeDir>(mnt);
-            if(!dir)
-            {
-                // not a directory
-                return result_type::ErrorNotDirectory;
-            }
-
-            // nothing mounted
-            if(!dir->mount)
-                return result_type::False;
-
-            dir->mount = {};
-            return result_type::True;
+            return result_type::False;
         }
-        return result_type::UnknownError;
+
+        auto dir = ref.dir_node();
+        if(!dir)
+            return result_type::ErrorNotDirectory;
+
+        if(!dir->mount)
+            return result_type::False;
+
+        dir->mount = {};
+
+        return result_type::True;
     }
 
     /**
@@ -445,29 +778,18 @@ struct FileSystem
     template<typename _Tp, typename... _Args>
     result_type mount(path_type abs_path_in_vfs, _Args&&... __args)
     {
-        auto [mnt, rem ] = find_last_valid_virtual_node(abs_path_in_vfs);
+        auto ref = fs(abs_path_in_vfs);
 
-        if( mnt && rem.empty())
-        {
-            auto dir = std::dynamic_pointer_cast<FSNodeDir>(mnt);
-            if(!dir)
-            {
-                // not a directory
-                return result_type::False;
-            }
+        if(!ref.is_dir() || ref.is_mounted())
+            return result_type::ErrorNotDirectory;
 
-            // not empty
-            if(dir->nodes.size() > 0)
-                return result_type::False;
+        auto dir = ref.dir_node();
 
-            // already mounted
-            if(dir->mount)
-                return result_type::False;
+        if(dir->mount)
+            return result_type::False;
 
-            dir->mount = std::make_shared<_Tp>(std::forward<_Args>(__args)...);
-            return result_type::True;
-        }
-        return result_type::False;
+        dir->mount = std::make_shared<_Tp>(std::forward<_Args>(__args)...);
+        return result_type::True;
     }
 
 
@@ -687,47 +1009,16 @@ struct FileSystem
 
     NodeType getType(path_type absPath) const
     {
-        auto [mnt, rem] = find_last_valid_virtual_node(absPath);
-
-        if(rem.empty())
-        {
-            if(auto d = std::dynamic_pointer_cast<const FSNodeDir>(mnt))
-            {
-                if(d->mount)
-                    return d->mount->getType(rem);
-                return NodeType::MemDir;
-            }
-            return NodeType::MemFile;
-        }
-        if(auto d = std::dynamic_pointer_cast<const FSNodeDir>(mnt))
-        {
-            if(d->mount)
-                return d->mount->getType(rem);
-        }
-        return NodeType::NoExist;
+        auto ref = fs(absPath);
+        return ref.get_type();
     }
 
-    Generator<path_type> list_dir(path_type absPath)
+    Generator<path_type> list_dir(path_type absPath) const
     {
-        auto [mnt, rem] = find_last_valid_virtual_node(absPath);
-
-        if(auto d = std::dynamic_pointer_cast<FSNodeDir>(mnt))
+        auto ref = fs(absPath);
+        for(auto n : ref.list_dir())
         {
-            if(d->mount)
-            {
-                auto gen = d->mount->list_dir(rem);
-                for(auto n : gen)
-                {
-                    co_yield n;
-                }
-            }
-            else
-            {
-                for(auto & [name, n] : d->nodes)
-                {
-                    co_yield name;
-                }
-            }
+            co_yield n;
         }
     }
 
@@ -739,6 +1030,19 @@ struct FileSystem
      * Return a generator that gernates a list of all virtual filessystem
      * nodes. Mounted files/folders are not returned
      */
+    Generator<path_type> list_dir_recursive(path_type absPath) const
+    {
+        auto ref = fs(absPath);
+        for(auto n : ref.list_dir())
+        {
+            co_yield  n;
+
+            for(auto c : list_dir_recursive(absPath/n))
+            {
+                co_yield n / c;
+            }
+        }
+    }
     Generator<path_type> list_nodes_recursive(path_type absPath) const
     {
         auto [mnt, rem] = find_last_valid_virtual_node(absPath);
@@ -756,37 +1060,22 @@ struct FileSystem
                 }
             }
         }
-
     }
-
     NodeRef fs(path_type absPath)
     {
         _clean(absPath);
-        return NodeRef{absPath, this};
-    }
-
-    /**
-     * @brief getVirtualFileData
-     * @param absPath
-     * @return
-     *
-     * Returns a pointer to the vector of data for the virtual
-     * file, if it exists. If it doesn't. nullptr is returned
-     */
-    std::vector<char>* getVirtualFileData(path_type absPath)
-    {
         auto [mnt, rem] = find_last_valid_virtual_node(absPath);
-        if(!rem.empty())
-            return {};
-        auto f = std::dynamic_pointer_cast<FSNodeFile>(mnt);
-        if(!f)
-            return {};
-
-        return &f->data;
+        return NodeRef{absPath, this, mnt, rem};
     }
+    ConstNodeRef fs(path_type absPath) const
+    {
+        _clean(absPath);
+        auto [mnt, rem] = find_last_valid_virtual_node(absPath);
+        return ConstNodeRef{absPath, this, mnt, rem};
+    }
+
 
     std::shared_ptr<FSNodeDir> m_rootNode = std::make_shared<FSNodeDir>("/");
-
 protected:
     template<typename T>
     T open_t(path_type abs_path,  std::ios::openmode openmode)
@@ -822,7 +1111,8 @@ protected:
     }
 };
 
-inline PseudoNix::NodeRef::operator std::string() const
+template<>
+inline PseudoNix::NodeRef_t<false>::operator std::string() const
 {
     auto out = fs->openRead(absPath);
     if(!out.good())
@@ -843,7 +1133,7 @@ inline PseudoNix::NodeRef::operator std::string() const
 //
 inline void operator >> (PseudoNix::NodeRef  nodeleft, std::string & right)
 {
-    auto in = nodeleft.fs->openRead(nodeleft.absPath);
+    auto in = nodeleft.filesystem()->openRead(nodeleft.path());
     if(!in.good())
         return;
 
@@ -860,7 +1150,7 @@ inline void operator << (PseudoNix::NodeRef left, std::string_view right)
 
     (void)left;
     (void)right;
-    auto out = left.fs->openWrite(left.absPath, true);
+    auto out = left.filesystem()->openWrite(left.path(), true);
     if(!out.good())
         return;
     out << right;
@@ -874,7 +1164,7 @@ inline void operator << (PseudoNix::NodeRef left, std::vector<uint8_t> const &ri
 
     (void)left;
     (void)right;
-    auto out = left.fs->openWrite(left.absPath, true);
+    auto out = left.filesystem()->openWrite(left.path(), true);
     if(!out.good())
         return;
     out.write( static_cast<char const*>(static_cast<void const*>(right.data())), static_cast<std::streamsize>(right.size()));

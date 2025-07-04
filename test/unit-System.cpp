@@ -261,7 +261,7 @@ SCENARIO("Test await_yield")
 
     // add our command manually
     M.setFunction("test", [](System::e_type control) -> System::task_type {
-        PSEUDONIX_PROC_START(control);
+        PN_PROC_START(control);
 
         COUT << "test: wait\n";
         (void)co_await control->await_yield(); // yield at this point, echo will run
@@ -299,7 +299,7 @@ SCENARIO("Test await_yield_for")
 
     // add our command manually
     M.setFunction("test", [](System::e_type control) -> System::task_type {
-        PSEUDONIX_PROC_START(control);
+        PN_PROC_START(control);
 
         COUT << "test: wait\n";
         (void)co_await control->await_yield_for(std::chrono::seconds(1)); // yield at this point, echo will run
@@ -341,7 +341,7 @@ SCENARIO("Test await_finished")
 
     // add our command manually
     M.setFunction("test", [](System::e_type control) -> System::task_type {
-        PSEUDONIX_PROC_START(control);
+        PN_PROC_START(control);
         System::pid_type pid;
 
         std::from_chars(ARGS[1].data(), ARGS[1].data() + ARGS[1].size(), pid);
@@ -387,7 +387,7 @@ SCENARIO("Test await_finished multi")
 
     // add our command manually
     M.setFunction("test", [](System::e_type control) -> System::task_type {
-        PSEUDONIX_PROC_START(control);
+        PN_PROC_START(control);
         std::vector<System::pid_type> pids(2);
 
 
@@ -443,7 +443,7 @@ SCENARIO("test await_data")
 
     // add our command manually
     M.setFunction("test", [](System::e_type control) -> System::task_type {
-        PSEUDONIX_PROC_START(control);
+        PN_PROC_START(control);
 
         char c;
         COUT << "test: wait 1\n";
@@ -510,7 +510,7 @@ SCENARIO("Test signal")
     // Execute once until the first yield
     REQUIRE(1 == M.taskQueueExecute() );
 
-    M.signal(pid, sig_interrupt);
+    M.signal(pid, eSignal::INTERRUPT);
 
     REQUIRE(0 == M.taskQueueExecute() );
 }
@@ -521,7 +521,7 @@ SCENARIO("Test kill")
     System M;
 
     M.setFunction("test", [](System::e_type control) -> System::task_type {
-        PSEUDONIX_PROC_START(control);
+        PN_PROC_START(control);
 
         PSEUDONIX_TRAP
         {
@@ -531,7 +531,7 @@ SCENARIO("Test kill")
         while(true)
         {
             // breaks the loop if await yields a non-success value
-            HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await control->await_yield(), control);
+            PN_HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await control->await_yield(), control);
         }
         COUT << "Exited gracefully\n";
         co_return 0;
@@ -554,7 +554,7 @@ SCENARIO("Test kill")
     {
         auto O1 = M.getIO(p1).second;
 
-        M.signal(p1, sig_interrupt);
+        M.signal(p1, eSignal::INTERRUPT);
         REQUIRE(1 == M.taskQueueExecute() );
         REQUIRE(M.isRunning(p1) == false); // p1 is no longer running
         // The interrupt handled
@@ -585,7 +585,7 @@ SCENARIO("Test Destroy with processes that dont handle awaits properly")
     System M;
 
     M.setFunction("test_good", [](System::e_type control) -> System::task_type {
-        PSEUDONIX_PROC_START(control);
+        PN_PROC_START(control);
 
         PSEUDONIX_TRAP
         {
@@ -596,14 +596,14 @@ SCENARIO("Test Destroy with processes that dont handle awaits properly")
         while(true)
         {
             // breaks the loop if await yields a non-success value
-            HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await control->await_yield(), control);
+            PN_HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await control->await_yield(), control);
         }
         COUT << "test_good: Exited gracefully\n";
         co_return 0;
     });
 
     M.setFunction("test_bad", [](System::e_type control) -> System::task_type {
-        PSEUDONIX_PROC_START(control);
+        PN_PROC_START(control);
 
         PSEUDONIX_TRAP
         {
@@ -719,7 +719,7 @@ SCENARIO("Test Destroy with processes that dont handle awaits properly")
 
 
     M.setFunction("test_very_bad", [](System::e_type control) -> System::task_type {
-        PSEUDONIX_PROC_START(control);
+        PN_PROC_START(control);
 
         PSEUDONIX_TRAP
         {

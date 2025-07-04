@@ -36,10 +36,10 @@ inline std::pair<std::string_view, std::string_view> splitVar(std::string_view v
     auto i = var_def.find_first_of('=');
     if(i!=std::string::npos)
     {
-        return std::pair(
-            std::string_view(var_def.begin(), var_def.begin() + i),
-            std::string_view(var_def.begin() + i + 1, var_def.end())
-            );
+        return std::pair(std::string_view(var_def.begin(),
+                                          var_def.begin() + static_cast<std::ptrdiff_t>(i)),
+                         std::string_view(var_def.begin() + static_cast<std::ptrdiff_t>(i) + 1,
+                                          var_def.end()));
     }
     return {};
 };

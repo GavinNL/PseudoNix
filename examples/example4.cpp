@@ -7,7 +7,7 @@
 
 PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
 {
-    PSEUDONIX_PROC_START(ctrl);
+    PN_PROC_START(ctrl);
     auto sleep_time = std::chrono::milliseconds(250);
 
     PSEUDONIX_TRAP {
@@ -25,7 +25,7 @@ PseudoNix::System::task_type mycustomfunction(PseudoNix::System::e_type ctrl)
         // if it does, break the while loop if
         // it returned any of the known signals:
         //  sig_terminate, sig_interrupt
-        HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await ctrl->await_yield_for(sleep_time), ctrl);
+        PN_HANDLE_AWAIT_BREAK_ON_SIGNAL(co_await ctrl->await_yield_for(sleep_time), ctrl);
     }
 
     // this will only be called if the while loop exits

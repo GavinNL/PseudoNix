@@ -124,9 +124,205 @@ struct Tokenizer4
 
 using Tokenizer = Tokenizer4;
 
+enum class StreamError : int8_t {
+    EMPTY, //
+    END_OF_STREAM
+};
+
+template<typename T, typename E>
+struct Expected : private std::variant<T, E>
+{
+    using value_type   = T;
+    using error_type   = E;
+    using variant_type = std::variant<T, E>;
+
+    Expected()
+        : variant_type()
+    {}
+
+    Expected(value_type const &t)
+        : variant_type(t) {};
+
+    Expected(value_type &&t)
+        : variant_type(std::move(t)) {};
+
+    Expected(error_type const &t)
+        : variant_type(t) {};
+
+    Expected(error_type &&t)
+        : variant_type(std::move(t)) {};
+
+    bool operator==(error_type const &e) const
+    {
+        if (std::holds_alternative<error_type>(*this))
+        {
+            return std::get<error_type>(*this) == e;
+        }
+        return false;
+    }
+    bool operator==(value_type const &e) const
+    {
+        if (std::holds_alternative<value_type>(*this))
+        {
+            return std::get<value_type>(*this) == e;
+        }
+        return false;
+    }
+
+    value_type &value()
+    {
+        return std::get<value_type>(*this);
+    }
+    value_type const &value() const
+    {
+        return std::get<value_type const>(*this);
+    }
+    error_type &error()
+    {
+        return std::get<value_type>(*this);
+    }
+    error_type const &error() const
+    {
+        return std::get<value_type const>(*this);
+    }
+};
+
+inline Generator<Expected<char, StreamError>> streamGenerator(std::shared_ptr<System::stream_type> in)
+{
+    static_assert(sizeof(Expected<char, StreamError>) == 2);
+
+    char c = 0;
+    while (true)
+    {
+        auto res = in->get(&c);
+        switch (res)
+        {
+        case ReaderWriterStream_t<char>::Result::SUCCESS:
+            co_yield c;
+            break;
+        case ReaderWriterStream_t<char>::Result::EMPTY:
+            co_yield StreamError::EMPTY;
+            break;
+        case ReaderWriterStream_t<char>::Result::END_OF_STREAM:
+            co_yield StreamError::END_OF_STREAM;
+            co_return;
+            break;
+        }
+    }
+}
+
+inline Generator<Expected<char, StreamError>> streamGenerator(std::string &&in)
+{
+    static_assert(sizeof(Expected<char, StreamError>) == 2);
+
+    for (auto c : in)
+    {
+        co_yield c;
+    }
+    //co_yield StreamError::END_OF_STREAM;
+}
+
+inline Generator<std::optional<std::string>> bashTokenGenerator(Generator<Expected<char, StreamError>> in)
+{
+    std::string _token;
+
+    //char c      = 0;
+    bool quoted = false;
+
+    int bracket_count  = 0;
+    bool comment_found = false;
+    for (auto it : in)
+    {
+        if (it == StreamError::END_OF_STREAM)
+        {
+            break;
+        }
+        if (it == StreamError::EMPTY)
+        {
+            co_yield std::nullopt;
+            continue;
+        }
+        char c = it.value();
+        // will need to check whether we are in a quoted
+        // string
+        if (quoted)
+        {
+            if (c == '"')
+            {
+                quoted = !quoted;
+            }
+            else
+            {
+                _token.push_back(c);
+            }
+        }
+        else
+        {
+            if (bracket_count == 0 && (c == ';' || c == '\n'))
+            {
+                if (!_token.empty())
+                    co_yield _token;
+                co_yield std::string("\n");
+                _token.clear();
+                comment_found = false;
+            }
+            else
+            {
+                if (comment_found)
+                {
+                    // dont add anything
+                }
+                else
+                {
+                    if (c == '"' && !quoted)
+                    {
+                        quoted = !quoted;
+                    }
+                    else if (c == '#')
+                    {
+                        comment_found = true;
+                    }
+                    else if (c == '(')
+                    {
+                        _token.push_back(c);
+                        bracket_count++;
+                    }
+                    else if (c == ')')
+                    {
+                        _token.push_back(c);
+                        bracket_count--;
+                    }
+                    else if (c == ' ' && bracket_count == 0)
+                    {
+                        if (!_token.empty())
+                        {
+                            co_yield _token;
+                            _token.clear();
+                        }
+                    }
+                    else
+                    {
+                        if (!comment_found)
+                            _token.push_back(c);
+                    }
+                }
+            }
+        }
+    }
+
+    if (!_token.empty())
+        co_yield _token;
+    co_yield ";";
+    co_yield "done";
+    co_return;
+}
+
 inline
 Generator< std::optional<std::string> > bashTokenGenerator(std::shared_ptr<System::stream_type> in)
 {
+#if 1
+    return bashTokenGenerator(streamGenerator(in));
+#else
     std::string _token;
 
     char c = 0;
@@ -220,24 +416,36 @@ Generator< std::optional<std::string> > bashTokenGenerator(std::shared_ptr<Syste
     }
 
     co_return;
+#endif
 }
 
-
-inline
-Generator<std::vector<std::string>> bashLineGenerator(std::shared_ptr<System::stream_type> s_in)
+template<typename Gen_t>
+auto catGenerator(Gen_t &&A, Gen_t &&B) -> Generator<typename Gen_t::value_type>
 {
-    auto gn = bashTokenGenerator(s_in);
+    for (auto i : A)
+    {
+        co_yield i;
+    }
+    for (auto i : B)
+    {
+        co_yield i;
+    }
+    co_return;
+};
+
+inline Generator<std::vector<std::string>> bashLineGenerator(Generator<Expected<char, StreamError>> char_gen)
+{
+    auto gn = bashTokenGenerator(std::move(char_gen));
 
     std::vector<std::string> line_args;
 
     for(auto a : gn)
     {
-        if(!a.has_value())
+        if (!a.has_value())
         {
             co_yield {};
             continue;
         }
-
 
         line_args.push_back(*a);
         if(line_args.back() == "\n")
@@ -280,8 +488,6 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
     }
     list_of_args.push_back(std::vector(first, last));
 
-
-    //std::cout << std::format("Executing: {}", join(tokens)) << std::endl;
     auto E = System::genPipeline(list_of_args);
     if(E.size())
     {
@@ -296,16 +502,45 @@ inline std::vector<System::pid_type> execute_pipes(std::vector<std::string> toke
             e.args.push_back("");
         }
         e.queue = proc->queue_name;
+        //e.user_id = user_id;
     }
 
-    auto pids = proc->executeSubProcess(E);
     auto me = proc->get_pid();
+    auto pids = proc->system->runPipeline(E, me, true);
     auto my_cwd = proc->system->getProcessControl(me)->cwd;
     for(auto p : pids)
     {
         if(p != invalid_pid)
             proc->system->getProcessControl(p)->chdir(my_cwd);
     }
+
+    // Loop through all the PID's and execute them
+    // one at at time. If the process is quick and does not
+    // suspend, then we dont have to wait until the execution
+    // of the queue for it to start
+    //
+    //for(auto p  : pids)
+    //{
+    //    if(p != invalid_pid)
+    //        proc->system->resume(p);
+    //}
+
+    // for each of the PID's do an initial resume
+    // just in case the process can finish quickly
+    //pids.erase(std::remove_if(pids.begin(),
+    //                          pids.end(),
+    //                          [sys = proc->system](auto p)
+    //                          {
+    //                              if (p == invalid_pid)
+    //                                  return true;
+    //                              sys->resume(p);
+    //                              (void) p;
+    //                              (void) sys;
+    //                              return sys->processGetState(p) == System::Process::EXITED;
+    //                          }),
+    //           pids.end());
+    //
+    //
     return pids;
 }
 
@@ -445,7 +680,7 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
             // Yield to another Task queue
             if(args.size() == 1)
             {
-                co_yield std::string(System::DEFAULT_QUEUE);
+                co_yield proc->queue_name;
                 proc->env["?"] = "0";
             }
             else if(args.size() >= 2 && proc->system->taskQueueExists(args[1]))
@@ -462,23 +697,92 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
         }
         //===============================================================
 
-        if( run_in_background )
+        // We need to check if any of the arguments contain
+        // sub commands: eg $(cmd arg1 ag2...)
+        for (auto &A : args)
         {
+            while (true)
+            {
+                auto i = A.find_first_of("$(");
+                if (i == std::string::npos)
+                    break;
+
+                size_t k = 1;
+                for (size_t j = i + 2; j < A.size(); j++)
+                {
+                    if (A[j] == '(')
+                        k++;
+                    if (A[j] == ')')
+                        k--;
+                    if (k == 0)
+                    {
+                        auto subCmd = A.substr(i + 2, j - i - 2);
+                        //std::cout << subCmd << std::endl;
+                        auto STDIN  = System::make_stream();
+                        STDIN->eof();
+                        auto STDOUT = System::make_stream();
+                        auto pids   = execute_pipes({"sh", "-c", subCmd}, proc, STDIN, STDOUT);
+                        co_yield pids;
+
+                        auto output = STDOUT->str();
+                        while (output.back() == '\n')
+                            output.pop_back();
+                        A = A.substr(0, i) + output + A.substr(j + 1);
+                        //std::cout << A << std::endl;
+                        break;
+                    }
+                }
+                if (k != 0)
+                {
+                    co_return;
+                }
+            }
+        }
+
+        if (run_in_background)
+        {
+            bool is_chained = std::count_if(args.begin(),
+                                            args.end(),
+                                            [](auto &&str) {
+                                                return str == "|" || str == "&&" || str == "||";
+                                            })
+                              > 0;
+
             auto STDIN = System::make_stream();
 
-            for(auto & a : args)
+            if (!is_chained)
             {
-                // pipe the data into stdin, and make sure each argument
-                // is in quotes. We may need to tinker with this
-                // to have properly escaped characters
-                *STDIN << std::format("\"{}\" ", a);
-            }
-            *STDIN << std::format(";");
-            STDIN->set_eof();
-            auto pids = execute_pipes( {"sh", "--noprofile"}, proc, STDIN, proc->out);
+                // not a chained cmd: eg  cmd1 || cmd2 && cmd3
+                auto pids = execute_pipes(args, proc, STDIN, proc->out);
+                *proc->out << std::format("{}\n", pids[0]);
+                proc->env["!"] = std::format("{}", pids[0]);
 
-            *proc->out << std::format("{}\n", pids[0]);
-            proc->env["!"] = std::format("{}", pids[0]);
+                for (auto p : pids)
+                {
+                    proc->system->resume(p);
+                }
+            }
+            else
+            {
+                for (auto &a : args)
+                {
+                    // pipe the data into stdin, and make sure each argument
+                    // is in quotes. We may need to tinker with this
+                    // to have properly escaped characters
+                    *STDIN << std::format("\"{}\" ", a);
+                }
+                *STDIN << std::format(";");
+                STDIN->set_eof();
+                auto pids = execute_pipes({"sh", "--noprofile"}, proc, STDIN, proc->out);
+
+                *proc->out << std::format("{}\n", pids[0]);
+                proc->env["!"] = std::format("{}", pids[0]);
+
+                for (auto p : pids)
+                {
+                    proc->system->resume(p);
+                }
+            }
             co_return;
         }
 
@@ -815,7 +1119,8 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
                 ++j;
             }
 
-            auto if_statement = std::vector( script.begin()+ int64_t(i), script.begin()+ int64_t(j)+1);
+            auto if_statement = std::vector(script.begin() + static_cast<std::ptrdiff_t>(i),
+                                            script.begin() + static_cast<std::ptrdiff_t>(j) + 1);
             for(auto &&c : process_if(if_statement, proc))
             {
                 co_yield c;
@@ -835,7 +1140,8 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
                 ++j;
             }
 
-            auto while_statement = std::vector( script.begin()+int64_t(i), script.begin()+ int64_t(j)+1);
+            auto while_statement = std::vector(script.begin() + static_cast<std::ptrdiff_t>(i),
+                                               script.begin() + static_cast<std::ptrdiff_t>(j) + 1);
             for(auto &&c : process_while(while_statement, proc))
             {
                 co_yield c;
@@ -855,7 +1161,8 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
                 ++j;
             }
 
-            auto for_statement = std::vector( script.begin()+int64_t(i), script.begin()+ int64_t(j)+1);
+            auto for_statement = std::vector(script.begin() + static_cast<std::ptrdiff_t>(i),
+                                             script.begin() + static_cast<std::ptrdiff_t>(j) + 1);
             for(auto &&c : process_for(for_statement, proc))
             {
                 co_yield c;
@@ -864,13 +1171,11 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
         }
         else if(script[i].front() == "break")
         {
-            //std::cout << "Break found" << std::endl;
             co_yield 1;
             co_return;
         }
         else if(script[i].front() == "continue")
         {
-            //std::cout << "Continue found" << std::endl;
             co_yield 2;
             co_return;
         }
@@ -884,15 +1189,20 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
     }
 }
 
-inline
-System::task_type shell_coro(System::e_type ctrl)
+inline bool has_flag(std::vector<std::string> &_args, std::string flag)
 {
-    PSEUDONIX_PROC_START(ctrl);
+    auto no_profile = std::find(_args.begin(), _args.end(), flag);
+    if (no_profile == _args.end())
+    {
+        return false;
+    }
+    _args.erase(no_profile, no_profile + 1);
+    return true;
+}
 
-    auto _in  = ctrl->in;
-    auto _out = ctrl->out;
-
-    auto gn = bashLineGenerator(ctrl->in);
+inline System::task_type shell_coro(System::e_type ctrl)
+{
+    PN_PROC_START(ctrl);
 
     // Make sure this variable exists
     // and is exported otherwize
@@ -909,58 +1219,65 @@ System::task_type shell_coro(System::e_type ctrl)
     auto & EXIT_SHELL = ENV["EXIT_SHELL"];
     EXIT_SHELL = {};
 
+    std::chrono::duration max_processing_time = std::chrono::milliseconds(1);
+
     std::string profile_script;
     bool load_etc_profile = true;
+
+    do
     {
         auto _args = ARGS;
-        auto no_profile = std::find(_args.begin(), _args.end(), "--noprofile");
-        if(_args.end() != no_profile)
+
+        std::string command;
+        if (System::_has_arg(_args, "-c", command))
         {
-            // Copy the rc_text into the
-            // the input stream so that
-            // it will be executed first
-            //script += shellEnv.rc_text;
-            _args.erase(no_profile);
-            load_etc_profile = false;
+            profile_script  = std::move(command);
+            profile_script += "\nexit ${?};";
+            break;
         }
-        if(load_etc_profile && SYSTEM.exists("/etc/profile"))
+
+        load_etc_profile = !System::_has_flag(_args, "--noprofile");
+
+        if (_args.size() > 1)
+        {
+            // Loading a script from a file
+            auto script_to_load_path = System::path_type(_args[1]);
+            PN_HANDLE_PATH(CWD, script_to_load_path);
+
+            PN_PROC_CHECK(!SYSTEM.exists(script_to_load_path),
+                          "{}: {}: no such file or directory",
+                          _args[0],
+                          script_to_load_path.generic_string());
+
+            SYSTEM.fs(script_to_load_path) >> profile_script;
+            profile_script += "\nexit ${?};";
+        }
+        else if (load_etc_profile && SYSTEM.exists("/etc/profile"))
         {
             SYSTEM.fs("/etc/profile") >> profile_script;
         }
-        if(_args.size() > 1)
-        {
-            auto script_to_load_path = System::path_type(_args[1]);
-            if(script_to_load_path.is_relative())
-                script_to_load_path = CWD / script_to_load_path;
-            if(SYSTEM.exists(script_to_load_path))
-            {
-                SYSTEM.fs(script_to_load_path) >> profile_script;
 
-                // add the exit command just in case
-                // so that the shell command will return the last
-                // exit code
-                profile_script += "\nexit ${?};";
-            }
-            else
-            {
-                COUT << std::format("{}: {}: no such file or directory\n", ARGS[0], _args[1]);
-            }
-        }
-        CIN << profile_script;
-    }
+    } while (false);
 
-
-    std::vector< std::vector<std::string> > script;
+    std::vector<std::vector<std::string>> script;
     int if_count=0;
     int while_count=0;
     System::exit_code_type ret_value = 0;
+
+    auto gn_prof = bashLineGenerator(streamGenerator(std::move(profile_script)));
+    auto gn_in   = bashLineGenerator(streamGenerator(ctrl->in));
+
+    // Create a single line generator from the two input generators: the profile script
+    // and the input stream
+    auto gn   = catGenerator(std::move(gn_prof), std::move(gn_in));
     auto a_it = gn.begin();
-    while(a_it != gn.end())
+
+    while (a_it != gn.end())
     {
         auto line = *a_it;
         if(line.empty())
         {
-            HANDLE_AWAIT_TERM( co_await ctrl->await_has_data(ctrl->in), ctrl);
+            PN_HANDLE_AWAIT_TERM( co_await ctrl->await_has_data(ctrl->in), ctrl);
             ++a_it;
             continue;
         }
@@ -974,10 +1291,11 @@ System::task_type shell_coro(System::e_type ctrl)
         if(line.front() == "while") ++while_count;
         if(line.front() == "done")  --while_count;
 
-        if(if_count == 0 && while_count == 0)
+        if (if_count == 0 && while_count == 0)
         {
             auto pp = process_block(script, ctrl.get());
-            for(auto doWhat : pp)
+
+            for (auto doWhat : pp)
             {
                 if( std::holds_alternative<int>(doWhat) )
                 {
@@ -985,25 +1303,54 @@ System::task_type shell_coro(System::e_type ctrl)
                 }
                 else if( std::holds_alternative<std::string>(doWhat))
                 {
-                    HANDLE_AWAIT_TERM( co_await ctrl->await_yield(std::get<std::string>(doWhat)), ctrl);
+                    // if it retuns a string, it means we have to
+                    // yield and pop onto another queue
+                    PN_HANDLE_AWAIT_TERM( co_await ctrl->await_yield(std::get<std::string>(doWhat)), ctrl);
                 }
                 else if( std::holds_alternative<std::vector<System::pid_type>>(doWhat))
                 {
+                    // if it returns a vector of pids, we need to wait on them
                     auto & pids_to_wait_on = std::get<std::vector<System::pid_type>>(doWhat);
-                    auto exit_code_p = SYSTEM.getProcessExitCode(pids_to_wait_on.back());
-                    if(exit_code_p)
+
                     {
-                        HANDLE_AWAIT_TERM( co_await ctrl->await_finished(pids_to_wait_on), ctrl);
-                        ctrl->out->_eof = false;
-                        ctrl->env["?"] = std::to_string(*exit_code_p);
+                        // Each of the PID's are returned in a suspended state
+                        // so do one run of resuming all of them just in case
+                        // they are quick to exit
+                        pids_to_wait_on.erase(std::remove_if(pids_to_wait_on.begin(),
+                                                             pids_to_wait_on.end(),
+                                                             [sys = &SYSTEM](auto p)
+                                                             {
+                                                                 if (p == invalid_pid)
+                                                                     return true;
+                                                                 sys->resume(p);
+                                                                 return sys->processGetState(p)
+                                                                        == System::Process::EXITED;
+                                                             }),
+                                              pids_to_wait_on.end());
                     }
-                    else
+
+                    if (!pids_to_wait_on.empty())
                     {
-                        ctrl->env["?"] = "127";
+                        auto exit_code_p = SYSTEM.getProcessExitCode(pids_to_wait_on.back());
+                        if (exit_code_p)
+                        {
+                            // we need to check if any of the PID's have been paused
+                            // if they have, then we need to move it into the background
+                            PN_WAIT(pids_to_wait_on);
+
+                            ctrl->out->_eof = false;
+                            ctrl->env["?"]  = std::to_string(*exit_code_p);
+                        }
+                        else
+                        {
+                            ctrl->env["?"] = "127";
+                        }
                     }
                 }
             }
             script.clear();
+
+            PN_YIELD_IF(max_processing_time);
         }
         if(!EXIT_SHELL.empty())
         {

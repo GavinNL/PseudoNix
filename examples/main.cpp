@@ -14,7 +14,7 @@ void handle_sigint(int signum)
 {
     (void)signum;
     if(_M)
-        _M->signal(launcher_pid, PseudoNix::sig_interrupt);
+        _M->signal(launcher_pid, PseudoNix::eSignal::INTERRUPT);
 };
 
 int main(int argc, char** argv)
@@ -40,7 +40,7 @@ int main(int argc, char** argv)
     {
         // Macro to define a few variables such as
         // IN, OUT, ENV, SYSTEM, ARGS, PID
-        PSEUDONIX_PROC_START(ctrl);
+        PN_PROC_START(ctrl);
 
         PSEUDONIX_TRAP {
             std::cerr << "BAD TRAPPED" << std::endl;

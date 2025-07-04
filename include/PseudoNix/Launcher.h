@@ -151,7 +151,7 @@ inline System::task_type launcher_coro(System::e_type ctrl)
             break;
         }
 
-        HANDLE_AWAIT_TERM(co_await ctrl->await_yield(), ctrl)
+        PN_HANDLE_AWAIT_TERM(co_await ctrl->await_yield(), ctrl)
     }
 
     co_return 0;

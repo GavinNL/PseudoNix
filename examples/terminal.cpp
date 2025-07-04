@@ -23,14 +23,16 @@ public:
         // set up the system
         setup_functions(m_mini);
 
-        // an ImGui Terminal function has been created if you want to
-        // add a terminal to your projects. It is fairly simple
-        // and can be copied/modified for extra features
-        m_mini.setFunction("term", "Opens a new ImGui Terminal", PseudoNix::terminalWindow_coro);
+        m_mini.taskQueueCreate("IMGUI");
+        // Enable all the ImGui processes that can be useful if you.
+        //
+        // The main process is "term" which is a windowed terminal
+        // emulator.
+        PseudoNix::enable_default_imgui(m_mini);
 
         m_mini.setFunction("theme", "Sets the ImGui Theme", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
         {
-            PSEUDONIX_PROC_START(ctrl);
+            PN_PROC_START(ctrl);
 
             if(ARGS.size() > 1)
             {
@@ -56,7 +58,7 @@ public:
 
         m_mini.setFunction("confirm", "Example dialog box", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
         {
-            PSEUDONIX_PROC_START(ctrl);
+            PN_PROC_START(ctrl);
 
             int frameCount[2] = {ImGui::GetFrameCount()-1, ImGui::GetFrameCount()-1};
             bool quit = false;
@@ -86,17 +88,25 @@ public:
                     }
                     ImGui::End();
                 }
-                HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
+                PN_HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
             }
 
             // returns exit code 0 if confirmed and 1 if cancelled
             co_return static_cast<int>(ret);
         });
 
-        m_mini.spawnProcess({"term", "sh"});
         m_mini.spawnProcess({"bgrunner", "THREADPOOL"});
+        m_mini.spawnProcess({"sudo", "1", "term", "sh"});
     }
 
+    void imguiInit()
+    {
+        if (std::filesystem::exists("/usr/share/fonts/truetype/firacode/FiraCode-Medium.ttf"))
+        {
+            auto& io       = ImGui::GetIO();
+            io.FontDefault = io.Fonts->AddFontFromFileTTF("/usr/share/fonts/truetype/firacode/FiraCode-Medium.ttf", 16);
+        }
+    }
     void imguiPreFrame()
     {
         // Lets execute the main task queue first
@@ -115,10 +125,10 @@ public:
         // all coroutines once. Because we are running the
         // coroutines within the imguiRender() functions
         // the coroutines can also draw ImGui objects
-        m_mini.taskQueueExecute("MAIN", std::chrono::milliseconds(1), 15);
+        m_mini.taskQueueExecute("MAIN", std::chrono::milliseconds(1), 1);
+        m_mini.taskQueueExecute("IMGUI", std::chrono::milliseconds(1), 1);
     }
 };
-
 
 int main(int argc, char* argv[])
 {

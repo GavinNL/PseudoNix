@@ -265,7 +265,7 @@ inline void enable_archive_mount(System & sys)
 {
     sys.setFunction("archive", "Mount tar and tar.gz files", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
     {
-        PSEUDONIX_PROC_START(ctrl);
+        PN_PROC_START(ctrl);
 
         std::map<std::string, std::string> typeToMnt;
 
@@ -280,12 +280,14 @@ inline void enable_archive_mount(System & sys)
 
             if(ACT == "mount")
             {
-                HANDLE_PATH(CWD, DST);
-                HANDLE_PATH(CWD, SRC);
+                PN_HANDLE_PATH(CWD, DST);
+                PN_HANDLE_PATH(CWD, SRC);
 
-                if( SYSTEM.getType(SRC) == PseudoNix::NodeType::MemFile)
+                auto ref_src = SYSTEM.fs(SRC);
+
+                if( ref_src.get_type() == PseudoNix::NodeType::MemFile)
                 {
-                    auto p = SYSTEM.getVirtualFileData(SRC);
+                    auto p = ref_src.get_virtual_file_data();
                     if(p)
                     {
                         auto er = SYSTEM.mount<PseudoNix::ArchiveMount>(DST, p->data(), p->size(), SRC.generic_string());

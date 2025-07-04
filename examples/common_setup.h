@@ -1,9 +1,11 @@
 #include <PseudoNix/System.h>
 #include <PseudoNix/Shell.h>
 #include <PseudoNix/HostMount.h>
-#include <PseudoNix/ArchiveMount.h>
 
+#if !defined __EMSCRIPTEN__
+#include <PseudoNix/ArchiveMount.h>
 #include <PseudoNix/sample_archive.h>
+#endif
 
 inline void setup_functions(PseudoNix::System & sys)
 {
@@ -17,15 +19,18 @@ inline void setup_functions(PseudoNix::System & sys)
     // echo "Hello ${USER}"
     //
     PseudoNix::enable_default_shell(sys);
-    PseudoNix::enable_archive_mount(sys); // lets you mount tar/tar.gz files
     PseudoNix::enable_host_mount(sys);    // lets you moung host file systems
+
+#if !defined __EMSCRIPTEN__
+    PseudoNix::enable_archive_mount(sys); // lets you mount tar/tar.gz files
+#endif
 
     // Here's a very simple guessing game process
     sys.setFunction("guess", "A simple guessing game", [](PseudoNix::System::e_type ctrl) -> PseudoNix::System::task_type
                   {
                       // Macro to define a few variables such as
                       // IN, OUT, ENV, SYSTEM, ARGS, PID
-                      PSEUDONIX_PROC_START(ctrl);
+                      PN_PROC_START(ctrl);
 
                       std::string input;
                       uint32_t random_number = static_cast<uint32_t>(std::rand() % 100) + 1u;
@@ -35,12 +40,12 @@ inline void setup_functions(PseudoNix::System & sys)
                       {
                           std::string line;
 
-                          // HANDLE_AWAIT_INT_TERM is a macro that looks at the return type of the
+                          // PN_HANDLE_AWAIT_INT_TERM is a macro that looks at the return type of the
                           // Awaiter (a signal code), and co_returns the appropriate
                           // exit code. It will exit if the code is SIG_TERM or SIG_INT
                           //
                           // This is where Ctrl-C and Sig-kills are handled
-                          HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in, line), ctrl)
+                          PN_HANDLE_AWAIT_INT_TERM(co_await ctrl->await_read_line(ctrl->in, line), ctrl)
 
                           uint32_t guess = 0;
 
@@ -70,7 +75,8 @@ inline void setup_functions(PseudoNix::System & sys)
                       co_return 0;
                   });
 
-
+    // Create the default bob user
+    sys.userCreate(1, "bob");
 
     // This is the pre-exec function that gets called
     // right before the coroutine is first executed
@@ -79,9 +85,8 @@ inline void setup_functions(PseudoNix::System & sys)
     //
     // You can use it to modify the args or add new
     // data such as environment variables
-    sys.m_preExec = [](PseudoNix::System::Exec & E)
-    {
-        E.env["USER"] = "bob";
+    sys.m_preExec = [](PseudoNix::System::Exec &E) {
+        //E.env["USER"] = "bob";
         E.env["PSEUDONIX_VERSION"] = std::format("{}.{}", PSEUDONIX_VERSION_MAJOR, PSEUDONIX_VERSION_MINOR);
 #if !defined __EMSCRIPTEN__
 #if defined CMAKE_SOURCE_DIR
@@ -148,6 +153,7 @@ R"foo(
                mount archive /share/archive.tar.gz /mnt/ar_vfs
 )foo";
 
+#if !defined __EMSCRIPTEN__
     {
         // Create a virtual data file of the tar.gz data
         // and place it in /share/archive.tar.gz
@@ -160,8 +166,9 @@ R"foo(
         sys.mkdir("/mnt/ar_vfs");
         sys.spawnProcess({"mount", "archive", "/share/archive.tar.gz", "/mnt/ar_vfs"});
     }
+#endif
 
-
+#if !defined __EMSCRIPTEN__
     {
         // The data for the archive is a available at compile time
         // mount the raw data directly at /mnt/ar_app
@@ -175,14 +182,6 @@ R"foo(
         }
     }
 
-#if !defined __EMSCRIPTEN__
-#if !defined _WIN32
-    {
-        // Mount a temporary folder
-        sys.mkdir("/tmp");
-        sys.spawnProcess({"mount", "host", "/tmp", "/tmp"});
-    }
-#endif
 #endif
 
 

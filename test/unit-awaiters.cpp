@@ -13,7 +13,7 @@ SCENARIO("test await_yield")
     System M;
 
     M.setFunction("test", [](System::e_type control) -> System::task_type {
-        PSEUDONIX_PROC_START(control);
+        PN_PROC_START(control);
 
         std::cout << "Start" << std::endl;
         std::cout << "Yielding 1" << std::endl;
@@ -47,7 +47,7 @@ SCENARIO("test await_read_line")
     System M;
 
     M.setFunction("test", [](System::e_type control) -> System::task_type {
-        PSEUDONIX_PROC_START(control);
+        PN_PROC_START(control);
 
         std::string line;
 

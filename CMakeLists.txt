@@ -30,7 +30,9 @@ option( ${PROJECT_NAME}_ENABLE_COVERAGE         "Enable Coverage. After build, e
 option( ${PROJECT_NAME}_ENABLE_WARNINGS         "Enable Strict Warnings"                               ${PROJECT_IS_TOP_LEVEL})
 option( ${PROJECT_NAME}_WARNINGS_AS_ERRORS      "Treat compiler warnings as errors"                    ${PROJECT_IS_TOP_LEVEL})
 
+if(PROJECT_IS_TOP_LEVEL)
 include(cmake/extras.cmake)
+endif()
 
 ################################################################################
 # Top level INTERFACE library which can be used to provide all the
@@ -77,9 +79,6 @@ target_link_libraries( ${PROJECT_NAME}  INTERFACE  ${PublicLinkedTargets})
 #     add_custom_target(archive)
 # endif()
 
-
-
-
 if( ${PROJECT_NAME}_BUILD_EXAMPLES)
 
     ################################################################################
@@ -101,14 +100,19 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
 
     find_package(readerwriterqueue REQUIRED)
     find_package(concurrentqueue   REQUIRED)
-    find_package(LibArchive        REQUIRED)
-    find_package(ZLIB              REQUIRED)
 
-    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue LibArchive::LibArchive ZLIB::ZLIB )
+    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue )
+    if(NOT EMSCRIPTEN)
+        find_package(LibArchive        REQUIRED)
+        find_package(ZLIB              REQUIRED)
+        set(third_party_libs ${third_party_libs} LibArchive::LibArchive ZLIB::ZLIB )
+    endif()
+
+
 
     add_executable(terminal examples/terminal.cpp)
     target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET}  ${third_party_libs})
-    target_include_directories(terminal PUBLIC
+    target_include_directories(terminal PRIVATE
                                         # For ImGui, set them as system includes
                                         # so the compiler doesnt warn about errors
                                         SYSTEM
@@ -123,7 +127,21 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
         target_compile_options(terminal PRIVATE "-sUSE_SDL=2")
         target_link_options(   terminal PRIVATE "-sUSE_SDL=2")
         set_target_properties( terminal PROPERTIES SUFFIX ".html")
+
+        add_executable(js_terminal examples/js_terminal.cpp)
+        set_target_properties( js_terminal PROPERTIES SUFFIX ".html")
+        target_link_libraries(js_terminal ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
+        target_link_options(js_terminal PRIVATE
+            --no-entry
+            -sALLOW_MEMORY_GROWTH=1
+            -sINITIAL_MEMORY=64MB
+            -sMAXIMUM_MEMORY=512MB
+            -sENVIRONMENT=web
+            #-sSTANDALONE_WASM=1
+            -sEXPORTED_FUNCTIONS=['_malloc','_free','_init','_update','_input']
+            -sEXPORTED_RUNTIME_METHODS=['cwrap','ccall'])
     else()
+
         add_executable(main examples/main.cpp)
         target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
         target_include_directories(main PUBLIC
