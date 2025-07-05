@@ -220,6 +220,9 @@ inline System::task_type processMonitor_coro(System::e_type ctrl)
                                       state == System::Process::SUSPENDED ? eSignal::CONTINUE
                                                                           : eSignal::STOP);
                     }
+
+                    ImGui::Text("%s",
+                                std::format("{} {}", P->control->in.use_count(), P->control->out.use_count()).c_str());
                     ImGui::EndDisabled();
                     ImGui::PopID();
                 }

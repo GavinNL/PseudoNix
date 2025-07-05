@@ -120,6 +120,7 @@ struct System : public PseudoNix::FileSystem
 
     std::string DEFAULT_QUEUE = "MAIN";
     clock_type::duration DEFAULT_PROC_TIME = std::chrono::milliseconds(1);
+    uint64_t m_iteration                   = 0;
 
     struct user_t
     {
@@ -1167,6 +1168,8 @@ struct System : public PseudoNix::FileSystem
         std::string q_name = std::string(queue_name);
         while (maxIter > 0)
         {
+            if (queue_name == DEFAULT_QUEUE)
+                ++m_iteration;
             maxIter--;
             // Execute all the processes in order of their PID
             //
@@ -1584,6 +1587,9 @@ protected:
 #define PN_WAIT(...) PN_HANDLE_AWAIT_TERM(co_await pn_ctrl->await_finished(__VA_ARGS__), pn_ctrl)
 
 #define PN_PRINT(...) COUT << std::format(__VA_ARGS__)
+
+#define PN_DEBUG(...) \
+    std::cout << std::format("{}[{}, q={}]: ", ARGS[0], PID, QUEUE) << std::format(__VA_ARGS__) << std::endl;
 
 #define PN_PRINTLN(...) \
     COUT << std::format(__VA_ARGS__); \
@@ -2855,7 +2861,7 @@ protected:
         if(found)
         {
             if(!a.first->handle_)
-                return found;
+                return false;
             // its possible that the process had been forcefully killed
             // and the handle to the coroutine no longer valid. So make sure
             // that we do not resume any of those coroutines
@@ -2874,6 +2880,7 @@ protected:
             if (a.second->state == Process::AWAITING && a.first->await_ready())
             {
                 a.second->control->env["QUEUE"] = queue_name;
+                a.second->control->queue_name   = queue_name;
                 _resume_task_now(a.second);
             }
             else
