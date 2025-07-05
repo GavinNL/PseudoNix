@@ -2659,7 +2659,7 @@ protected:
                 auto const & left = _args[1];
                 auto const & op = _args[2];
                 auto const & right = _args[3];
-                if(op == "=")
+                if (op == "=" || op == "==")
                 {
                     co_return _cmp(left==right);
                 }
