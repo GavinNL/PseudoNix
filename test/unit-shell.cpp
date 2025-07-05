@@ -8,7 +8,7 @@ using namespace PseudoNix;
 
 SCENARIO("Tokenizer Generator")
 {
-    auto s = System::make_stream(R"foo(echo Hello $(get name))foo");
+    auto s = System::makeStream(R"foo(echo Hello $(get name))foo");
     s->set_eof();
 
     auto gn = bashTokenGenerator(s);
@@ -32,9 +32,9 @@ SCENARIO("Tokenizer Generator")
 
 SCENARIO("Tokenizer Generator")
 {
-    auto s = System::make_stream(R"foo(ps
+    auto s = System::makeStream(R"foo(ps
 )foo");
-//    s->set_eof();
+    //    s->set_eof();
 
     auto gn = bashTokenGenerator(s);
     auto a = gn.begin();

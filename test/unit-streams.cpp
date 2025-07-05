@@ -109,7 +109,7 @@ SCENARIO("Basic filling")
 
 SCENARIO("Tokenizer 3")
 {
-    auto stream = System::make_stream();
+    auto stream  = System::makeStream();
     using Stream = System::stream_type;
 
     char c;
@@ -138,7 +138,7 @@ SCENARIO("Tokenizer 3")
 
 SCENARIO("Tokenizer 3")
 {
-    auto stream = System::make_stream();
+    auto stream  = System::makeStream();
     using Stream = System::stream_type;
 
     WHEN("We put some characters into the stream")

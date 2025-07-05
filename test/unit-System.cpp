@@ -82,8 +82,8 @@ SCENARIO("Return values")
 
             System::Exec exec;
             exec.args = {"true"};
-            exec.in = System::make_stream();
-            exec.out = System::make_stream();
+            exec.in   = System::makeStream();
+            exec.out  = System::makeStream();
             exec.in->set_eof();
 
             auto pid = S.runRawCommand(exec);
@@ -105,8 +105,8 @@ SCENARIO("Return values")
 
             System::Exec exec;
             exec.args = {"false"};
-            exec.in = System::make_stream();
-            exec.out = System::make_stream();
+            exec.in   = System::makeStream();
+            exec.out  = System::makeStream();
             exec.in->set_eof();
 
             auto pid = S.runRawCommand(exec);
@@ -137,8 +137,8 @@ SCENARIO("runRawCommand")
 
             System::Exec exec;
             exec.args = {"echo", "-n", "hello", "world"};
-            exec.in = System::make_stream();
-            exec.out = System::make_stream();
+            exec.in   = System::makeStream();
+            exec.out  = System::makeStream();
             exec.in->set_eof();
 
             auto pid = S.runRawCommand(exec);
@@ -194,8 +194,8 @@ SCENARIO("System: Run a single command manually read from input")
     exec.args = {"echo_from_input"};
 
     // Create the stream and put some initial data
-    exec.in = System::make_stream("Hello world");
-    exec.out = System::make_stream();
+    exec.in  = System::makeStream("Hello world");
+    exec.out = System::makeStream();
     exec.in->set_eof();
 
 
@@ -226,13 +226,13 @@ SCENARIO("System: Execute two commands and have one piped into the other")
     std::array<System::Exec, 2> exec;
 
     exec[0].args = {"echo", "-n", "Hello", "world"};
-    exec[0].in = System::make_stream();
-    exec[0].out = System::make_stream();
+    exec[0].in   = System::makeStream();
+    exec[0].out  = System::makeStream();
     exec[0].in->set_eof(); // only close the first input straem
 
     exec[1].args = {"rev"};
     exec[1].in = exec[0].out; // make the output of exec[0] the input of exec[1]
-    exec[1].out = System::make_stream();
+    exec[1].out  = System::makeStream();
 
     //=======================================================
     // This returns a coroutine that needs to be executed in
@@ -270,7 +270,7 @@ SCENARIO("Test await_yield")
         co_return 0;
     });
 
-    auto out = System::make_stream();
+    auto out  = System::makeStream();
     auto E1 = System::parseArguments({"test"});
     E1.out = out;
     auto E2 = System::parseArguments({"echo", "echo"});
@@ -308,7 +308,7 @@ SCENARIO("Test await_yield_for")
         co_return 0;
     });
 
-    auto out = System::make_stream();
+    auto out  = System::makeStream();
     auto E1 = System::parseArguments({"test"});
     E1.out = out;
     auto E2 = System::parseArguments({"echo", "echo"});
@@ -353,7 +353,7 @@ SCENARIO("Test await_finished")
         co_return 0;
     });
 
-    auto out = System::make_stream();
+    auto out  = System::makeStream();
     auto E1 = System::parseArguments({"sleep", "2"});
     E1.out = out;
     auto pid1 = M.runRawCommand(E1);
@@ -401,7 +401,7 @@ SCENARIO("Test await_finished multi")
         co_return 0;
     });
 
-    auto out = System::make_stream();
+    auto out = System::makeStream();
 
     auto E1 = System::parseArguments({"sleep", "2"});
     E1.out = out;
@@ -465,8 +465,8 @@ SCENARIO("test await_data")
     });
 
     auto E1 = System::parseArguments({"test"});
-    E1.out = System::make_stream();
-    E1.in  = System::make_stream();
+    E1.out  = System::makeStream();
+    E1.in   = System::makeStream();
 
     auto pid1 = M.runRawCommand(E1);
     REQUIRE(pid1 != 0);

@@ -197,7 +197,7 @@ inline System::task_type processMonitor_coro(System::e_type ctrl)
             ImGui::Separator();
             if (ImGui::BeginTable("table1", 3))
             {
-                for (auto p : SYSTEM.get_processes())
+                for (auto p : SYSTEM.getProcesses())
                 {
                     ImGui::TableNextRow();
                     ImGui::PushID(p);

@@ -661,9 +661,9 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
                     {
                         auto subCmd = A.substr(i + 2, j - i - 2);
                         //std::cout << subCmd << std::endl;
-                        auto STDIN  = System::make_stream();
+                        auto STDIN  = System::makeStream();
                         STDIN->eof();
-                        auto STDOUT = System::make_stream();
+                        auto STDOUT = System::makeStream();
                         auto pids   = execute_pipes({"sh", "-c", subCmd}, proc, STDIN, STDOUT);
                         co_yield pids;
 
@@ -691,7 +691,7 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
                                             })
                               > 0;
 
-            auto STDIN = System::make_stream();
+            auto STDIN = System::makeStream();
 
             if (!is_chained)
             {
@@ -760,8 +760,8 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
                 {
                     // we have a $(cmd arg1 arg2 arg3) situtation going on here
                     // so execute this as a new shell
-                    auto STDIN = System::make_stream();
-                    auto STDOUT = System::make_stream();
+                    auto STDIN      = System::makeStream();
+                    auto STDOUT     = System::makeStream();
                     auto subProcess = execute_pipes( {"sh", "--noprofile"}, proc, STDIN, STDOUT);
                     *STDIN << it->substr(2, it->size()-3);
                     *STDIN << ';';

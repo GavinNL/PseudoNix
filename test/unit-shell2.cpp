@@ -23,8 +23,8 @@ std::pair<std::string, System::exit_code_type> testS1(std::string script, bool f
         if(from_file)
         {
             auto E = System::parseArguments({"sh", "/script.sh"});
-            E.in   = System::make_stream();
-            E.out  = System::make_stream();
+            E.in   = System::makeStream();
+            E.out  = System::makeStream();
             //E.in->set_eof();
             return E;
         }
@@ -33,8 +33,8 @@ std::pair<std::string, System::exit_code_type> testS1(std::string script, bool f
             auto E = System::parseArguments({"sh"});
             // Here we're going to put our shell script code into the input
             // stream of the process function, similar to how linux works
-            E.in  = System::make_stream(script);
-            E.out = System::make_stream();
+            E.in   = System::makeStream(script);
+            E.out  = System::makeStream();
             E.in->set_eof();
             return E;
         }

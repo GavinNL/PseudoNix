@@ -567,14 +567,14 @@ struct System : public PseudoNix::FileSystem
         m_funcs.clear();
     }
 
-    static std::shared_ptr<stream_type> make_stream(std::string const& initial_data="")
+    static std::shared_ptr<stream_type> makeStream(std::string const &initial_data = "")
     {
         auto r = std::make_shared<stream_type>();
         *r << initial_data;
         return r;
     }
 
-    Generator<pid_type> get_processes() const
+    Generator<pid_type> getProcesses() const
     {
         for (auto it = m_procs2.begin(); it != m_procs2.end(); ++it)
         {
@@ -735,7 +735,7 @@ struct System : public PseudoNix::FileSystem
 
         if(!args.in)
         {
-            args.in = make_stream();
+            args.in = makeStream();
             //exec_args.in->close();
         }
 
@@ -753,8 +753,10 @@ struct System : public PseudoNix::FileSystem
         if(m_preExec)
             m_preExec(args);
 
-        if(!args.out) args.out = make_stream();
-        if(!args.in) args.in = make_stream();
+        if (!args.out)
+            args.out = makeStream();
+        if (!args.in)
+            args.in = makeStream();
 
         auto proc_control = std::make_shared<ProcessControl>();
         proc_control->args = args.args;
@@ -828,9 +830,9 @@ struct System : public PseudoNix::FileSystem
         if(E.size())
         {
             if(!E.front().in)
-                E.front().in = make_stream();
+                E.front().in = makeStream();
             if(!E.back().out)
-                E.back().out = make_stream();
+                E.back().out = makeStream();
         }
 
         for(size_t i=0;i<E.size()-1;i++)
@@ -1350,7 +1352,7 @@ struct System : public PseudoNix::FileSystem
         for (size_t i = 0; i < array_of_args.size(); i++)
         {
             out.push_back(parseArguments(array_of_args[i]));
-            out.back().out = make_stream();
+            out.back().out = makeStream();
         }
         for (size_t i = 1; i < out.size(); i++)
         {
