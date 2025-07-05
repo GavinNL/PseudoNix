@@ -204,7 +204,7 @@ inline System::task_type processMonitor_coro(System::e_type ctrl)
                     auto &P = SYSTEM.PROC_AT(p);
 
                     ImGui::TableSetColumnIndex(0);
-                    ImGui::Text("%d %s", PID, P->args[0].c_str());
+                    ImGui::Text("%d %s", p, P->args[0].c_str());
 
                     ImGui::TableSetColumnIndex(1);
                     ImGui::BeginDisabled(SYSTEM.getProcessUser(p) != U_ID);

@@ -4,20 +4,20 @@
 #include <cmath>
 #define WIN32_LEAN_AND_MEAN
 #define NOBOOL
-#include <vector>
-#include <string>
-#include <map>
-#include <functional>
-#include "ReaderWriterStream.h"
-#include <concurrentqueue.h>
-#include "task.h"
-#include "defer.h"
-#include <span>
-#include <thread>
-#include <semaphore>
+#include "Expected.h"
 #include "FileSystem.h"
+#include "ReaderWriterStream.h"
+#include "defer.h"
 #include "helpers.h"
-
+#include "task.h"
+#include <concurrentqueue.h>
+#include <functional>
+#include <map>
+#include <semaphore>
+#include <span>
+#include <string>
+#include <thread>
+#include <vector>
 
 #define PSEUDONIX_VERSION_MAJOR 0
 #define PSEUDONIX_VERSION_MINOR 1
@@ -74,6 +74,11 @@ enum class eSignal
     STOP = 19
 };
 
+enum class ArgParseError {
+    UNKNOWN, //
+    NO_EXIST,
+    INVALID_TYPE
+};
 
 /**
  * @brief The AwaiterResult enum
@@ -1496,6 +1501,39 @@ public:
         return true;
     }
 
+    template<typename T>
+    static Expected<T, ArgParseError> _has_arg_or(std::vector<std::string> &_args,
+                                                  std::string_view flag,
+                                                  T const &defaultValue)
+    {
+        auto arg_it = std::find(_args.begin(), _args.end(), flag);
+        if (arg_it == _args.end())
+        {
+            return defaultValue;
+        }
+        auto val_it = std::next(arg_it);
+        if (val_it == _args.end())
+            return ArgParseError::NO_EXIST;
+
+        std::string val = *val_it;
+        _args.erase(arg_it, val_it + 1);
+
+        if constexpr (std::is_arithmetic_v<T>)
+        {
+            T num;
+            if (to_number(val, num))
+            {
+                return num;
+            }
+            return ArgParseError::INVALID_TYPE;
+        }
+        if constexpr (std::is_same_v<T, std::string>)
+        {
+            return val;
+        }
+        return ArgParseError::INVALID_TYPE;
+    }
+
 protected:
     void setDefaultFunctions()
     {
@@ -2090,18 +2128,14 @@ protected:
             PN_PROC_CHECK(ARGS.size() < 2, "Error: \n\n  spawn [--count N] cmd <args...>\n");
 
             auto &args = ctrl->args;
-            std::string count_str;
-            size_t count = 1;
-            if (_has_arg(args, "--count", count_str))
-            {
-                if (!count_str.empty())
-                    PN_PROC_CHECK(to_number(count_str, count) == false,
-                                  "Error: --count <ARG> must be a number");
-            }
 
-            count = std::clamp<size_t>(count, 0u, 1000u);
+            auto count = _has_arg_or(args, "--count", size_t(1));
 
-            while(count--)
+            PN_PROC_CHECK(!count.has_value(), "Error: --count <ARG> must be a number");
+
+            count.value() = std::clamp<size_t>(count.value(), 0u, 1000u);
+
+            while (count.value()--)
             {
                 auto E = System::parseArguments(std::vector(ARGS.begin() + 1, ARGS.end()));
                 E.out = ctrl->out;
