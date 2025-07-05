@@ -785,7 +785,7 @@ struct FileSystem
 
         auto dir = ref.dir_node();
 
-        if(dir->mount)
+        if (dir && dir->mount)
             return result_type::False;
 
         dir->mount = std::make_shared<_Tp>(std::forward<_Args>(__args)...);
