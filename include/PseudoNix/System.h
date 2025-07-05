@@ -1647,14 +1647,14 @@ protected:
                 (*funcDescs)[ARGS[2]] = ARGS[3];
                 co_return 0;
             }
-            COUT << "List of commands:\n\n";
+            PN_PRINT("List of commands:\n\n");
             for(auto & f : ctrl->system->m_funcs)
             {
                 PN_PRINT("{:15}: {:15}\n", f.first, (*funcDescs)[f.first]);
             }
             co_return 0;
         };
-        DEF_FUNC_HELP("env", "Prints out all environment variables, or sets environment variables for other processes")
+        DEF_FUNC_HELP("env", "Prints out all environment variables")
         {
             PN_PROC_START(ctrl);
 
@@ -1691,14 +1691,6 @@ protected:
             while(true)
             {
                 PN_PRINT("Y\n");
-                //PN_PRINT("Y {}\n", SYSTEM.PROC_AT(PID)->should_pause);
-                //if(SYSTEM.PROC_AT(PID)->should_pause)
-                //{
-                //    COUT << "Pausing\n";
-                //    ctrl->system->PROC_AT(PID)->state = Process::SUSPENDED;
-                //    co_await std::suspend_always{};
-                //}
-
                 PN_HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
             }
 
@@ -1741,7 +1733,7 @@ protected:
                 if(AwaiterResult::SUCCESS == co_await ctrl->await_read_line(ctrl->in, output))
                 {
                     std::reverse(output.begin(), output.end());
-                    *ctrl->out << std::format("{}\n", output);
+                    PN_PRINT("{}\n", output);
                     output.clear();
                 }
                 else
@@ -1752,7 +1744,7 @@ protected:
             if(!output.empty())
             {
                 std::reverse(output.begin(), output.end());
-                *ctrl->out << std::format("{}\n", output);
+                PN_PRINT("{}\n", output);
             }
             co_return 0;
         };
@@ -1785,7 +1777,7 @@ protected:
                 }
             }
 
-            COUT << std::to_string(i) << '\n';
+            PN_PRINTLN("{}", i);
 
             co_return 0;
         };
@@ -2035,7 +2027,7 @@ protected:
                co_return 0;
            for(auto & x : SHELL_PROC->exported)
            {
-               COUT << x.first << '\n';
+               PN_PRINTLN("{}", x.first);
            }
            co_return 0;
         };
