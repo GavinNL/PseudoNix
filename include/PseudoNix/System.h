@@ -166,8 +166,8 @@ struct System : public PseudoNix::FileSystem
         std::vector<std::string>           args;
         std::map<std::string, std::string> env;
         std::shared_ptr<stream_type>       in;
-        std::shared_ptr<stream_type>       out;
-        std::string queue; // = DEFAULT_QUEUE;
+        std::shared_ptr<stream_type> out;
+        std::string queue;
 
         // Custom user variable you use to
         // pass data.
@@ -2193,7 +2193,8 @@ protected:
                 DEBUG_INFO("Thread exit");
             });
 
-            PSEUDONIX_TRAP {
+            PN_TRAP
+            {
                 DEBUG_TRACE("TRAPPED: {}", QUEUE);
                 // set the stop token so the thread will exit
                 // its main loop
@@ -2289,7 +2290,8 @@ protected:
                 co_return 1;
             }
 
-            PSEUDONIX_TRAP {
+            PN_TRAP
+            {
                 PN_PRINT("Trap on {} queue\n", QUEUE);
             };
 
@@ -2861,7 +2863,7 @@ protected:
         if(found)
         {
             if(!a.first->handle_)
-                return false;
+                return found;
             // its possible that the process had been forcefully killed
             // and the handle to the coroutine no longer valid. So make sure
             // that we do not resume any of those coroutines
