@@ -64,14 +64,13 @@ constexpr const int exit_interrupt  = 130;
 constexpr const int exit_terminated = 143;
 constexpr const uint32_t invalid_pid = 0xFFFFFFFF;
 
-enum class eSignal
-{
-    NONE = 0,
-    INTERRUPT = 2,
-    KILL = 9,
-    TERMINATE = 15,
-    CONTINUE = 18,
-    STOP = 19
+enum class eSignal {
+    NONE      = 0,  //
+    INTERRUPT = 2,  //
+    KILL      = 9,  //
+    TERMINATE = 15, //
+    CONTINUE  = 18, //
+    STOP      = 19  //
 };
 
 enum class ArgParseError {
@@ -767,7 +766,7 @@ struct System : public PseudoNix::FileSystem
         proc_control->userData1 = args.userData1;
         proc_control->userData2 = args.userData2;
 
-        uint32_t parent_user = 0;
+        user_id_type parent_user = 0;
 
         // If there is a valid parent, then copy all
         // the exported variables from the parent into the
@@ -789,13 +788,13 @@ struct System : public PseudoNix::FileSystem
         }
 
         // set environment variables
+        if (m_users.count(parent_user))
         {
-            if (m_users.count(parent_user))
-            {
-                auto &U = m_users.at(parent_user);
-                proc_control->env["USER"] = std::format("{}", U.name);
-            }
+            auto &U                   = m_users.at(parent_user);
+            proc_control->env["USER"] = std::format("{}", U.name);
+            proc_control->env["UID"]  = std::format("{}", parent_user);
         }
+
         proc_control->env["QUEUE"] = proc_control->queue_name;
 
         // run the function, it is a coroutine:
@@ -985,7 +984,6 @@ struct System : public PseudoNix::FileSystem
             if(sigtype == eSignal::STOP)
             {
                 proc.state = Process::SUSPENDING;
-                // sig stop
             }
             else if( sigtype == eSignal::CONTINUE)
             {
@@ -2920,9 +2918,7 @@ protected:
         if (P->task.done())
         {
             auto exit_code     = P->task();
-            //P->is_complete     = true;
             *P->exit_code      = !P->force_terminate ? exit_code : -1;
-            //P->should_remove   = true;
             P->force_terminate = true;
             P->state           = Process::EXITED;
         }

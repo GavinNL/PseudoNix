@@ -86,7 +86,6 @@ inline void setup_functions(PseudoNix::System & sys)
     // You can use it to modify the args or add new
     // data such as environment variables
     sys.m_preExec = [](PseudoNix::System::Exec &E) {
-        //E.env["USER"] = "bob";
         E.env["PSEUDONIX_VERSION"] = std::format("{}.{}", PSEUDONIX_VERSION_MAJOR, PSEUDONIX_VERSION_MINOR);
 #if !defined __EMSCRIPTEN__
 #if defined CMAKE_SOURCE_DIR
