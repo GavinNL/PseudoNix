@@ -116,8 +116,8 @@ struct System : public PseudoNix::FileSystem
     using pid_type         = uint32_t;
     using exit_code_type   = int32_t;
     using task_type        = Task_t<exit_code_type, std::suspend_always, std::suspend_always>;
-    using clock_type = std::chrono::system_clock;
-    using user_id_type = uint32_t;
+    using clock_type       = std::chrono::system_clock;
+    using user_id_type     = uint32_t;
 
     std::string DEFAULT_QUEUE = "MAIN";
     clock_type::duration DEFAULT_PROC_TIME = std::chrono::milliseconds(1);
@@ -313,7 +313,7 @@ struct System : public PseudoNix::FileSystem
         std::shared_ptr<void> userData1;
         std::shared_ptr<void> userData2;
 
-        std::chrono::system_clock::time_point last_resume_time = {};
+        clock_type::time_point last_resume_time = {};
 
     protected:
         pid_type    pid = invalid_pid;
@@ -354,8 +354,7 @@ struct System : public PseudoNix::FileSystem
          * Yields if the time since last yield is greater than maxComputeTime
          * 
          */
-        System::Awaiter await_yield_time(std::chrono::system_clock::duration maxComputeTime,
-                                         std::string_view queue = {})
+        System::Awaiter await_yield_time(clock_type::duration maxComputeTime, std::string_view queue = {})
         {
             std::string_view _queue = queue.empty() ? this->queue_name : queue;
             auto ctrl = system->getProcessControl(pid);
@@ -405,12 +404,10 @@ struct System : public PseudoNix::FileSystem
         System::Awaiter await_yield_for(std::chrono::nanoseconds time, std::string_view queue = {})
         {
             std::string_view _queue = queue.empty() ? this->queue_name : queue;
-            auto T1 = std::chrono::system_clock::now() + time;
+            auto T1                 = clock_type::now() + time;
             return System::Awaiter{get_pid(),
                                    system,
-                                   [T = T1](Awaiter *) {
-                                       return std::chrono::system_clock::now() > T;
-                                   },
+                                   [T = T1](Awaiter *) { return clock_type::now() > T; },
                                    std::string(_queue)};
         }
 
@@ -1165,7 +1162,7 @@ struct System : public PseudoNix::FileSystem
                             std::chrono::milliseconds maxComputeTime = std::chrono::milliseconds(15),
                             size_t maxIter = 1)
     {
-        auto T0 = std::chrono::system_clock::now();
+        auto T0 = clock_type::now();
 
         std::string q_name = std::string(queue_name);
         while (maxIter > 0)
@@ -1218,7 +1215,7 @@ struct System : public PseudoNix::FileSystem
                 }
             }
 
-            if (std::chrono::system_clock::now() - T0 > maxComputeTime)
+            if (clock_type::now() - T0 > maxComputeTime)
                 break;
         }
 
@@ -1412,8 +1409,8 @@ struct System : public PseudoNix::FileSystem
         std::vector<std::string> args;
 
         State state                                      = UNKNOWN;
-        std::chrono::system_clock::duration process_time = {};
-        uint32_t user_id                                 = 0;
+        clock_type::duration process_time                = {};
+        user_id_type user_id                             = 0;
         pid_type parent                                  = invalid_pid;
         std::vector<pid_type> child_processes            = {};
         Awaiter initialAwaiter                           = {};
@@ -1593,7 +1590,7 @@ protected:
     COUT << '\n'
 
 #define PN_YIELD_IF(DUR) \
-    if (std::chrono::system_clock::now() - pn_ctrl->last_resume_time > DUR) \
+    if (PseudoNix::System::clock_type::now() - pn_ctrl->last_resume_time > DUR) \
     { \
         PN_HANDLE_AWAIT_INT_TERM(co_await pn_ctrl->await_yield(), pn_ctrl); \
     }
@@ -1602,22 +1599,21 @@ protected:
 
 // Used for doing quick checks.
 // Check the condition, if its true, exits the coroutine
-#define PN_PROC_CHECK(condition, ...)\
-        if(condition)\
-            {\
-                    COUT << std::format("ERROR: {}: ", ARGS[0]);\
-                    COUT << std::format(__VA_ARGS__);\
-                    COUT << '\n';\
-                    co_return 1;\
-            }
+#define PN_PROC_CHECK(condition, ...) \
+    if (condition) \
+    { \
+        COUT << std::format("ERROR: {}: ", ARGS[0]); \
+        COUT << std::format(__VA_ARGS__); \
+        COUT << '\n'; \
+        co_return 1; \
+    }
 
-
-#define PN_HANDLE_PATH(CWD, path)\
-        {\
-            if(path.is_relative())\
-                path = CWD / path;\
-            path = path.lexically_normal();\
-        }
+#define PN_HANDLE_PATH(CWD, path) \
+    { \
+        if (path.is_relative()) \
+            path = CWD / path; \
+        path = path.lexically_normal(); \
+    }
 
         std::shared_ptr< std::map<std::string, std::string>> funcDescs = std::make_shared< std::map<std::string, std::string> >();
         #define DEF_FUNC_HELP(A, help) \
@@ -1727,13 +1723,10 @@ protected:
         };
 
         (*funcDescs)["uptime"] = "Number of milliseconds since started";
-        m_funcs["uptime"] = [T0=std::chrono::system_clock::now()](e_type ctrl) -> task_type
+        m_funcs["uptime"]      = [T0 = clock_type::now()](e_type ctrl) -> task_type
         {
             PN_PROC_START(ctrl);
-            PN_PRINT("{}\n",
-                     std::chrono::duration_cast<std::chrono::milliseconds>(
-                         std::chrono::system_clock::now() - T0)
-                         .count());
+            PN_PRINT("{}\n", std::chrono::duration_cast<std::chrono::milliseconds>(clock_type::now() - T0).count());
             co_return 0;
         };
 
@@ -1768,7 +1761,7 @@ protected:
         {
             PN_PROC_START(ctrl);
 
-            uint32_t i=0;
+            uint32_t i = 0;
 
             bool quit = false;
             while(!quit)
@@ -2091,7 +2084,7 @@ protected:
             //
             PN_PROC_START(ctrl);
 
-            uint32_t user_id = 0;
+            user_id_type user_id = 0;
 
             std::vector<std::string> args;
             if (!to_number(ARGS[1], user_id))
@@ -2729,11 +2722,11 @@ protected:
                         if (!file) {
                             co_return 1;
                         }
-                        auto T0 = std::chrono::system_clock::now();
+                        auto T0 = clock_type::now();
                         std::string line;
                         while(true)
                         {
-                            while(!file.eof() && (std::chrono::system_clock::now()-T0 < std::chrono::microseconds(1000)) )
+                            while (!file.eof() && (clock_type::now() - T0 < std::chrono::microseconds(1000)))
                             {
                                 std::getline(file, line);
                                 PN_PRINTLN("{}", line);
@@ -2741,7 +2734,7 @@ protected:
                             if(file.eof())
                                 break;
                             PN_HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
-                            T0 = std::chrono::system_clock::now();
+                            T0 = clock_type::now();
                         }
                         co_return 0;
                     }
@@ -2916,9 +2909,9 @@ protected:
         P->state = Process::RUNNING;
 
         auto &last_resume_time = P->control->last_resume_time;
-        last_resume_time       = std::chrono::system_clock::now();
+        last_resume_time       = clock_type::now();
         P->task.resume();
-        P->process_time += std::chrono::system_clock::now() - last_resume_time;
+        P->process_time += clock_type::now() - last_resume_time;
 
         if (P->task.done())
         {
