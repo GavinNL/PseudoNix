@@ -922,7 +922,8 @@ struct System : public PseudoNix::FileSystem
     {
         auto it = m_procs2.find(pid);
         if(it == m_procs2.end()) return false;
-        return !it->second->is_complete;
+        const auto &state = it->second->state;
+        return state != Process::State::EXITED && state != Process::State::FINALIZED;
     }
 
     bool isAllComplete(std::vector<pid_type> const &pid) const
@@ -1389,8 +1390,10 @@ struct System : public PseudoNix::FileSystem
         std::shared_ptr<ProcessControl> control;
         task_type task;
 
-        bool is_complete = false;
         std::shared_ptr<exit_code_type> exit_code = std::make_shared<exit_code_type>(-1);
+
+        // The signal function that will be called with
+        // signal(pid, eSignal) is called
         std::function<void(eSignal)> signal = {};
 
         // This is where the current signal is
@@ -1403,17 +1406,17 @@ struct System : public PseudoNix::FileSystem
         // without cleanup.
         bool force_terminate = false;
 
-        State state = UNKNOWN;
-
-        uint32_t user_id = 0;
-
+        // The args when the process was created
+        // this should not be modified like the ProcessCtrl->args which
+        // can be modified inside the process coroutine
         std::vector<std::string> args;
 
+        State state                                      = UNKNOWN;
         std::chrono::system_clock::duration process_time = {};
-
-        pid_type parent = invalid_pid;
-        std::vector<pid_type> child_processes = {};
-        Awaiter initialAwaiter = {};
+        uint32_t user_id                                 = 0;
+        pid_type parent                                  = invalid_pid;
+        std::vector<pid_type> child_processes            = {};
+        Awaiter initialAwaiter                           = {};
     };
 
     Process::State processGetState(pid_type p) const
@@ -2816,7 +2819,7 @@ protected:
         // reading from it will know to close
         coro.control->out->set_eof();
 
-        coro.is_complete = true;
+        //coro.is_complete = true;
 
         _detachFromParent(p);
 
@@ -2869,7 +2872,7 @@ protected:
             // its possible that the process had been forcefully killed
             // and the handle to the coroutine no longer valid. So make sure
             // that we do not resume any of those coroutines
-            if (a.second->force_terminate || a.second->is_complete || a.second->state == Process::FINALIZED)
+            if (a.second->force_terminate || a.second->state == Process::EXITED || a.second->state == Process::FINALIZED)
                 return found;
 
             if (a.second->state == Process::SUSPENDING)
@@ -2920,7 +2923,7 @@ protected:
         if (P->task.done())
         {
             auto exit_code     = P->task();
-            P->is_complete     = true;
+            //P->is_complete     = true;
             *P->exit_code      = !P->force_terminate ? exit_code : -1;
             //P->should_remove   = true;
             P->force_terminate = true;
