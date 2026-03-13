@@ -13,256 +13,37 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE" : "Debug",
-        "CC_ENABLE" : "ON"
-      }
-    },
-    {
-      "name": "linux-full",
-      "displayName" : "A fully configured preset without autodetect",
-      "description": "The base CC_ variables that are used by all builds",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "cacheVariables": {
-        "CMAKE_CXX_COMPILER" : "g++",
-        "CMAKE_C_COMPILER"   : "gcc",
-        "CMAKE_BUILD_TYPE"   : "Release",
-
-        "CC_ENABLE"          : "ON",
-        "CC_ARCH"            : "x86_64",
-        "CC_OS"              : "Linux",
-        "CC_COMPILER"        : "gcc",
-        "CC_COMPILER_CPPSTD" : "20",
-        "CC_LIBCXX"          : "libstdc++11",
-        "CC_BUILD_TYPE"      : "Release",
-        "CC_COMPILER_RUNTIME": "dynamic"
-      },
-      "condition" : {
-            "type" : "equals",
-            "lhs" : "${hostSystemName}",
-            "rhs" : "Linux"
-      }
-    },
-    {
-      "name": "win-full",
-      "displayName" : "A fully configured preset without autodetect",
-      "description": "The base CC_ variables that are used by all builds",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "cacheVariables": {
-        "CMAKE_C_COMPILER"         : "cl.exe",
-        "CMAKE_CXX_COMPILER"       : "cl.exe",
-        "CMAKE_BUILD_TYPE"         : "Release",
-
-        "CC_ENABLE"                : "ON",
-        "CC_ARCH"                  : "x86_64",
-        "CC_OS"                    : "Windows",
-        "CC_COMPILER"              : "msvc",
-        "CC_COMPILER_VERSION"      : "194",
-        "CC_COMPILER_RUNTIME"      : "dynamic",
-        "CC_BUILD_TYPE"            : "Release",
-        "CC_COMPILER_CPPSTD"       : "20"
-      },
-      "condition" : {
-            "type" : "equals",
-            "lhs" : "${hostSystemName}",
-            "rhs" : "Windows"
-      }
-    },
-    {
-      "name": "cc",
-      "hidden" : true,
-      "description": "The base CC_ variables that are used by all builds",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "cacheVariables": {
-        "CC_ENABLE"                : "ON",
-        "CC_ARCH"                  : "x86_64",
-        "CC_COMPILER_CPPSTD"       : "20",
-        "CC_BUILD_TYPE"            : "Release",
-        "CC_COMPILER_RUNTIME"      : "dynamic"
+        "CMAKE_PROJECT_TOP_LEVEL_INCLUDES" : "cmake/conan_provider.cmake",
+        "CONAN_INSTALL_ARGS" : "--build=missing;-c;tools.cmake.cmaketoolchain:user_presets="
       }
     },
     {
       "name": "debug",
-      "description": "Variables needed for debug builds. CC_COMPILER_RUNTIME_TYPE is for windows builds",
-      "hidden" : true,
+      "inherits" : "default",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CC_COMPILER_RUNTIME_TYPE" : "Debug"        
+        "CMAKE_BUILD_TYPE" : "Debug"
       }
     },
     {
       "name": "release",
-      "description": "Variables needed for release builds",
-      "hidden" : true,
+      "inherits" : "default",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE":     "Release",
-        "CC_COMPILER_RUNTIME_TYPE" : "Release"
+        "CMAKE_BUILD_TYPE" : "Release"
       }
-    },    
-    {
-      "name": "linux",
-      "inherits" : ["cc"],
-      "description": "Variables for linux builds",
-      "generator" : "Unix Makefiles",
-      "hidden" : true,
-      "cacheVariables": {      
-            "CC_ARCH" : "x86_64",
-        	"CC_OS": "Linux"
-      },
-      "condition" : {
-            "type" : "equals",
-            "lhs" : "${hostSystemName}",
-            "rhs" : "Linux"
-      }
-    },
-    {
-      "name": "windows",
-      "inherits" : ["cc"],
-      "description": "Variables for Windows builds",
-      "hidden" : true,
-      "cacheVariables": {
-        "CC_ARCH"                  : "x86_64",
-        "CC_OS"                    : "Windows"
-       },
-      "condition" : {
-            "type" : "equals",
-            "lhs" : "${hostSystemName}",
-            "rhs" : "Windows"
-      }
-    },
-    {
-      "name": "ninja",
-      "description": "Ninja generator. Env variable used to show output on each line",
-      "generator" : "Ninja",
-      "hidden" : true,
-      "environment": {
-        "TERM" : "dumb"
-       }
-    },  
-    {
-      "name": "msvc",
-      "description": "Variables to set up msvc compiler",
-      "hidden" : true,
-      "generator": "Visual Studio 17 2022",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "cacheVariables": {
-        "CMAKE_C_COMPILER"         : "cl.exe",
-        "CMAKE_CXX_COMPILER"       : "cl.exe",
-
-        "CC_COMPILER"              : "msvc",
-        "CC_COMPILER_VERSION"      : "194",
-        "CC_COMPILER_RUNTIME"      : "dynamic"
-       },
-      "condition" : {
-            "type" : "equals",
-            "lhs" : "${hostSystemName}",
-            "rhs" : "Windows"
-      }
-    },  
-    {
-      "name": "gcc",
-      "inherits": "linux",
-      "description": "Variables to set up gcc compilers",
-      "hidden" : true,      
-      "cacheVariables": {
-        "CMAKE_CXX_COMPILER" :  "g++",
-        "CMAKE_C_COMPILER":     "gcc",
-
-        "CC_COMPILER":          "gcc",
-        "CC_COMPILER_CPPSTD":   "20",
-        "CC_ARCH":              "x86_64",
-        "CC_LIBCXX":            "libstdc++11"
-      }
-    },
-    {
-      "name": "clang",
-      "inherits": ["gcc"],
-      "description": "Sets up the clang compiler",
-      "hidden" : true,      
-      "cacheVariables": {
-        "CMAKE_CXX_COMPILER" :  "clang++",
-        "CMAKE_C_COMPILER":     "clang",
-        "CC_COMPILER":          "clang"
-      }
-    },      
-    {
-      "name": "zig",
-      "hidden" : true,
-      "inherits": ["linux"],
-      "cacheVariables": {
-        "CMAKE_CXX_COMPILER" :  "${sourceDir}/zig/z++",
-        "CMAKE_C_COMPILER" :    "${sourceDir}/zig/zcc",
-        "CC_CUSTOM_COMPILER" : "zig",
-        "CMAKE_CXX_FLAGS" : "--target=x86_64-linux-musl --static"
-      }
-    },
-    {
-      "name": "gcc-debug",
-      "inherits": ["linux", "gcc", "debug"]
-    },
-	{
-      "name": "gcc-release",
-      "inherits": ["linux", "gcc", "release"]
-    },
-    {
-      "name": "clang-debug",
-      "inherits": ["linux", "clang", "debug"]
-    },
-	{
-      "name": "clang-release",
-      "inherits": ["linux", "clang", "release"]
-    },    
-	{
-      "name": "msvc-debug",
-      "inherits": ["windows", "msvc", "debug"]
-    },
-	{
-      "name": "msvc-release",
-      "inherits": ["windows", "msvc", "release"]
-    },
-    {
-      "name": "zig-debug",
-      "inherits": [ "ninja", "linux", "zig", "debug"]
-    },
-    {
-      "name": "zig-release",
-      "inherits": [ "ninja", "linux", "zig", "release"]
     }
   ],
   "buildPresets" : [
     {
-        "name" : "default",
-        "configurePreset" : "default"
+      "name" : "default",
+      "configurePreset" : "default"
     },
     {
-        "name" : "gcc-debug",
-        "configurePreset" : "gcc-debug"
+      "name" : "debug",
+      "configurePreset" : "debug"
     },
     {
-        "name" : "gcc-release",
-        "configurePreset" : "gcc-release"
-    },
-    {
-        "name" : "clang-debug",
-        "configurePreset" : "clang-debug"
-    },
-    {
-        "name" : "clang-release",
-        "configurePreset" : "clang-release"
-    },
-    {
-        "name" : "mscv-debug",
-        "configurePreset" : "msvc-debug"
-    },
-    {
-        "name" : "msvc-release",
-        "configurePreset" : "msvc-release"
-    },
-    {
-        "name" : "zig-debug",
-        "configurePreset" : "zig-debug"
-    },
-    {
-        "name" : "zig-release",
-        "configurePreset" : "zig-release"
+      "name" : "release",
+      "configurePreset" : "release"
     }
   ]
 }

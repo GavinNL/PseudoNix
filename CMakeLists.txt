@@ -22,10 +22,10 @@ project( PseudoNix
 if(PROJECT_IS_TOP_LEVEL)
     # automatically call conan install
     # if using --presets
-    if(CC_ENABLE)
-        include(CMakeAutoConan.cmake)
-        cc_configure()
-    endif()
+    #if(CC_ENABLE)
+    #    include(CMakeAutoConan.cmake)
+    #    cc_configure()
+    #endif()
     include(cmake/extras.cmake)
 endif()
 
@@ -60,10 +60,15 @@ target_compile_definitions( ${PROJECT_NAME}
                                 )
 
 target_include_directories(${PROJECT_NAME} INTERFACE include)
-target_link_libraries( ${PROJECT_NAME}  INTERFACE  ${PublicLinkedTargets})
 
 if(PROJECT_IS_TOP_LEVEL)
+    # if we're the top level project
+    # enable warnings/errors for the project
     set_project_warnings(${PROJECT_NAME})
+
+    add_library(${PROJECT_NAME}_coverage INTERFACE)
+    set_project_coverage(${PROJECT_NAME}_coverage)
+    set(ADDITIONAL_TEST_LIBRARIES ${PROJECT_NAME}_coverage)
 endif()
 ################################################################################
 
@@ -105,10 +110,10 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
                                         # For ImGui, set them as system includes
                                         # so the compiler doesnt warn about errors
                                         PRIVATE
-                                            ${CMAKE_BINARY_DIR}/imgui_src/include
-                                            ${CMAKE_BINARY_DIR}/imgui_src/res/bindings
-                                            ${CMAKE_BINARY_DIR}/imgui_src/res
-                                            ${CMAKE_BINARY_DIR}/imgui_src/res/misc/cpp
+                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/include
+                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res/bindings
+                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res
+                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res/misc/cpp
                                             ${CMAKE_BINARY_DIR}/archive
                               )
 
@@ -119,7 +124,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
 
         add_executable(js_terminal examples/js_terminal.cpp)
         set_target_properties( js_terminal PROPERTIES SUFFIX ".html")
-        target_link_libraries(js_terminal ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
+        target_link_libraries(js_terminal ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} )
         target_link_options(js_terminal PRIVATE
             --no-entry
             -sALLOW_MEMORY_GROWTH=1
@@ -132,22 +137,22 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
     else()
 
         add_executable(main examples/main.cpp)
-        target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
+        target_link_libraries(main ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} )
         target_include_directories(main PUBLIC
                                             ${CMAKE_BINARY_DIR}/archive
                                   )
 
         add_executable(example1 examples/example1.cpp)
-        target_link_libraries(example1 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
+        target_link_libraries(example1 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} )
 
         add_executable(example2 examples/example2.cpp)
-        target_link_libraries(example2 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
+        target_link_libraries(example2 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} )
 
         add_executable(example3 examples/example3.cpp)
-        target_link_libraries(example3 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
+        target_link_libraries(example3 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} )
 
         add_executable(example4 examples/example4.cpp)
-        target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}::warnings)
+        target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} )
 
     endif()
 
@@ -162,18 +167,3 @@ if(NOT EMSCRIPTEN)
         add_subdirectory(test)
     endif()
 endif()
-
-
-if(EXISTS "/mnt/Pcloud/Public Folder/PseudoNix" AND IS_DIRECTORY "/mnt/Pcloud/Public Folder/PseudoNix")
-    if(EMSCRIPTEN)
-        add_custom_command(TARGET terminal POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "$<TARGET_FILE_DIR:terminal>/terminal.wasm"
-                    "/mnt/Pcloud/Public Folder/PseudoNix/terminal.wasm"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "$<TARGET_FILE_DIR:terminal>/terminal.js"
-                    "/mnt/Pcloud/Public Folder/PseudoNix/terminal.js"
-        )
-    endif()
-endif()
-
