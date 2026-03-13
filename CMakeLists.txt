@@ -20,9 +20,11 @@ project( PseudoNix
 ################################################################################
 
 if(PROJECT_IS_TOP_LEVEL)
-	include(CMakeAutoConan.cmake)
-	cc_configure()	
-	include(cmake/extras.cmake)
+    if(CC_ENABLE)
+        include(CMakeAutoConan.cmake)
+        cc_configure()
+    endif()
+    include(cmake/extras.cmake)
 endif()
 
 # The following options are set to TRUE if you are building this project as a top 
