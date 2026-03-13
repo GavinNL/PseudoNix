@@ -110,7 +110,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
     
     add_executable(terminal examples/terminal.cpp)
     target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET}  ${third_party_libs})
-    target_include_directories(terminal SYSTEM
+    target_include_directories(terminal SYSTEM PRIVATE
                                         ${CMAKE_BINARY_DIR}/conan/imgui_src/include
                                         ${CMAKE_BINARY_DIR}/conan/imgui_src/res/bindings
                                         ${CMAKE_BINARY_DIR}/conan/imgui_src/res
