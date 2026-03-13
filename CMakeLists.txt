@@ -113,7 +113,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
     target_include_directories(terminal SYSTEM
                                         # For ImGui, set them as system includes
                                         # so the compiler doesnt warn about errors
-                                        PRIVATE
+                                        PUBLIC
                                             ${CMAKE_BINARY_DIR}/conan/imgui_src/include
                                             ${CMAKE_BINARY_DIR}/conan/imgui_src/res/bindings
                                             ${CMAKE_BINARY_DIR}/conan/imgui_src/res
