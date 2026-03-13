@@ -2,7 +2,7 @@ name: CMake CI
 
 on:
   push:
-    branches: [dev, main, WIP*]
+    branches: [dev, main, WIP*, Cleanup2]
   pull_request:
 
 jobs:
