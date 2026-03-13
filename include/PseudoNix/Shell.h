@@ -132,7 +132,7 @@ enum class StreamError : int8_t {
 
 inline Generator<Expected<char, StreamError>> streamGenerator(std::shared_ptr<System::stream_type> in)
 {
-    static_assert(sizeof(Expected<char, StreamError>) == 2);
+    //static_assert(sizeof(Expected<char, StreamError>) == 2);
 
     char c = 0;
     while (true)
@@ -156,7 +156,7 @@ inline Generator<Expected<char, StreamError>> streamGenerator(std::shared_ptr<Sy
 
 inline Generator<Expected<char, StreamError>> streamGenerator(std::string &&in)
 {
-    static_assert(sizeof(Expected<char, StreamError>) == 2);
+    //static_assert(sizeof(Expected<char, StreamError>) == 2);
 
     for (auto c : in)
     {

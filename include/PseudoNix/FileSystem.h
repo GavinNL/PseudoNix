@@ -11,6 +11,7 @@
 #include "FileSystemHelpers.h"
 #include <any>
 #include <format>
+#include <sstream>
 
 namespace PseudoNix
 {

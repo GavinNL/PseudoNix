@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/select.h>
 #endif
 
 namespace PseudoNix
