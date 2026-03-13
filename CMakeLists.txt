@@ -99,10 +99,10 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
                                         # For ImGui, set them as system includes
                                         # so the compiler doesnt warn about errors
                                         SYSTEM
-                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/include
-                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res/bindings
-                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res
-                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res/misc/cpp
+                                            ${CMAKE_BINARY_DIR}/imgui_src/include
+                                            ${CMAKE_BINARY_DIR}/imgui_src/res/bindings
+                                            ${CMAKE_BINARY_DIR}/imgui_src/res
+                                            ${CMAKE_BINARY_DIR}/imgui_src/res/misc/cpp
                                             ${CMAKE_BINARY_DIR}/archive
                               )
 
