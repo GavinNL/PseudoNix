@@ -110,16 +110,13 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
     
     add_executable(terminal examples/terminal.cpp)
     target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET}  ${third_party_libs})
-    target_include_directories(terminal SYSTEM
-                                        # For ImGui, set them as system includes
-                                        # so the compiler doesnt warn about errors
-                                        PUBLIC
-                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/include
-                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res/bindings
-                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res
-                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res/misc/cpp
-                                            ${CMAKE_BINARY_DIR}/archive
-                              )
+    set_property(terminal YourTarget PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
+        ${CMAKE_BINARY_DIR}/conan/imgui_src/include
+        ${CMAKE_BINARY_DIR}/conan/imgui_src/res/bindings
+        ${CMAKE_BINARY_DIR}/conan/imgui_src/res
+        ${CMAKE_BINARY_DIR}/conan/imgui_src/res/misc/cpp
+        ${CMAKE_BINARY_DIR}/archive
+    )
 
     if(EMSCRIPTEN)
         target_compile_options(terminal PRIVATE "-sUSE_SDL=2")
