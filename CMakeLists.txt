@@ -73,6 +73,21 @@ endif()
 ################################################################################
 
 
+
+if( ${PROJECT_NAME}_BUILD_EXAMPLES OR ${PROJECT_NAME}_BUILD_UNIT_TESTS)
+    find_package(readerwriterqueue REQUIRED)
+    find_package(concurrentqueue   REQUIRED)
+
+    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue )
+    if(NOT EMSCRIPTEN)
+        find_package(LibArchive        REQUIRED)
+        find_package(ZLIB              REQUIRED)
+        set(third_party_libs ${third_party_libs} LibArchive::LibArchive ZLIB::ZLIB )
+    endif()
+endif()
+
+
+
 if( ${PROJECT_NAME}_BUILD_EXAMPLES)
 
     ################################################################################
@@ -91,18 +106,7 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
     endif()
     ################################################################################
 
-
-    find_package(readerwriterqueue REQUIRED)
-    find_package(concurrentqueue   REQUIRED)
-
-    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue )
-    if(NOT EMSCRIPTEN)
-        find_package(LibArchive        REQUIRED)
-        find_package(ZLIB              REQUIRED)
-        set(third_party_libs ${third_party_libs} LibArchive::LibArchive ZLIB::ZLIB )
-    endif()
-
-	find_package(ImGui REQUIRED)
+    find_package(ImGui REQUIRED)
     
     add_executable(terminal examples/terminal.cpp)
     target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET}  ${third_party_libs})
