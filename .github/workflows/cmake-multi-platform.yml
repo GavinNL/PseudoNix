@@ -111,7 +111,7 @@ jobs:
           #conan remote add backup ${{ secrets.CONAN_REMOTE_URL }}
           #conan remote auth backup
 
-#          conan install ${{ github.workspace }}/conanfile.py --build missing -s:b "build_type=Release" -s:h "build_type=${{ matrix.build_type }}" -s "compiler.cppstd=${{ matrix.cpp_std }}"  -of=${{ github.workspace }}/../build  -c tools.system.package_manager:mode=install  -c tools.system.package_manager:sudo=True
+          conan install ${{ github.workspace }}/conanfile.py --build missing -s:b "build_type=Release" -s:h "build_type=${{ matrix.build_type }}" -s "compiler.cppstd=${{ matrix.cpp_std }}"  -of=${{ github.workspace }}/../build  -c tools.system.package_manager:mode=install  -c tools.system.package_manager:sudo=True
 #          #conan upload "*" --remote=backup --confirm
 
 
@@ -119,14 +119,15 @@ jobs:
       - name: Configure CMake
 # ╚══════════════════════════════════════════════╝
         run: |
-            cmake -B ${{ github.workspace }}/../build --preset default
-#          cmake -B ${{ github.workspace }}/../build -S . -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/../build/conan_toolchain.cmake  -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+#            cmake -B ${{ github.workspace }}/../build --preset default
+          cmake -B ${{ github.workspace }}/../build -S . -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/../build/conan_toolchain.cmake  -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
 
 # ╔══════════════════════════════════════════════╗
       - name: Build
 # ╚══════════════════════════════════════════════╝
-        run: cmake --build ${{ github.workspace }}/../build --preset default --config ${{ matrix.build_type }} --parallel 
+        #run: cmake --build ${{ github.workspace }}/../build --preset default --config ${{ matrix.build_type }} --parallel 
+        run: cmake --build ${{ github.workspace }}/../build --config ${{ matrix.build_type }} --parallel 
 
 
 
