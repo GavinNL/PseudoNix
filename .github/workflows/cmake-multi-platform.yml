@@ -74,6 +74,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build ${{ matrix.cxx}} tree
+          cmake --version
 
 # ╔══════════════════════════════════════════════╗
       - name: Set compiler environment variables (Linux only)
@@ -118,6 +119,7 @@ jobs:
       - name: Configure CMake
 # ╚══════════════════════════════════════════════╝
         run: |
+          cmake --version
           cmake -B ${{ github.workspace }}/../build -S . -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/../build/conan/conan_toolchain.cmake  -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 #            cmake -B ${{ github.workspace }}/../build --preset default
 

@@ -64,11 +64,12 @@ target_include_directories(${PROJECT_NAME} INTERFACE include)
 if(PROJECT_IS_TOP_LEVEL)
     # if we're the top level project
     # enable warnings/errors for the project
-    set_project_warnings(${PROJECT_NAME})
+    add_library(${PROJECT_NAME}_warnings INTERFACE)
+    set_project_warnings(${PROJECT_NAME}_warnings)
 
     add_library(${PROJECT_NAME}_coverage INTERFACE)
     set_project_coverage(${PROJECT_NAME}_coverage)
-    set(ADDITIONAL_TEST_LIBRARIES ${PROJECT_NAME}_coverage)
+    set(ADDITIONAL_TEST_LIBRARIES ${PROJECT_NAME}_coverage ${PROJECT_NAME}_warnings)
 endif()
 ################################################################################
 
@@ -144,16 +145,16 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
                                   )
 
         add_executable(example1 examples/example1.cpp)
-        target_link_libraries(example1 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} )
+        target_link_libraries(example1 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}_warnings)
 
         add_executable(example2 examples/example2.cpp)
-        target_link_libraries(example2 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} )
+        target_link_libraries(example2 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}_warnings)
 
         add_executable(example3 examples/example3.cpp)
-        target_link_libraries(example3 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} )
+        target_link_libraries(example3 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}_warnings)
 
         add_executable(example4 examples/example4.cpp)
-        target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} )
+        target_link_libraries(example4 ${PROJECT_NAME}::${PROJECT_NAME} ${third_party_libs} ${PROJECT_NAME}_warnings)
 
     endif()
 
