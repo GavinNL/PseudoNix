@@ -1530,11 +1530,14 @@ public:
             }
             return ArgParseError::INVALID_TYPE;
         }
-        if constexpr (std::is_same_v<T, std::string>)
+        else if constexpr (std::is_same_v<T, std::string>)
         {
             return val;
         }
-        return ArgParseError::INVALID_TYPE;
+        else
+        {
+            return ArgParseError::INVALID_TYPE;
+        }
     }
 
 protected:
