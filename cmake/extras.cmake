@@ -142,16 +142,15 @@ function(set_project_warnings project_name)
   if (${type} STREQUAL "INTERFACE_LIBRARY")
       target_compile_options(${project_name} INTERFACE ${_PROJECT_WARNINGS})
   else()
-      target_compile_options(${project_name} PRIVATE ${_PROJECT_WARNINGS})
+      target_compile_options(${project_name} PUBLIC ${_PROJECT_WARNINGS})
   endif()
 
 
 endfunction()
 #==========
 
-set_project_warnings(${PROJECT_NAME}_warnings)
 
-message("New Target: ${PROJECT_NAME}::coverage")
-message("New Target: ${PROJECT_NAME}::warnings")
-message("New Target: ${PROJECT_NAME}::error")
+#message("New Target: ${PROJECT_NAME}::coverage")
+#message("New Target: ${PROJECT_NAME}::warnings")
+#message("New Target: ${PROJECT_NAME}::error")
 message("*****************************************************\n\n\n")

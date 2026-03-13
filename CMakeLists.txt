@@ -20,12 +20,15 @@ project( PseudoNix
 ################################################################################
 
 if(PROJECT_IS_TOP_LEVEL)
+    # automatically call conan install
+    # if using --presets
     if(CC_ENABLE)
         include(CMakeAutoConan.cmake)
         cc_configure()
     endif()
     include(cmake/extras.cmake)
 endif()
+
 
 # The following options are set to TRUE if you are building this project as a top 
 # project.
@@ -59,6 +62,9 @@ target_compile_definitions( ${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME} INTERFACE include)
 target_link_libraries( ${PROJECT_NAME}  INTERFACE  ${PublicLinkedTargets})
 
+if(PROJECT_IS_TOP_LEVEL)
+    set_project_warnings(${PROJECT_NAME})
+endif()
 ################################################################################
 
 
@@ -95,10 +101,10 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
     
     add_executable(terminal examples/terminal.cpp)
     target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET}  ${third_party_libs})
-    target_include_directories(terminal PRIVATE
+    target_include_directories(terminal SYSTEM
                                         # For ImGui, set them as system includes
                                         # so the compiler doesnt warn about errors
-                                        SYSTEM
+                                        PRIVATE
                                             ${CMAKE_BINARY_DIR}/imgui_src/include
                                             ${CMAKE_BINARY_DIR}/imgui_src/res/bindings
                                             ${CMAKE_BINARY_DIR}/imgui_src/res

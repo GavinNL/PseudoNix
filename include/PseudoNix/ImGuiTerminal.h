@@ -2,6 +2,8 @@
 #define EBASH_IMGUI_TERMINAL_H
 
 #include "System.h"
+#include <imgui.h>
+#include <imgui_stdlib.h>
 #include "ImGuiConsoleWidget.h"
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -200,7 +202,7 @@ inline System::task_type processMonitor_coro(System::e_type ctrl)
                 for (auto p : SYSTEM.getProcesses())
                 {
                     ImGui::TableNextRow();
-                    ImGui::PushID(p);
+                    ImGui::PushID(static_cast<int>(p));
                     auto &P = SYSTEM.PROC_AT(p);
 
                     ImGui::TableSetColumnIndex(0);

@@ -15,7 +15,7 @@ class EBashRecipe(ConanFile):
         self.requires("zlib/1.3.1")
 
         self.requires("doctest/2.4.11")
-        self.requires("imgui/1.91.8-docking")
+        self.requires("imgui/1.92.5-docking")
 
         # Check if a specific os or compiler
         if self.settings.os != "Emscripten":
