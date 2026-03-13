@@ -15,9 +15,15 @@ cmake_minimum_required(VERSION 3.10)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 project( PseudoNix
          VERSION 0.1.0.0
-         LANGUAGES CXX)
+         LANGUAGES CXX C)
 
 ################################################################################
+
+if(PROJECT_IS_TOP_LEVEL)
+	include(CMakeAutoConan.cmake)
+	cc_configure()	
+	include(cmake/extras.cmake)
+endif()
 
 # The following options are set to TRUE if you are building this project as a top 
 # project.
@@ -30,9 +36,6 @@ option( ${PROJECT_NAME}_ENABLE_COVERAGE         "Enable Coverage. After build, e
 option( ${PROJECT_NAME}_ENABLE_WARNINGS         "Enable Strict Warnings"                               ${PROJECT_IS_TOP_LEVEL})
 option( ${PROJECT_NAME}_WARNINGS_AS_ERRORS      "Treat compiler warnings as errors"                    ${PROJECT_IS_TOP_LEVEL})
 
-if(PROJECT_IS_TOP_LEVEL)
-include(cmake/extras.cmake)
-endif()
 
 ################################################################################
 # Top level INTERFACE library which can be used to provide all the
@@ -86,19 +89,19 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
         set(third_party_libs ${third_party_libs} LibArchive::LibArchive ZLIB::ZLIB )
     endif()
 
-
-
+	find_package(ImGui REQUIRED)
+    
     add_executable(terminal examples/terminal.cpp)
     target_link_libraries(terminal ${PROJECT_NAME}::${PROJECT_NAME} ${SDL_TARGET}  ${third_party_libs})
     target_include_directories(terminal PRIVATE
                                         # For ImGui, set them as system includes
                                         # so the compiler doesnt warn about errors
                                         SYSTEM
-                                        ${CMAKE_BINARY_DIR}/imgui_src/include
-                                        ${CMAKE_BINARY_DIR}/imgui_src/res/bindings
-                                        ${CMAKE_BINARY_DIR}/imgui_src/res
-                                        ${CMAKE_BINARY_DIR}/imgui_src/res/misc/cpp
-                                        ${CMAKE_BINARY_DIR}/archive
+                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/include
+                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res/bindings
+                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res
+                                            ${CMAKE_BINARY_DIR}/conan/imgui_src/res/misc/cpp
+                                            ${CMAKE_BINARY_DIR}/archive
                               )
 
     if(EMSCRIPTEN)
@@ -144,26 +147,25 @@ endif()
 
 
 if(NOT EMSCRIPTEN)
-# enable testing on the root folder so that we can run ctest from it,
-# otherwise we will have to CD into each sub folder to run the unit tests
-if( ${PROJECT_NAME}_BUILD_UNIT_TESTS)
-    enable_testing()
-    add_subdirectory(test)
-endif()
-
+    # enable testing on the root folder so that we can run ctest from it,
+    # otherwise we will have to CD into each sub folder to run the unit tests
+    if( ${PROJECT_NAME}_BUILD_UNIT_TESTS)
+        enable_testing()
+        add_subdirectory(test)
+    endif()
 endif()
 
 
 if(EXISTS "/mnt/Pcloud/Public Folder/PseudoNix" AND IS_DIRECTORY "/mnt/Pcloud/Public Folder/PseudoNix")
-if(EMSCRIPTEN)
-    add_custom_command(TARGET terminal POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "$<TARGET_FILE_DIR:terminal>/terminal.wasm"
-                "/mnt/Pcloud/Public Folder/PseudoNix/terminal.wasm"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "$<TARGET_FILE_DIR:terminal>/terminal.js"
-                "/mnt/Pcloud/Public Folder/PseudoNix/terminal.js"
-    )
-endif()
+    if(EMSCRIPTEN)
+        add_custom_command(TARGET terminal POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE_DIR:terminal>/terminal.wasm"
+                    "/mnt/Pcloud/Public Folder/PseudoNix/terminal.wasm"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE_DIR:terminal>/terminal.js"
+                    "/mnt/Pcloud/Public Folder/PseudoNix/terminal.js"
+        )
+    endif()
 endif()
 
