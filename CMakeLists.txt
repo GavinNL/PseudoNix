@@ -20,12 +20,6 @@ project( PseudoNix
 ################################################################################
 
 if(PROJECT_IS_TOP_LEVEL)
-    # automatically call conan install
-    # if using --presets
-    #if(CC_ENABLE)
-    #    include(CMakeAutoConan.cmake)
-    #    cc_configure()
-    #endif()
     include(cmake/extras.cmake)
 endif()
 
@@ -76,10 +70,12 @@ endif()
 
 
 if( ${PROJECT_NAME}_BUILD_EXAMPLES OR ${PROJECT_NAME}_BUILD_UNIT_TESTS)
+
     find_package(readerwriterqueue REQUIRED)
     find_package(concurrentqueue   REQUIRED)
 
-    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue )
+    set(third_party_libs readerwriterqueue::readerwriterqueue concurrentqueue::concurrentqueue)
+
     if(NOT EMSCRIPTEN)
         find_package(LibArchive        REQUIRED)
         find_package(ZLIB              REQUIRED)
