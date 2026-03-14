@@ -132,6 +132,12 @@ if( ${PROJECT_NAME}_BUILD_EXAMPLES)
             #-sSTANDALONE_WASM=1
             -sEXPORTED_FUNCTIONS=['_malloc','_free','_init','_update','_input']
             -sEXPORTED_RUNTIME_METHODS=['cwrap','ccall'])
+
+        configure_file(
+            ${CMAKE_CURRENT_SOURCE_DIR}/js_terminal.html
+            ${CMAKE_CURRENT_BINARY_DIR}/js_terminal.html
+            COPYONLY
+        )
     else()
 
         add_executable(main examples/main.cpp)

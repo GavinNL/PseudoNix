@@ -30,6 +30,14 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE" : "Release"
       }
+    },
+    {
+      "name": "emscripten",
+      "inherits" : "default",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE" : "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "CMAKE_BUILD_TYPE" : "Release"
+      }
     }
   ],
   "buildPresets" : [
@@ -44,6 +52,10 @@
     {
       "name" : "release",
       "configurePreset" : "release"
+    },
+    {
+      "name" : "emscripten",
+      "configurePreset" : "emscripten"
     }
   ]
 }
