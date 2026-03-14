@@ -108,7 +108,8 @@ jobs:
 # ╔══════════════════════════════════════════════╗
       - name: Configure Conan
 # ╚══════════════════════════════════════════════╝
-        # run: conan install ${{ github.workspace }}/conanfile.py --build missing -s:b "build_type=Release" -s:h "build_type=${{ matrix.build_type }}" -s "compiler.cppstd=${{ matrix.cpp_std }}"  -of=${{ github.workspace }}/../build/conan  -c tools.system.package_manager:mode=install  -c tools.system.package_manager:sudo=True
+        run: |
+          echo conan install ${{ github.workspace }}/conanfile.py --build missing -s:b "build_type=Release" -s:h "build_type=${{ matrix.build_type }}" -s "compiler.cppstd=${{ matrix.cpp_std }}"  -of=${{ github.workspace }}/../build/conan  -c tools.system.package_manager:mode=install  -c tools.system.package_manager:sudo=True
 
 
 # ╔══════════════════════════════════════════════╗
