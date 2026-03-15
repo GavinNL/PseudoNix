@@ -161,6 +161,11 @@ struct System : public PseudoNix::FileSystem
         }
         return it->second;
     }
+    eSignal const& lastSignal(pid_type pid) const
+    {
+        return PROC_AT(pid)->lastSignal;
+    }
+
     struct Exec
     {
         std::vector<std::string>           args;
@@ -862,6 +867,7 @@ struct System : public PseudoNix::FileSystem
      *
      * You have to manually start it by calling resume(pid)
      */
+protected:
     pid_type registerProcess(task_type && t, e_type arg, pid_type parent = invalid_pid)
     {
         auto _pid = _pid_count++;
@@ -904,7 +910,7 @@ struct System : public PseudoNix::FileSystem
 
         return _pid;
     }
-
+public:
     /**
      * @brief isRunning
      * @param pid
@@ -1142,6 +1148,14 @@ struct System : public PseudoNix::FileSystem
         DEFAULT_PROC_TIME = dur;
     }
 
+    /**
+     * @brief taskQueueExecute
+     * @param maxComputeTime
+     * @param maxIter
+     * @return
+     *
+     * Execute the default queue
+     */
     size_t taskQueueExecute(std::chrono::milliseconds maxComputeTime = std::chrono::milliseconds(15),
                             size_t maxIter = 1)
     {
@@ -1225,9 +1239,38 @@ struct System : public PseudoNix::FileSystem
         return m_procs2.size();
     }
 
-    void taskQueueCreate(std::string name) { m_awaiters[name]; }
 
+    /**
+     * @brief taskQueueCreate
+     * @param name
+     *
+     * Creates a new queue. Returns true if created.
+     * Returns false if a queue with that name already exists
+     */
+    bool taskQueueCreate(std::string name)
+    {
+        if(m_awaiters.contains(name))
+            return false;
+        m_awaiters[name];
+        return true;
+    }
+
+    /**
+     * @brief taskQueueExists
+     * @param name
+     * @return
+     *
+     * Returns whether a queue name exists
+     */
     bool taskQueueExists(std::string const &name) const { return m_awaiters.count(name) == 1; }
+
+    /**
+     * @brief taskQueueSize
+     * @param name
+     * @return
+     *
+     * Returns the total number of tasks in a queue
+     */
     size_t taskQueueSize(std::string const &name) const
     {
         return m_awaiters.at(name).m_Q1.size_approx() + m_awaiters.at(name).m_Q2.size_approx();
@@ -1292,6 +1335,7 @@ struct System : public PseudoNix::FileSystem
     {
         return PROC_AT(pid)->control;
     }
+public:
 
     pid_type getParentProcess(pid_type pid) { return PROC_AT(pid)->parent; }
 
@@ -1342,7 +1386,7 @@ struct System : public PseudoNix::FileSystem
      * @param array_of_args
      * @return
      *
-     * Given a vector of argument lists, generte a vector of exec objects
+     * Given a vector of argument lists, generate a vector of exec objects
      * where one cmd is piped into the next
      *
      */
@@ -1576,7 +1620,7 @@ protected:
             auto const & QUEUE = control->queue_name; (void)QUEUE; \
             auto const & CWD = control->cwd; (void)CWD;\
             auto const PARENT_SHELL_PID = ENV.count("SHELL_PID") ? static_cast<PseudoNix::System::pid_type>(std::stoul(ENV["SHELL_PID"])) : PseudoNix::invalid_pid; (void)PARENT_SHELL_PID;\
-            auto const & LAST_SIGNAL = SYSTEM.PROC_AT(PID)->lastSignal; (void)LAST_SIGNAL;\
+            auto const & LAST_SIGNAL = SYSTEM.lastSignal(PID); (void)LAST_SIGNAL;\
             PseudoNix::FileSystem & FS = SYSTEM; (void)FS;\
             auto & pn_ctrl = control; (void)pn_ctrl;\
             auto SHELL_PROC = PARENT_SHELL_PID != PseudoNix::invalid_pid ? SYSTEM.getProcessControl(PARENT_SHELL_PID) : nullptr; (void)SHELL_PROC;\
