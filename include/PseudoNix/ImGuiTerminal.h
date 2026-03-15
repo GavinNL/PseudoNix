@@ -203,30 +203,43 @@ inline System::task_type processMonitor_coro(System::e_type ctrl)
                 {
                     ImGui::TableNextRow();
                     ImGui::PushID(static_cast<int>(p));
+
                     auto &P = SYSTEM.PROC_AT(p);
 
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::Text("%d %s", p, P->args[0].c_str());
-
-                    ImGui::TableSetColumnIndex(1);
-                    ImGui::BeginDisabled(SYSTEM.getProcessUser(p) != U_ID);
-
-                    auto state = SYSTEM.PROC_AT(p)->state;
-                    if (ImGui::Button("Kill"))
                     {
-                        SYSTEM.kill(p);
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button(state == System::Process::SUSPENDED ? "Resume" : "Pause")) {
-                        SYSTEM.signal(p,
-                                      state == System::Process::SUSPENDED ? eSignal::CONTINUE
-                                                                          : eSignal::STOP);
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("%d %s", p, P->getArgs()[0].c_str());
                     }
 
-                    ImGui::Text("%s",
-                                std::format("{} {}", P->control->in.use_count(), P->control->out.use_count()).c_str());
-                    ImGui::EndDisabled();
-                    ImGui::PopID();
+                    {
+                        ImGui::TableSetColumnIndex(1);
+                        auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(P->getProcessTime()).count();
+                        ImGui::Text("%s", std::format("{}", milliseconds).c_str());
+                    }
+
+                    {
+                        ImGui::TableSetColumnIndex(2);
+                        ImGui::BeginDisabled(P->getUserID() != U_ID);
+                        auto state = SYSTEM.processGetState(p);
+
+                        if (ImGui::Button("Kill"))
+                        {
+                            SYSTEM.kill(p);
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button(state == System::Process::SUSPENDED ? "Resume" : "Pause")) {
+                            SYSTEM.signal(p,
+                                          state == System::Process::SUSPENDED ? eSignal::CONTINUE
+                                                                              : eSignal::STOP);
+                        }
+
+                        ImGui::EndDisabled();
+                        ImGui::PopID();
+                    }
+
+                    //auto control = SYSTEM.getProcessControl(p);
+
+
                 }
 
                 ImGui::EndTable();
@@ -243,9 +256,9 @@ inline System::task_type processMonitor_coro(System::e_type ctrl)
 
 inline void enable_default_imgui(System &sys)
 {
-    sys.setFunction("term", "Terminal emulator", PseudoNix::terminalWindow_coro);
-    sys.setFunction("processMonitor", "Process Monitor", PseudoNix::processMonitor_coro);
-    sys.setFunction("imgui_demo", "ImGui Demo Window", PseudoNix::imguiDemo_coro);
+    sys.setFunction("term", "Launch a terminal emulator window", PseudoNix::terminalWindow_coro);
+    sys.setFunction("processMonitor", "Launch a GUI Process Monitor", PseudoNix::processMonitor_coro);
+    sys.setFunction("imgui_demo", "Launch the ImGui Demo Window", PseudoNix::imguiDemo_coro);
 }
 }
 

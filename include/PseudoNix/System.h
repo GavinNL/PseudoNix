@@ -109,8 +109,9 @@ enum class AwaiterResult
 
 
 
-struct System : public PseudoNix::FileSystem
+class System : public PseudoNix::FileSystem
 {
+public:
     using stream_type      = ReaderWriterStream_t<char>;
     using pid_type         = uint32_t;
     using exit_code_type   = int32_t;
@@ -1180,6 +1181,9 @@ public:
         auto T0 = clock_type::now();
 
         std::string q_name = std::string(queue_name);
+        if(m_awaiters.count(q_name) == 0)
+            return 0;
+
         while (maxIter > 0)
         {
             if (queue_name == DEFAULT_QUEUE)
@@ -1431,6 +1435,30 @@ public:
             : control(ctrl)
             , task(std::move(t))
         {}
+        friend class System;
+
+        State getState() const
+        {
+            return state;
+        }
+        std::vector<std::string> const & getArgs() const
+        {
+            return args;
+        }
+        user_id_type getUserID() const
+        {
+            return user_id;
+        }
+        clock_type::duration getProcessTime() const
+        {
+            return process_time;
+        }
+        pid_type getParentPID() const
+        {
+            return parent;
+        }
+
+    protected:
         std::shared_ptr<ProcessControl> control;
         task_type task;
 
@@ -2306,6 +2334,10 @@ protected:
                 }
                 SYSTEM.m_awaiters.erase(ARGS[2]);
                 co_return 0;
+            }
+            if( ARGS[1] == "execute" )
+            {
+                SYSTEM.taskQueueExecute(ARGS[2]);
             }
 
             co_return 0;
