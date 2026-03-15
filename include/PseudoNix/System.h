@@ -305,7 +305,7 @@ public:
 
     struct ProcessControl
     {
-        friend struct System;
+        friend class System;
 
         std::vector<std::string>           args;
         std::shared_ptr<stream_type>       in;
