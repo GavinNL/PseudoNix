@@ -239,7 +239,7 @@ int main()
     PseudoNix::System M;
 
     // register the shell function
-    M.setFunction("sh", std::bind(PseudoNix::shell_coro, std::placeholders::_1, PseudoNix::ShellEnv{}));
+    M.setFunction("sh", PseudoNix::shell_coro);
     M.setFunction("launcher", PseudoNix::launcher_coro);
 
     auto launcher_pid = M.spawnProcess({"launcher", "sh"});
@@ -277,13 +277,8 @@ be called within the system.
  * Call your own coroutine functions
 
 **NOTE**: The `shell` process is not a full bash interpreter. It does not
-provide many of the features. It was inteded to be a simple interface into the
-PseudoNix system. The following bash features are not provided, but may be
-included in the future
-
-  * if statements
-  * loops
-  * functions
+provide many of the features. It was intended to be a simple interface into the
+PseudoNix system. 
 
 
 #### Default Functions
@@ -330,7 +325,7 @@ See the examples below to define your own.
 
 ### Example 4: Integrating with GUI
 
-PsuedoNix was originally built to be integrated into a game engine I was building, so
+PsuedoNix was originally built to be integrated into an interactive CAD software I was building, so
 was designed to be easily integrated into a GUI (eg: ImGui)
 
 A very simple ImGui Terminal emulator process has been created for you to use. 

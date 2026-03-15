@@ -1132,16 +1132,6 @@ Generator<WhatToDo3> process_block(std::vector< std::vector<std::string> > scrip
     }
 }
 
-inline bool has_flag(std::vector<std::string> &_args, std::string flag)
-{
-    auto no_profile = std::find(_args.begin(), _args.end(), flag);
-    if (no_profile == _args.end())
-    {
-        return false;
-    }
-    _args.erase(no_profile, no_profile + 1);
-    return true;
-}
 
 inline System::task_type shell_coro(System::e_type ctrl)
 {
