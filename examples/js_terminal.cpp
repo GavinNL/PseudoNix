@@ -1,6 +1,7 @@
 #include "common_setup.h"
 #include <PseudoNix/System.h>
 #include <emscripten.h>
+#include <string>
 #include <stdio.h>
 
 int counter = 0;
@@ -42,6 +43,14 @@ void input(char c)
     sh_in->put(c);
 }
 
+/**
+ * @brief update
+ * @return
+ *
+ * This function will be called from javascript on a timer
+ * to execute the tasks. The output from the shell
+ * will be sent back to javascript
+ */
 char const *update()
 {
     init();

@@ -2,24 +2,26 @@ message("*****************************************************")
 message("EXTRA TARGETS:")
 message("*****************************************************")
 
-add_library( ${PROJECT_NAME}_coverage INTERFACE)
-add_library( ${PROJECT_NAME}::coverage ALIAS ${PROJECT_NAME}_coverage)
+#add_library( ${PROJECT_NAME}_coverage INTERFACE)
+#add_library( ${PROJECT_NAME}::coverage ALIAS ${PROJECT_NAME}_coverage)
 
-add_library(${PROJECT_NAME}_warnings INTERFACE)
-add_library(${PROJECT_NAME}::warnings ALIAS ${PROJECT_NAME}_warnings)
-
-add_library(${PROJECT_NAME}_warnings_error INTERFACE)
-add_library(${PROJECT_NAME}::error ALIAS ${PROJECT_NAME}_warnings_error)
-target_compile_options(${PROJECT_NAME}_warnings_error INTERFACE -Werror)
+function(set_project_coverage project_name)
 
 if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
+    get_target_property(type ${project_name} TYPE)
 
-    target_compile_options(${PROJECT_NAME}_coverage
-                                INTERFACE
+    if (${type} STREQUAL "INTERFACE_LIBRARY")
+        set(libType "INTERFACE")
+    else()
+        set(libType "PUBLIC")
+    endif()
+
+    target_compile_options(${project_name}
+                                ${libType}
                                     --coverage -g -O0 -fprofile-arcs -ftest-coverage)
 
-    target_link_libraries( ${PROJECT_NAME}_coverage
-                            INTERFACE --coverage -g -O0 -fprofile-arcs -ftest-coverage)
+    target_link_libraries( ${project_name}
+                            ${libType} --coverage -g -O0 -fprofile-arcs -ftest-coverage)
 
 
 
@@ -36,8 +38,9 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
         #COMMAND genhtml coverage.info --output-directory lcov-report
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR} 
     )
-
 endif()
+
+endfunction()
 
     
 #==========
@@ -107,6 +110,7 @@ function(set_project_warnings project_name)
       -Wformat=2 # warn on security issues around functions that format output
                  # (ie printf)
       -Wno-gnu-zero-variadic-macro-arguments
+      -Wno-c2y-extensions
   )
 
   if (${PROJECT_NAME}_WARNINGS_AS_ERRORS)
@@ -142,16 +146,11 @@ function(set_project_warnings project_name)
   if (${type} STREQUAL "INTERFACE_LIBRARY")
       target_compile_options(${project_name} INTERFACE ${_PROJECT_WARNINGS})
   else()
-      target_compile_options(${project_name} PRIVATE ${_PROJECT_WARNINGS})
+      target_compile_options(${project_name} PUBLIC ${_PROJECT_WARNINGS})
   endif()
 
 
 endfunction()
 #==========
 
-set_project_warnings(${PROJECT_NAME}_warnings)
-
-message("New Target: ${PROJECT_NAME}::coverage")
-message("New Target: ${PROJECT_NAME}::warnings")
-message("New Target: ${PROJECT_NAME}::error")
 message("*****************************************************\n\n\n")

@@ -2,6 +2,8 @@
 #define EBASH_IMGUI_TERMINAL_H
 
 #include "System.h"
+#include <imgui.h>
+#include <imgui_stdlib.h>
 #include "ImGuiConsoleWidget.h"
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -197,14 +199,14 @@ inline System::task_type processMonitor_coro(System::e_type ctrl)
             ImGui::Separator();
             if (ImGui::BeginTable("table1", 3))
             {
-                for (auto p : SYSTEM.get_processes())
+                for (auto p : SYSTEM.getProcesses())
                 {
                     ImGui::TableNextRow();
-                    ImGui::PushID(p);
+                    ImGui::PushID(static_cast<int>(p));
                     auto &P = SYSTEM.PROC_AT(p);
 
                     ImGui::TableSetColumnIndex(0);
-                    ImGui::Text("%d %s", PID, P->args[0].c_str());
+                    ImGui::Text("%d %s", p, P->args[0].c_str());
 
                     ImGui::TableSetColumnIndex(1);
                     ImGui::BeginDisabled(SYSTEM.getProcessUser(p) != U_ID);
@@ -220,6 +222,9 @@ inline System::task_type processMonitor_coro(System::e_type ctrl)
                                       state == System::Process::SUSPENDED ? eSignal::CONTINUE
                                                                           : eSignal::STOP);
                     }
+
+                    ImGui::Text("%s",
+                                std::format("{} {}", P->control->in.use_count(), P->control->out.use_count()).c_str());
                     ImGui::EndDisabled();
                     ImGui::PopID();
                 }

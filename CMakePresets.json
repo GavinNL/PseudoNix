@@ -1,0 +1,61 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Debug build with with autodetected Conan Settings System and CMake settings",
+      "description": "Autodetect the compiler and set all the conan settings based on that. Will be based off your CXX and CC env variables",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE" : "Debug",
+        "CMAKE_PROJECT_TOP_LEVEL_INCLUDES" : "cmake/conan_provider.cmake",
+        "CONAN_INSTALL_ARGS" : "--build=missing;-c;tools.system.package_manager:mode=install;-c;tools.system.package_manager:sudo=True;-c;tools.cmake.cmaketoolchain:user_presets=;"
+      }
+    },
+    {
+      "name": "debug",
+      "inherits" : "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE" : "Debug"
+      }
+    },
+    {
+      "name": "release",
+      "inherits" : "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE" : "Release"
+      }
+    },
+    {
+      "name": "emscripten",
+      "inherits" : "default",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE" : "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "CMAKE_BUILD_TYPE" : "Release"
+      }
+    }
+  ],
+  "buildPresets" : [
+    {
+      "name" : "default",
+      "configurePreset" : "default"
+    },
+    {
+      "name" : "debug",
+      "configurePreset" : "debug"
+    },
+    {
+      "name" : "release",
+      "configurePreset" : "release"
+    },
+    {
+      "name" : "emscripten",
+      "configurePreset" : "emscripten"
+    }
+  ]
+}

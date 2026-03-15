@@ -20,16 +20,16 @@ directly into your project to provide concurrent process like behaviour.
 
 ## Compiling the Examples
 
-Edit the top level `CMakeLists.txt` and change the project name. 
+The examples can be compiled using the CMakePreset which will invoke the Conan Package manager
+to download any dependences needed.
+
+Conan is not required for to use the library in your own projects.
 
 ```bash
 cd SRC_FOLDER
 
-# execute conan to install the packages you need
-conan install conanfile.py --build missing -of=build
-
-# Run cmake
-cmake --preset conan-release .
+# Executes conan
+cmake --preset default
 
 ```
 

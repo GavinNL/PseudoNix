@@ -46,9 +46,8 @@ foreach(file ${files})
                                 PUBLIC
                                     doctest::doctest
                                     ${third_party_libs}
-                                    ${PROJECT_NAME}::warnings
-                                    ${PROJECT_NAME}::coverage
                                     ${PROJECT_NAME}::${PROJECT_NAME}
+                                    ${ADDITIONAL_TEST_LIBRARIES}
                                 )
 
 

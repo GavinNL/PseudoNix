@@ -132,10 +132,31 @@ public:
 
 int main(int argc, char* argv[])
 {
-    //(void)argc;
-    //(void)argv;
+    (void)argc;
+    (void)argv;
     return ImGuiApp::run<MyApplication>("PseudoNix ImGui Terminal Example", 1920, 1080);
 }
+
+
+#ifdef _MSC_VER
+#define PRAGMA_DISABLE_WARNINGS __pragma(warning(push)) \
+__pragma(warning(disable:4820)) \
+    __pragma(warning(disable:4710)) \
+    __pragma(warning(disable:4711)) \
+    __pragma(warning(disable:4100)) \
+    __pragma(warning(disable:4514))
+#define PRAGMA_ENABLE_WARNINGS  __pragma(warning(pop))
+#elif defined(__GNUC__) || defined(__clang__)
+#define DO_PRAGMA(x) _Pragma(#x)
+#define PRAGMA_DISABLE_WARNINGS DO_PRAGMA(GCC diagnostic push) \
+DO_PRAGMA(GCC diagnostic ignored "-Wall") \
+    DO_PRAGMA(GCC diagnostic ignored "-Wextra") \
+    DO_PRAGMA(GCC diagnostic ignored "-Wunused-parameter")
+#define PRAGMA_ENABLE_WARNINGS  DO_PRAGMA(GCC diagnostic pop)
+#else
+#define PRAGMA_DISABLE_WARNINGS
+#define PRAGMA_ENABLE_WARNINGS
+#endif
 
 #include <imgui_impl_sdl2.cpp>
 #include <imgui_impl_sdlrenderer2.cpp>

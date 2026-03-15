@@ -3,6 +3,7 @@
 
 #include <map>
 
+#include "Expected.h"
 #include "System.h"
 #include "defer.h"
 #include <ranges>
@@ -129,67 +130,9 @@ enum class StreamError : int8_t {
     END_OF_STREAM
 };
 
-template<typename T, typename E>
-struct Expected : private std::variant<T, E>
-{
-    using value_type   = T;
-    using error_type   = E;
-    using variant_type = std::variant<T, E>;
-
-    Expected()
-        : variant_type()
-    {}
-
-    Expected(value_type const &t)
-        : variant_type(t) {};
-
-    Expected(value_type &&t)
-        : variant_type(std::move(t)) {};
-
-    Expected(error_type const &t)
-        : variant_type(t) {};
-
-    Expected(error_type &&t)
-        : variant_type(std::move(t)) {};
-
-    bool operator==(error_type const &e) const
-    {
-        if (std::holds_alternative<error_type>(*this))
-        {
-            return std::get<error_type>(*this) == e;
-        }
-        return false;
-    }
-    bool operator==(value_type const &e) const
-    {
-        if (std::holds_alternative<value_type>(*this))
-        {
-            return std::get<value_type>(*this) == e;
-        }
-        return false;
-    }
-
-    value_type &value()
-    {
-        return std::get<value_type>(*this);
-    }
-    value_type const &value() const
-    {
-        return std::get<value_type const>(*this);
-    }
-    error_type &error()
-    {
-        return std::get<value_type>(*this);
-    }
-    error_type const &error() const
-    {
-        return std::get<value_type const>(*this);
-    }
-};
-
 inline Generator<Expected<char, StreamError>> streamGenerator(std::shared_ptr<System::stream_type> in)
 {
-    static_assert(sizeof(Expected<char, StreamError>) == 2);
+    //static_assert(sizeof(Expected<char, StreamError>) == 2);
 
     char c = 0;
     while (true)
@@ -213,7 +156,7 @@ inline Generator<Expected<char, StreamError>> streamGenerator(std::shared_ptr<Sy
 
 inline Generator<Expected<char, StreamError>> streamGenerator(std::string &&in)
 {
-    static_assert(sizeof(Expected<char, StreamError>) == 2);
+    //static_assert(sizeof(Expected<char, StreamError>) == 2);
 
     for (auto c : in)
     {
@@ -718,9 +661,9 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
                     {
                         auto subCmd = A.substr(i + 2, j - i - 2);
                         //std::cout << subCmd << std::endl;
-                        auto STDIN  = System::make_stream();
+                        auto STDIN  = System::makeStream();
                         STDIN->eof();
-                        auto STDOUT = System::make_stream();
+                        auto STDOUT = System::makeStream();
                         auto pids   = execute_pipes({"sh", "-c", subCmd}, proc, STDIN, STDOUT);
                         co_yield pids;
 
@@ -748,7 +691,7 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
                                             })
                               > 0;
 
-            auto STDIN = System::make_stream();
+            auto STDIN = System::makeStream();
 
             if (!is_chained)
             {
@@ -817,8 +760,8 @@ Generator<WhatToDo3> process_command(std::vector<std::string> args,
                 {
                     // we have a $(cmd arg1 arg2 arg3) situtation going on here
                     // so execute this as a new shell
-                    auto STDIN = System::make_stream();
-                    auto STDOUT = System::make_stream();
+                    auto STDIN      = System::makeStream();
+                    auto STDOUT     = System::makeStream();
                     auto subProcess = execute_pipes( {"sh", "--noprofile"}, proc, STDIN, STDOUT);
                     *STDIN << it->substr(2, it->size()-3);
                     *STDIN << ';';

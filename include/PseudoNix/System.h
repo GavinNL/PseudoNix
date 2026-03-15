@@ -4,20 +4,20 @@
 #include <cmath>
 #define WIN32_LEAN_AND_MEAN
 #define NOBOOL
-#include <vector>
-#include <string>
-#include <map>
-#include <functional>
-#include "ReaderWriterStream.h"
-#include <concurrentqueue.h>
-#include "task.h"
-#include "defer.h"
-#include <span>
-#include <thread>
-#include <semaphore>
+#include "Expected.h"
 #include "FileSystem.h"
+#include "ReaderWriterStream.h"
+#include "defer.h"
 #include "helpers.h"
-
+#include "task.h"
+#include <concurrentqueue.h>
+#include <functional>
+#include <map>
+#include <semaphore>
+#include <span>
+#include <string>
+#include <thread>
+#include <vector>
 
 #define PSEUDONIX_VERSION_MAJOR 0
 #define PSEUDONIX_VERSION_MINOR 1
@@ -64,16 +64,20 @@ constexpr const int exit_interrupt  = 130;
 constexpr const int exit_terminated = 143;
 constexpr const uint32_t invalid_pid = 0xFFFFFFFF;
 
-enum class eSignal
-{
-    NONE = 0,
-    INTERRUPT = 2,
-    KILL = 9,
-    TERMINATE = 15,
-    CONTINUE = 18,
-    STOP = 19
+enum class eSignal {
+    NONE      = 0,  //
+    INTERRUPT = 2,  //
+    KILL      = 9,  //
+    TERMINATE = 15, //
+    CONTINUE  = 18, //
+    STOP      = 19  //
 };
 
+enum class ArgParseError {
+    UNKNOWN, //
+    NO_EXIST,
+    INVALID_TYPE
+};
 
 /**
  * @brief The AwaiterResult enum
@@ -111,11 +115,12 @@ struct System : public PseudoNix::FileSystem
     using pid_type         = uint32_t;
     using exit_code_type   = int32_t;
     using task_type        = Task_t<exit_code_type, std::suspend_always, std::suspend_always>;
-    using clock_type = std::chrono::system_clock;
-    using user_id_type = uint32_t;
+    using clock_type       = std::chrono::system_clock;
+    using user_id_type     = uint32_t;
 
     std::string DEFAULT_QUEUE = "MAIN";
     clock_type::duration DEFAULT_PROC_TIME = std::chrono::milliseconds(1);
+    uint64_t m_iteration                   = 0;
 
     struct user_t
     {
@@ -156,13 +161,18 @@ struct System : public PseudoNix::FileSystem
         }
         return it->second;
     }
+    eSignal const& lastSignal(pid_type pid) const
+    {
+        return PROC_AT(pid)->lastSignal;
+    }
+
     struct Exec
     {
         std::vector<std::string>           args;
         std::map<std::string, std::string> env;
         std::shared_ptr<stream_type>       in;
-        std::shared_ptr<stream_type>       out;
-        std::string queue; // = DEFAULT_QUEUE;
+        std::shared_ptr<stream_type> out;
+        std::string queue;
 
         // Custom user variable you use to
         // pass data.
@@ -308,7 +318,7 @@ struct System : public PseudoNix::FileSystem
         std::shared_ptr<void> userData1;
         std::shared_ptr<void> userData2;
 
-        std::chrono::system_clock::time_point last_resume_time = {};
+        clock_type::time_point last_resume_time = {};
 
     protected:
         pid_type    pid = invalid_pid;
@@ -349,8 +359,7 @@ struct System : public PseudoNix::FileSystem
          * Yields if the time since last yield is greater than maxComputeTime
          * 
          */
-        System::Awaiter await_yield_time(std::chrono::system_clock::duration maxComputeTime,
-                                         std::string_view queue = {})
+        System::Awaiter await_yield_time(clock_type::duration maxComputeTime, std::string_view queue = {})
         {
             std::string_view _queue = queue.empty() ? this->queue_name : queue;
             auto ctrl = system->getProcessControl(pid);
@@ -400,12 +409,10 @@ struct System : public PseudoNix::FileSystem
         System::Awaiter await_yield_for(std::chrono::nanoseconds time, std::string_view queue = {})
         {
             std::string_view _queue = queue.empty() ? this->queue_name : queue;
-            auto T1 = std::chrono::system_clock::now() + time;
+            auto T1                 = clock_type::now() + time;
             return System::Awaiter{get_pid(),
                                    system,
-                                   [T = T1](Awaiter *) {
-                                       return std::chrono::system_clock::now() > T;
-                                   },
+                                   [T = T1](Awaiter *) { return clock_type::now() > T; },
                                    std::string(_queue)};
         }
 
@@ -565,14 +572,14 @@ struct System : public PseudoNix::FileSystem
         m_funcs.clear();
     }
 
-    static std::shared_ptr<stream_type> make_stream(std::string const& initial_data="")
+    static std::shared_ptr<stream_type> makeStream(std::string const &initial_data = "")
     {
         auto r = std::make_shared<stream_type>();
         *r << initial_data;
         return r;
     }
 
-    Generator<pid_type> get_processes() const
+    Generator<pid_type> getProcesses() const
     {
         for (auto it = m_procs2.begin(); it != m_procs2.end(); ++it)
         {
@@ -733,7 +740,7 @@ struct System : public PseudoNix::FileSystem
 
         if(!args.in)
         {
-            args.in = make_stream();
+            args.in = makeStream();
             //exec_args.in->close();
         }
 
@@ -751,8 +758,10 @@ struct System : public PseudoNix::FileSystem
         if(m_preExec)
             m_preExec(args);
 
-        if(!args.out) args.out = make_stream();
-        if(!args.in) args.in = make_stream();
+        if (!args.out)
+            args.out = makeStream();
+        if (!args.in)
+            args.in = makeStream();
 
         auto proc_control = std::make_shared<ProcessControl>();
         proc_control->args = args.args;
@@ -763,7 +772,7 @@ struct System : public PseudoNix::FileSystem
         proc_control->userData1 = args.userData1;
         proc_control->userData2 = args.userData2;
 
-        uint32_t parent_user = 0;
+        user_id_type parent_user = 0;
 
         // If there is a valid parent, then copy all
         // the exported variables from the parent into the
@@ -785,13 +794,13 @@ struct System : public PseudoNix::FileSystem
         }
 
         // set environment variables
+        if (m_users.count(parent_user))
         {
-            if (m_users.count(parent_user))
-            {
-                auto &U = m_users.at(parent_user);
-                proc_control->env["USER"] = std::format("{}", U.name);
-            }
+            auto &U                   = m_users.at(parent_user);
+            proc_control->env["USER"] = std::format("{}", U.name);
+            proc_control->env["UID"]  = std::format("{}", parent_user);
         }
+
         proc_control->env["QUEUE"] = proc_control->queue_name;
 
         // run the function, it is a coroutine:
@@ -826,9 +835,9 @@ struct System : public PseudoNix::FileSystem
         if(E.size())
         {
             if(!E.front().in)
-                E.front().in = make_stream();
+                E.front().in = makeStream();
             if(!E.back().out)
-                E.back().out = make_stream();
+                E.back().out = makeStream();
         }
 
         for(size_t i=0;i<E.size()-1;i++)
@@ -858,6 +867,7 @@ struct System : public PseudoNix::FileSystem
      *
      * You have to manually start it by calling resume(pid)
      */
+protected:
     pid_type registerProcess(task_type && t, e_type arg, pid_type parent = invalid_pid)
     {
         auto _pid = _pid_count++;
@@ -900,7 +910,7 @@ struct System : public PseudoNix::FileSystem
 
         return _pid;
     }
-
+public:
     /**
      * @brief isRunning
      * @param pid
@@ -917,7 +927,8 @@ struct System : public PseudoNix::FileSystem
     {
         auto it = m_procs2.find(pid);
         if(it == m_procs2.end()) return false;
-        return !it->second->is_complete;
+        const auto &state = it->second->state;
+        return state != Process::State::EXITED && state != Process::State::FINALIZED;
     }
 
     bool isAllComplete(std::vector<pid_type> const &pid) const
@@ -980,7 +991,6 @@ struct System : public PseudoNix::FileSystem
             if(sigtype == eSignal::STOP)
             {
                 proc.state = Process::SUSPENDING;
-                // sig stop
             }
             else if( sigtype == eSignal::CONTINUE)
             {
@@ -1138,6 +1148,14 @@ struct System : public PseudoNix::FileSystem
         DEFAULT_PROC_TIME = dur;
     }
 
+    /**
+     * @brief taskQueueExecute
+     * @param maxComputeTime
+     * @param maxIter
+     * @return
+     *
+     * Execute the default queue
+     */
     size_t taskQueueExecute(std::chrono::milliseconds maxComputeTime = std::chrono::milliseconds(15),
                             size_t maxIter = 1)
     {
@@ -1159,11 +1177,13 @@ struct System : public PseudoNix::FileSystem
                             std::chrono::milliseconds maxComputeTime = std::chrono::milliseconds(15),
                             size_t maxIter = 1)
     {
-        auto T0 = std::chrono::system_clock::now();
+        auto T0 = clock_type::now();
 
         std::string q_name = std::string(queue_name);
         while (maxIter > 0)
         {
+            if (queue_name == DEFAULT_QUEUE)
+                ++m_iteration;
             maxIter--;
             // Execute all the processes in order of their PID
             //
@@ -1212,16 +1232,45 @@ struct System : public PseudoNix::FileSystem
                 }
             }
 
-            if (std::chrono::system_clock::now() - T0 > maxComputeTime)
+            if (clock_type::now() - T0 > maxComputeTime)
                 break;
         }
 
         return m_procs2.size();
     }
 
-    void taskQueueCreate(std::string name) { m_awaiters[name]; }
 
+    /**
+     * @brief taskQueueCreate
+     * @param name
+     *
+     * Creates a new queue. Returns true if created.
+     * Returns false if a queue with that name already exists
+     */
+    bool taskQueueCreate(std::string name)
+    {
+        if(m_awaiters.contains(name))
+            return false;
+        m_awaiters[name];
+        return true;
+    }
+
+    /**
+     * @brief taskQueueExists
+     * @param name
+     * @return
+     *
+     * Returns whether a queue name exists
+     */
     bool taskQueueExists(std::string const &name) const { return m_awaiters.count(name) == 1; }
+
+    /**
+     * @brief taskQueueSize
+     * @param name
+     * @return
+     *
+     * Returns the total number of tasks in a queue
+     */
     size_t taskQueueSize(std::string const &name) const
     {
         return m_awaiters.at(name).m_Q1.size_approx() + m_awaiters.at(name).m_Q2.size_approx();
@@ -1286,6 +1335,7 @@ struct System : public PseudoNix::FileSystem
     {
         return PROC_AT(pid)->control;
     }
+public:
 
     pid_type getParentProcess(pid_type pid) { return PROC_AT(pid)->parent; }
 
@@ -1336,7 +1386,7 @@ struct System : public PseudoNix::FileSystem
      * @param array_of_args
      * @return
      *
-     * Given a vector of argument lists, generte a vector of exec objects
+     * Given a vector of argument lists, generate a vector of exec objects
      * where one cmd is piped into the next
      *
      */
@@ -1347,7 +1397,7 @@ struct System : public PseudoNix::FileSystem
         for (size_t i = 0; i < array_of_args.size(); i++)
         {
             out.push_back(parseArguments(array_of_args[i]));
-            out.back().out = make_stream();
+            out.back().out = makeStream();
         }
         for (size_t i = 1; i < out.size(); i++)
         {
@@ -1384,8 +1434,10 @@ struct System : public PseudoNix::FileSystem
         std::shared_ptr<ProcessControl> control;
         task_type task;
 
-        bool is_complete = false;
         std::shared_ptr<exit_code_type> exit_code = std::make_shared<exit_code_type>(-1);
+
+        // The signal function that will be called with
+        // signal(pid, eSignal) is called
         std::function<void(eSignal)> signal = {};
 
         // This is where the current signal is
@@ -1398,17 +1450,17 @@ struct System : public PseudoNix::FileSystem
         // without cleanup.
         bool force_terminate = false;
 
-        State state = UNKNOWN;
-
-        uint32_t user_id = 0;
-
+        // The args when the process was created
+        // this should not be modified like the ProcessCtrl->args which
+        // can be modified inside the process coroutine
         std::vector<std::string> args;
 
-        std::chrono::system_clock::duration process_time = {};
-
-        pid_type parent = invalid_pid;
-        std::vector<pid_type> child_processes = {};
-        Awaiter initialAwaiter = {};
+        State state                                      = UNKNOWN;
+        clock_type::duration process_time                = {};
+        user_id_type user_id                             = 0;
+        pid_type parent                                  = invalid_pid;
+        std::vector<pid_type> child_processes            = {};
+        Awaiter initialAwaiter                           = {};
     };
 
     Process::State processGetState(pid_type p) const
@@ -1496,6 +1548,42 @@ public:
         return true;
     }
 
+    template<typename T>
+    static Expected<T, ArgParseError> _has_arg_or(std::vector<std::string> &_args,
+                                                  std::string_view flag,
+                                                  T const &defaultValue)
+    {
+        auto arg_it = std::find(_args.begin(), _args.end(), flag);
+        if (arg_it == _args.end())
+        {
+            return defaultValue;
+        }
+        auto val_it = std::next(arg_it);
+        if (val_it == _args.end())
+            return ArgParseError::NO_EXIST;
+
+        std::string val = *val_it;
+        _args.erase(arg_it, val_it + 1);
+
+        if constexpr (std::is_arithmetic_v<T>)
+        {
+            T num;
+            if (to_number(val, num))
+            {
+                return num;
+            }
+            return ArgParseError::INVALID_TYPE;
+        }
+        else if constexpr (std::is_same_v<T, std::string>)
+        {
+            return val;
+        }
+        else
+        {
+            return ArgParseError::INVALID_TYPE;
+        }
+    }
+
 protected:
     void setDefaultFunctions()
     {
@@ -1532,7 +1620,7 @@ protected:
             auto const & QUEUE = control->queue_name; (void)QUEUE; \
             auto const & CWD = control->cwd; (void)CWD;\
             auto const PARENT_SHELL_PID = ENV.count("SHELL_PID") ? static_cast<PseudoNix::System::pid_type>(std::stoul(ENV["SHELL_PID"])) : PseudoNix::invalid_pid; (void)PARENT_SHELL_PID;\
-            auto const & LAST_SIGNAL = SYSTEM.PROC_AT(PID)->lastSignal; (void)LAST_SIGNAL;\
+            auto const & LAST_SIGNAL = SYSTEM.lastSignal(PID); (void)LAST_SIGNAL;\
             PseudoNix::FileSystem & FS = SYSTEM; (void)FS;\
             auto & pn_ctrl = control; (void)pn_ctrl;\
             auto SHELL_PROC = PARENT_SHELL_PID != PseudoNix::invalid_pid ? SYSTEM.getProcessControl(PARENT_SHELL_PID) : nullptr; (void)SHELL_PROC;\
@@ -1547,12 +1635,15 @@ protected:
 
 #define PN_PRINT(...) COUT << std::format(__VA_ARGS__)
 
+#define PN_DEBUG(...) \
+    std::cout << std::format("{}[{}, q={}]: ", ARGS[0], PID, QUEUE) << std::format(__VA_ARGS__) << std::endl;
+
 #define PN_PRINTLN(...) \
     COUT << std::format(__VA_ARGS__); \
     COUT << '\n'
 
 #define PN_YIELD_IF(DUR) \
-    if (std::chrono::system_clock::now() - pn_ctrl->last_resume_time > DUR) \
+    if (PseudoNix::System::clock_type::now() - pn_ctrl->last_resume_time > DUR) \
     { \
         PN_HANDLE_AWAIT_INT_TERM(co_await pn_ctrl->await_yield(), pn_ctrl); \
     }
@@ -1561,22 +1652,21 @@ protected:
 
 // Used for doing quick checks.
 // Check the condition, if its true, exits the coroutine
-#define PN_PROC_CHECK(condition, ...)\
-        if(condition)\
-            {\
-                    COUT << std::format("ERROR: {}: ", ARGS[0]);\
-                    COUT << std::format(__VA_ARGS__);\
-                    COUT << '\n';\
-                    co_return 1;\
-            }
+#define PN_PROC_CHECK(condition, ...) \
+    if (condition) \
+    { \
+        COUT << std::format("ERROR: {}: ", ARGS[0]); \
+        COUT << std::format(__VA_ARGS__); \
+        COUT << '\n'; \
+        co_return 1; \
+    }
 
-
-#define PN_HANDLE_PATH(CWD, path)\
-        {\
-            if(path.is_relative())\
-                path = CWD / path;\
-            path = path.lexically_normal();\
-        }
+#define PN_HANDLE_PATH(CWD, path) \
+    { \
+        if (path.is_relative()) \
+            path = CWD / path; \
+        path = path.lexically_normal(); \
+    }
 
         std::shared_ptr< std::map<std::string, std::string>> funcDescs = std::make_shared< std::map<std::string, std::string> >();
         #define DEF_FUNC_HELP(A, help) \
@@ -1610,14 +1700,14 @@ protected:
                 (*funcDescs)[ARGS[2]] = ARGS[3];
                 co_return 0;
             }
-            COUT << "List of commands:\n\n";
+            PN_PRINT("List of commands:\n\n");
             for(auto & f : ctrl->system->m_funcs)
             {
                 PN_PRINT("{:15}: {:15}\n", f.first, (*funcDescs)[f.first]);
             }
             co_return 0;
         };
-        DEF_FUNC_HELP("env", "Prints out all environment variables, or sets environment variables for other processes")
+        DEF_FUNC_HELP("env", "Prints out all environment variables")
         {
             PN_PROC_START(ctrl);
 
@@ -1654,14 +1744,6 @@ protected:
             while(true)
             {
                 PN_PRINT("Y\n");
-                //PN_PRINT("Y {}\n", SYSTEM.PROC_AT(PID)->should_pause);
-                //if(SYSTEM.PROC_AT(PID)->should_pause)
-                //{
-                //    COUT << "Pausing\n";
-                //    ctrl->system->PROC_AT(PID)->state = Process::SUSPENDED;
-                //    co_await std::suspend_always{};
-                //}
-
                 PN_HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
             }
 
@@ -1686,13 +1768,10 @@ protected:
         };
 
         (*funcDescs)["uptime"] = "Number of milliseconds since started";
-        m_funcs["uptime"] = [T0=std::chrono::system_clock::now()](e_type ctrl) -> task_type
+        m_funcs["uptime"]      = [T0 = clock_type::now()](e_type ctrl) -> task_type
         {
             PN_PROC_START(ctrl);
-            PN_PRINT("{}\n",
-                     std::chrono::duration_cast<std::chrono::milliseconds>(
-                         std::chrono::system_clock::now() - T0)
-                         .count());
+            PN_PRINT("{}\n", std::chrono::duration_cast<std::chrono::milliseconds>(clock_type::now() - T0).count());
             co_return 0;
         };
 
@@ -1707,7 +1786,7 @@ protected:
                 if(AwaiterResult::SUCCESS == co_await ctrl->await_read_line(ctrl->in, output))
                 {
                     std::reverse(output.begin(), output.end());
-                    *ctrl->out << std::format("{}\n", output);
+                    PN_PRINT("{}\n", output);
                     output.clear();
                 }
                 else
@@ -1718,7 +1797,7 @@ protected:
             if(!output.empty())
             {
                 std::reverse(output.begin(), output.end());
-                *ctrl->out << std::format("{}\n", output);
+                PN_PRINT("{}\n", output);
             }
             co_return 0;
         };
@@ -1727,7 +1806,7 @@ protected:
         {
             PN_PROC_START(ctrl);
 
-            uint32_t i=0;
+            uint32_t i = 0;
 
             bool quit = false;
             while(!quit)
@@ -1751,7 +1830,7 @@ protected:
                 }
             }
 
-            COUT << std::to_string(i) << '\n';
+            PN_PRINTLN("{}", i);
 
             co_return 0;
         };
@@ -2001,7 +2080,7 @@ protected:
                co_return 0;
            for(auto & x : SHELL_PROC->exported)
            {
-               COUT << x.first << '\n';
+               PN_PRINTLN("{}", x.first);
            }
            co_return 0;
         };
@@ -2050,7 +2129,7 @@ protected:
             //
             PN_PROC_START(ctrl);
 
-            uint32_t user_id = 0;
+            user_id_type user_id = 0;
 
             std::vector<std::string> args;
             if (!to_number(ARGS[1], user_id))
@@ -2090,18 +2169,14 @@ protected:
             PN_PROC_CHECK(ARGS.size() < 2, "Error: \n\n  spawn [--count N] cmd <args...>\n");
 
             auto &args = ctrl->args;
-            std::string count_str;
-            size_t count = 1;
-            if (_has_arg(args, "--count", count_str))
-            {
-                if (!count_str.empty())
-                    PN_PROC_CHECK(to_number(count_str, count) == false,
-                                  "Error: --count <ARG> must be a number");
-            }
 
-            count = std::clamp<size_t>(count, 0u, 1000u);
+            auto count = _has_arg_or(args, "--count", size_t(1));
 
-            while(count--)
+            PN_PROC_CHECK(!count.has_value(), "Error: --count <ARG> must be a number");
+
+            count.value() = std::clamp<size_t>(count.value(), 0u, 1000u);
+
+            while (count.value()--)
             {
                 auto E = System::parseArguments(std::vector(ARGS.begin() + 1, ARGS.end()));
                 E.out = ctrl->out;
@@ -2163,7 +2238,8 @@ protected:
                 DEBUG_INFO("Thread exit");
             });
 
-            PSEUDONIX_TRAP {
+            PN_TRAP
+            {
                 DEBUG_TRACE("TRAPPED: {}", QUEUE);
                 // set the stop token so the thread will exit
                 // its main loop
@@ -2259,7 +2335,8 @@ protected:
                 co_return 1;
             }
 
-            PSEUDONIX_TRAP {
+            PN_TRAP
+            {
                 PN_PRINT("Trap on {} queue\n", QUEUE);
             };
 
@@ -2635,7 +2712,7 @@ protected:
                 auto const & left = _args[1];
                 auto const & op = _args[2];
                 auto const & right = _args[3];
-                if(op == "=")
+                if (op == "=" || op == "==")
                 {
                     co_return _cmp(left==right);
                 }
@@ -2692,11 +2769,11 @@ protected:
                         if (!file) {
                             co_return 1;
                         }
-                        auto T0 = std::chrono::system_clock::now();
+                        auto T0 = clock_type::now();
                         std::string line;
                         while(true)
                         {
-                            while(!file.eof() && (std::chrono::system_clock::now()-T0 < std::chrono::microseconds(1000)) )
+                            while (!file.eof() && (clock_type::now() - T0 < std::chrono::microseconds(1000)))
                             {
                                 std::getline(file, line);
                                 PN_PRINTLN("{}", line);
@@ -2704,7 +2781,7 @@ protected:
                             if(file.eof())
                                 break;
                             PN_HANDLE_AWAIT_INT_TERM(co_await ctrl->await_yield(), ctrl);
-                            T0 = std::chrono::system_clock::now();
+                            T0 = clock_type::now();
                         }
                         co_return 0;
                     }
@@ -2782,7 +2859,7 @@ protected:
         // reading from it will know to close
         coro.control->out->set_eof();
 
-        coro.is_complete = true;
+        //coro.is_complete = true;
 
         _detachFromParent(p);
 
@@ -2835,7 +2912,7 @@ protected:
             // its possible that the process had been forcefully killed
             // and the handle to the coroutine no longer valid. So make sure
             // that we do not resume any of those coroutines
-            if (a.second->force_terminate || a.second->is_complete || a.second->state == Process::FINALIZED)
+            if (a.second->force_terminate || a.second->state == Process::EXITED || a.second->state == Process::FINALIZED)
                 return found;
 
             if (a.second->state == Process::SUSPENDING)
@@ -2850,6 +2927,7 @@ protected:
             if (a.second->state == Process::AWAITING && a.first->await_ready())
             {
                 a.second->control->env["QUEUE"] = queue_name;
+                a.second->control->queue_name   = queue_name;
                 _resume_task_now(a.second);
             }
             else
@@ -2879,16 +2957,14 @@ protected:
         P->state = Process::RUNNING;
 
         auto &last_resume_time = P->control->last_resume_time;
-        last_resume_time       = std::chrono::system_clock::now();
+        last_resume_time       = clock_type::now();
         P->task.resume();
-        P->process_time += std::chrono::system_clock::now() - last_resume_time;
+        P->process_time += clock_type::now() - last_resume_time;
 
         if (P->task.done())
         {
             auto exit_code     = P->task();
-            P->is_complete     = true;
             *P->exit_code      = !P->force_terminate ? exit_code : -1;
-            //P->should_remove   = true;
             P->force_terminate = true;
             P->state           = Process::EXITED;
         }
